@@ -458,7 +458,7 @@ function buildSpine(){
     }
   } else if(viv){
     for(const cg of viv.caregivers){
-      if(cg.status!=='active')continue;
+      if(cg.status!=='hired')continue;   // Viv status vocabulary: hired = active
       spine.push({
         key:'v'+cg.id, empNum:String(cg.mnum||''), viv:cg,
         name:cg.name, market:cg.market||cg.state||'', manager:cg.mce||'',
