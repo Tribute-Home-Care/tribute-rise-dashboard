@@ -24,7 +24,11 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 .wordmark-sub{font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--text3)}
 .gate-box .gt{font-size:21px;font-weight:600;margin-top:18px}
 .gate-box .gs{font-size:13px;color:var(--text3);margin-top:6px;line-height:1.5}
-.gate-box input{width:100%;padding:11px 13px;font-size:14px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg2);color:var(--text);margin:18px 0 10px}
+.pw-wrap{position:relative;margin:18px 0 10px}
+.gate-box input{width:100%;padding:11px 42px 11px 13px;font-size:14px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg2);color:var(--text)}
+.gate-box button.pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:none;background:none;cursor:pointer;padding:6px;color:var(--text3);display:flex;align-items:center;width:auto}
+.gate-box button.pw-eye:hover{background:none;color:var(--text)}
+.pw-eye svg{width:19px;height:19px}
 .gate-box button{width:100%;padding:11px;font-size:13px;font-weight:600;border:none;border-radius:var(--r);background:var(--orange);color:#fff;cursor:pointer}
 .gate-box button:hover{background:var(--orange-dark)}
 .gate-err{color:var(--red-text);font-size:12px;margin-top:10px;min-height:16px}
@@ -52,7 +56,13 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
     <div class="logo"><span class="wordmark">Tribute</span><span class="wordmark-sub">Home Care</span></div>
     <div class="gt">Welcome to the Caregiver Intelligence Suite</div>
     <div class="gs">The Rise Dashboard and Caregiver Retention Tracker, in one place.<br>Enter the shared team password to continue.</div>
-    <input type="password" id="gateInput" placeholder="Team password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitGate()">
+    <div class="pw-wrap">
+      <input type="password" id="gateInput" placeholder="Team password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitGate()">
+      <button type="button" class="pw-eye" id="pwEye" onclick="togglePw()" title="Show password" aria-label="Show password">
+        <svg id="eyeOpen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <svg id="eyeClosed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+      </button>
+    </div>
     <button onclick="submitGate()">Enter</button>
     <div class="gate-err" id="gateErr"></div>
   </div>
@@ -81,6 +91,16 @@ const APPS={
 const loaded={rise:false,retention:false};
 
 function getKey(){ try{return localStorage.getItem(KEY_LS)||'';}catch(e){return '';} }
+
+function togglePw(){
+  const inp=document.getElementById('gateInput');
+  const show=inp.type==='password';
+  inp.type=show?'text':'password';
+  document.getElementById('eyeOpen').style.display=show?'none':'';
+  document.getElementById('eyeClosed').style.display=show?'':'none';
+  document.getElementById('pwEye').title=show?'Hide password':'Show password';
+  inp.focus();
+}
 
 async function submitGate(){
   const v=document.getElementById('gateInput').value.trim();
