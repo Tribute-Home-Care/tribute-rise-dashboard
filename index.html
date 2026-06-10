@@ -116,8 +116,9 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 @media(max-width:1100px){.grid.four{grid-template-columns:1fr 1fr}}
 @media(max-width:900px){.grid,.grid.three,.grid.four{grid-template-columns:1fr}}
 .wk-strip{display:flex;gap:3px;margin-top:8px}
-.wk-cell{flex:1;height:22px;border-radius:4px;background:var(--bg3)}
+.wk-cell{flex:1;height:26px;border-radius:4px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--text3);white-space:nowrap;overflow:hidden}
 .wk-cell.g{background:var(--green)}.wk-cell.a{background:var(--amber)}.wk-cell.r{background:var(--red)}
+.wk-cell.g,.wk-cell.a,.wk-cell.r{color:#fff}
 .card-link{font-size:11px;font-weight:600;color:var(--blue);text-decoration:none}
 .card-link:hover{text-decoration:underline}
 .fc{background:var(--bg);border:.5px solid var(--border);border-radius:var(--rl);padding:14px 18px}
@@ -873,13 +874,14 @@ function renderCaregiver(){
       const ws=viv.hoursWeekStarts||[];
       const hire=v.hireDate?String(v.hireDate).slice(0,10):'';
       html+='<div class="wk-strip">'+ws.map((w,i)=>{
-        if(hire&&w<hire)return '<div class="wk-cell" title="'+w+' · before hire"></div>';
+        const lbl=parseInt(w.slice(5,7),10)+'/'+parseInt(w.slice(8,10),10);   // Sunday week-start, e.g. 3/15
+        if(hire&&w<hire)return '<div class="wk-cell" title="week of '+w+' · before hire">'+lbl+'</div>';
         const got=(v.weeklyHours&&v.weeklyHours[i])||0;
         const ratio=got/v.desiredHours;
         const cls=ratio>=0.75?'g':ratio>=0.5?'a':'r';
-        return '<div class="wk-cell '+cls+'" title="wk of '+w+' · '+got.toFixed(1)+' hrs ('+Math.round(ratio*100)+'%)"></div>';
+        return '<div class="wk-cell '+cls+'" title="week of Sun '+w+' · '+got.toFixed(1)+' hrs ('+Math.round(ratio*100)+'%)">'+lbl+'</div>';
       }).join('')+'</div>'+
-      '<div class="stat-foot" style="margin-top:4px">past 12 complete weeks · billable + PTO hours · hover for detail</div>';
+      '<div class="stat-foot" style="margin-top:4px">labels = Sunday week-start · past 12 complete weeks · billable + PTO hours · hover for hours</div>';
     }
   }
   html+='</div></div>';
