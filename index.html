@@ -315,8 +315,14 @@ async function syncViv(manual){
   btn.disabled=true; btn.textContent='Syncing…';
   setSyncLine('<span class="dot"></span>Syncing from Viv… first build can take ~2 minutes','');
   try{
-    const r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers:{'X-Retention-Key':key}});
+    let r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers:{'X-Retention-Key':key}});
     if(r.status===401){ localStorage.removeItem(KEY_LS); showGate('That password was not accepted.'); throw new Error('unauthorized'); }
+    if(r.status>=500){
+      // Cold cache build can outlive the Azure HTTP timeout; the server kept the
+      // finished pieces, so one automatic retry usually completes the build.
+      setSyncLine('<span class="dot"></span>Server is building its data cache — retrying automatically…');
+      r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers:{'X-Retention-Key':key}});
+    }
     if(!r.ok) throw new Error('Viv proxy returned HTTP '+r.status);
     viv=await r.json();
     setSyncLine('<span class="dot"></span>Live · '+viv.counts.caregivers+' caregivers · '+viv.counts.riseForms+' Rise forms · data as of '+fmtTime(viv.generatedAt),'');
