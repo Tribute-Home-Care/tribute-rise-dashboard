@@ -17,6 +17,8 @@ meeting forms, ~6 h for the heavy feeds):
 - Visit-note / task completion %
 - Compliments — count *and* the actual text, for use in the meeting
 - Last-minute bookings (visits picked up within 24 h of start)
+- Weekend work — months a caregiver worked but had no weekend visit (from the
+  "Weekend working Caregivers" report)
 - Rise Meeting forms (#10102) and 45/90-day meeting forms for **all** markets
   (MA #10136/10137, MD #10138/10139, CHI #10140/10142) — full history, which
   drives due dates, segments, notes and the "Last Rise Meeting" card
@@ -29,7 +31,6 @@ These add data Viv doesn't have; everything else works without them:
 |---|---|
 | `PTO_and_Sick_Balances.xlsx` | PTO/sick balances, iSolved supervisor, job title |
 | `Certifications.xlsx` | expiring/expired document alerts |
-| `No weekend in [Month].xlsx` | missed weekend-commitment flags (the dashboard also derives a weekend signal from Viv check-ins) |
 
 ## Tuning knobs (top of the `<script>` in index.html)
 

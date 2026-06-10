@@ -207,7 +207,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 
 <!-- UPLOADS (iSolved only — everything else streams from Viv) -->
 <details class="upload-strip" open>
-  <summary>iSolved uploads — optional, adds PTO/sick balances, supervisor &amp; document alerts</summary>
+  <summary>iSolved uploads — optional, adds PTO/sick balances, supervisor &amp; document alerts (weekend data is live from Viv)</summary>
   <div class="upload-grid">
     <div class="upload-slot" id="slot-roster">
       <input type="file" accept=".xlsx,.csv" onchange="handleFile('roster',this)">
@@ -218,11 +218,6 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
       <input type="file" accept=".xlsx,.csv" onchange="handleFile('certs',this)">
       <div class="slot-name">Certifications</div>
       <div class="slot-status" id="status-certs">Certifications.xlsx</div>
-    </div>
-    <div class="upload-slot" id="slot-weekend">
-      <input type="file" accept=".xlsx,.csv" onchange="handleFile('weekend',this)">
-      <div class="slot-name">Weekend Report</div>
-      <div class="slot-status" id="status-weekend">No weekend in [Month].xlsx</div>
     </div>
   </div>
   <div class="live-chips" id="liveChips"></div>
@@ -288,7 +283,7 @@ const in6m=new Date(TODAY); in6m.setMonth(in6m.getMonth()+6);
 // STATE
 // ════════════════════════════════════════════════════════════════════════════
 let viv=null;                    // payload from vivProxy?endpoint=rise_dashboard
-const store={roster:null,certs:null,weekend:null};   // iSolved uploads
+const store={roster:null,certs:null};   // iSolved uploads
 let spine=[];                    // unified caregiver list
 let selectedKey='';
 
@@ -345,8 +340,8 @@ function renderLiveChips(){
   const el=document.getElementById('liveChips');
   const chips=[
     ['Viv roster + Tribute Secure',!!viv],['Service exceptions',!!viv],['On-time & manual check-ins',!!viv],
-    ['Task completion',!!viv],['Compliments',!!viv],['Last-minute bookings',!!viv],['Rise + 90-day forms',!!viv],
-    ['PTO/Sick (iSolved)',!!store.roster],['Certifications (iSolved)',!!store.certs],['Weekend report',!!store.weekend]
+    ['Task completion',!!viv],['Compliments',!!viv],['Last-minute bookings',!!viv],['Weekend visits',!!viv],['Rise + 90-day forms',!!viv],
+    ['PTO/Sick (iSolved)',!!store.roster],['Certifications (iSolved)',!!store.certs]
   ];
   el.innerHTML=chips.map(c=>'<span class="live-chip '+(c[1]?'ok':'')+'">'+(c[1]?'✓ ':'')+c[0]+'</span>').join('');
 }
@@ -361,7 +356,6 @@ function handleFile(type,input){
   reader.onload=e=>{
     let data;
     if(isCSV)data=parseCSV(e.target.result);
-    else if(type==='weekend')data=parseWeekendXLSX(e.target.result,file.name);
     else{
       const wb=XLSX.read(e.target.result,{type:'binary',cellDates:true});
       data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
@@ -376,43 +370,6 @@ function handleFile(type,input){
   if(isCSV)reader.readAsText(file); else reader.readAsBinaryString(file);
 }
 
-function parseWeekendXLSX(binary,filename){
-  const wb=XLSX.read(binary,{type:'binary',cellDates:true});
-  const ws=wb.Sheets[wb.SheetNames[0]];
-  const month=extractMonthFromFilename(filename);
-  const range=XLSX.utils.decode_range(ws['!ref']||'A1');
-  const headers=[];
-  for(let c=range.s.c;c<=range.e.c;c++){
-    const cell=ws[XLSX.utils.encode_cell({r:range.s.r,c})];
-    headers.push(cell?cell.v:'');
-  }
-  const empCol=headers.findIndex(h=>/employee.?number|employeenumber/i.test(String(h)));
-  const nameCol=headers.findIndex(h=>/employee.?name|#employee/i.test(String(h)));
-  const flagCol=headers.findIndex(h=>/existing/i.test(String(h)));
-  const results=[];
-  for(let r=range.s.r+1;r<=range.e.r;r++){
-    const empCell=ws[XLSX.utils.encode_cell({r,c:empCol})];
-    const nameCell=ws[XLSX.utils.encode_cell({r,c:nameCol})];
-    const flagCell=ws[XLSX.utils.encode_cell({r,c:flagCol})];
-    const isMissed=!flagCell||flagCell.t==='e'||flagCell.v===''||flagCell.v===null||String(flagCell.v).toUpperCase().includes('N/A');
-    if(isMissed&&empCell){
-      results.push({EmployeeNumber:String(empCell.v||'').trim(),Name:nameCell?String(nameCell.v||'').trim():'',Month:month||''});
-    }
-  }
-  return results;
-}
-function extractMonthFromFilename(filename){
-  const MONTHS=['january','february','march','april','may','june','july','august','september','october','november','december'];
-  const lower=filename.toLowerCase();
-  for(let i=0;i<MONTHS.length;i++){
-    if(lower.includes(MONTHS[i])){
-      let year=TODAY.getFullYear();
-      if(i>TODAY.getMonth())year--;
-      return year+'-'+String(i+1).padStart(2,'0');
-    }
-  }
-  return null;
-}
 function parseCSV(text){
   text=text.replace(/^﻿/,'');
   const rows=[]; let cur='',inQ=false,fields=[];
@@ -743,20 +700,6 @@ function getCertAlerts(p,isBab){
   return alerts;
 }
 
-function getWeekendFlags(p){
-  if(!store.weekend)return null;
-  const seen=new Set();
-  store.weekend.forEach(r=>{
-    const en=(r['EmployeeNumber']||r['Employee Number']||'').toString().trim();
-    const rn=(r['Name']||r['#Employee Name']||'').trim();
-    if((en&&p.empNum&&en===p.empNum)||namesMatch(rn,p.name)){ if(r['Month'])seen.add(r['Month']); }
-  });
-  return[...seen].sort().map(month=>{
-    const[y,m]=month.split('-');
-    return new Date(parseInt(y),parseInt(m)-1,1).toLocaleString('default',{month:'long',year:'numeric'});
-  });
-}
-
 function calcRisePoints(compliments,taskPct,onTimePct,lastMinute,calloutMonths){
   const past6=getPast6Months();
   const noCalloutMonths=past6.filter(m=>!calloutMonths.has(m.key)).length;
@@ -790,7 +733,6 @@ function renderCaregiver(){
   const weekendWorked=new Set(v?v.weekendMonthsWorked:[]);
   const risePoints=calcRisePoints(compliments||0,taskPct,onTimePct,lastMin?lastMin.length:0,exc.calloutMonths);
   const certAlerts=getCertAlerts(p,isBab);
-  const weekendFlags=getWeekendFlags(p);
   const riseRows=riseFormsFor(p);
   const lastMeeting=getMostRecentForm(riseRows);
   const past6=getPast6Months();
@@ -847,15 +789,19 @@ function renderCaregiver(){
     '<span class="v '+mColor+'">'+(manualPct!==null?manualPct.toFixed(1)+'%':'—')+'</span></div>'+
     '<div class="stat-foot">'+(ck?ck.manual+' of '+ck.manualDen+' check-ins entered manually (not via app)':'No data')+'</div></div>';
 
-  html+='<div class="fc"><div class="ct">Weekend Commitment</div>';
-  if(weekendFlags===null){
+  html+='<div class="fc"><div class="ct">Weekend Work (Viv)</div>';
+  if(!v){
+    html+='<div class="no-data">Not matched in Viv</div>';
+  } else {
     const missed=past6.filter(m=>!weekendWorked.has(m.key)&&monthsWithVisit.has(m.key));
-    if(v&&missed.length)html+='<div class="stat-foot" style="margin-bottom:6px">From Viv check-ins — months worked but no weekend visit:</div>'+missed.map(m=>'<span class="flag">'+m.label+'</span>').join('');
-    else if(v)html+='<div class="no-data">Worked a weekend in every active month (Viv)</div>';
-    else html+='<div class="no-data">Upload the weekend report</div>';
-  } else if(!weekendFlags.length){
-    html+='<div class="no-data">No missed weekends on record</div>';
-  } else weekendFlags.forEach(f=>{html+='<div class="flag">⚑ '+escHtml(f)+' – Missed weekend commitment</div>';});
+    if(missed.length){
+      html+='<div class="stat-foot" style="margin-bottom:6px">Months worked but with no weekend visit:</div>'+missed.map(m=>'<span class="flag">⚑ '+m.label+'</span>').join('');
+    } else if(monthsWithVisit.size){
+      html+='<div class="no-data">Worked a weekend in every active month</div>';
+    } else {
+      html+='<div class="no-data">No visits in the window</div>';
+    }
+  }
   html+='</div></div>';
 
   // ── Row 3: Performance metrics | Points breakdown ──
