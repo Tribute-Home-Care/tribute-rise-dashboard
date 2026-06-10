@@ -630,7 +630,10 @@ function renderTracker(){
     let notes='';
     if(latestRise&&latestRise.notes)notes=latestRise.notes;
     if(!notes&&latestNinety&&latestNinety.notes)notes=latestNinety.notes;
-    const nextMeeting=latestRise?(latestRise.nextMeeting||''):'';
+    // Next scheduled meeting: from the 6-month form; if the first 6-month
+    // meeting hasn't happened yet, from the 90-day form instead.
+    let nextMeeting=latestRise?(latestRise.nextMeeting||''):'';
+    if(!nextMeeting&&!riseDone&&latestNinety)nextMeeting=latestNinety.nextMeeting||'';
 
     rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting});
   });
