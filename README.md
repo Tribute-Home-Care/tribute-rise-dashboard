@@ -19,6 +19,9 @@ meeting forms, ~6 h for the heavy feeds):
 - Last-minute bookings (visits picked up within 24 h of start)
 - Weekend work — months a caregiver worked but had no weekend visit (from the
   "Weekend working Caregivers" report)
+- Desired hours + weeks at ≥75% of desired (past 12 complete weeks, billable +
+  PTO hours; answers the Rise form's hours prep question), with a per-week strip
+  and a link to the desired-hours-over-time view
 - Rise Meeting forms (#10102) and 45/90-day meeting forms for **all** markets
   (MA #10136/10137, MD #10138/10139, CHI #10140/10142) — full history, which
   drives due dates, segments, notes and the "Last Rise Meeting" card

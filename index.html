@@ -111,8 +111,15 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 /* CARD GRID */
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .grid.three{grid-template-columns:1fr 1fr 1fr}
+.grid.four{grid-template-columns:1fr 1fr 1fr 1fr}
 .grid.full{grid-template-columns:1fr}
-@media(max-width:900px){.grid,.grid.three{grid-template-columns:1fr}}
+@media(max-width:1100px){.grid.four{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){.grid,.grid.three,.grid.four{grid-template-columns:1fr}}
+.wk-strip{display:flex;gap:3px;margin-top:8px}
+.wk-cell{flex:1;height:22px;border-radius:4px;background:var(--bg3)}
+.wk-cell.g{background:var(--green)}.wk-cell.a{background:var(--amber)}.wk-cell.r{background:var(--red)}
+.card-link{font-size:11px;font-weight:600;color:var(--blue);text-decoration:none}
+.card-link:hover{text-decoration:underline}
 .fc{background:var(--bg);border:.5px solid var(--border);border-radius:var(--rl);padding:14px 18px}
 .ct{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin-bottom:10px}
 .metric-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:.5px solid var(--border);font-size:13px}
@@ -594,7 +601,7 @@ function renderTracker(){
       '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
       '<td class="td-date" style="font-weight:600">'+(row.activeDueDate?formatDate(row.activeDueDate):'—')+'</td>'+
       '<td>'+chip+'</td>'+
-      '<td class="td-date">'+(row.nextMeeting?escHtml(row.nextMeeting):'<span class="muted">—</span>')+'</td>'+
+      '<td class="td-date">'+(row.nextMeeting?(parseDate(row.nextMeeting)?formatDate(row.nextMeeting):escHtml(row.nextMeeting)):'<span class="muted">—</span>')+'</td>'+
       '<td>'+segPill(row.segment)+'</td>'+
       '<td class="td-notes">'+(row.notes?escHtml(row.notes):'')+'</td></tr>';
   }).join('');
@@ -753,8 +760,8 @@ function renderCaregiver(){
     '<div class="points-box"><div class="points-num">'+risePoints.total+'</div><div class="points-label">Rise Above points<br>past 6 months</div></div>'+
   '</div>';
 
-  // ── Row 1: Balances | On-time | Visit notes ──
-  html+='<div class="grid three">';
+  // ── Row 1: Balances | On-time | Visit notes | Manual check-ins ──
+  html+='<div class="grid four">';
   html+='<div class="fc"><div class="ct">Balances (iSolved)</div>';
   if(p.hasBalances){
     html+='<div class="metric-row"><span>PTO Balance</span><span class="metric-value">'+p.pto.toFixed(2)+' hrs</span></div>'+
@@ -773,9 +780,14 @@ function renderCaregiver(){
     '<span class="v '+vnColor+'">'+(taskPct!==null?taskPct.toFixed(1)+'%':'—')+'</span>'+
     (taskPct!==null?'<span class="bdg '+(vnColor==='g'?'bg-g">✓ ≥95%':'bg-r">✗ <95%')+'</span>':'<span class="bdg bg-n">No data</span>')+
     '</div><div class="stat-foot">6-month · threshold 95%'+(v&&v.tasks?' · '+v.tasks.completed+' / '+v.tasks.total+' tasks':'')+'</div></div>';
+
+  const mColor=manualPct===null?'n':manualPct<=15?'g':manualPct<=35?'a':'r';
+  html+='<div class="fc"><div class="ct">Manual Check-Ins</div><div class="big-stat">'+
+    '<span class="v '+mColor+'">'+(manualPct!==null?manualPct.toFixed(1)+'%':'—')+'</span></div>'+
+    '<div class="stat-foot">'+(ck?ck.manual+' of '+ck.manualDen+' check-ins entered manually (not via app)':'No data')+'</div></div>';
   html+='</div>';
 
-  // ── Row 2: Visits per month | Manual check-ins | Weekend ──
+  // ── Row 2: Visits per month | Weekend | Hours vs desired ──
   html+='<div class="grid three">';
   html+='<div class="fc"><div class="ct">1 Visit Per Month</div><div class="month-grid">';
   past6.forEach(m=>{
@@ -783,11 +795,6 @@ function renderCaregiver(){
     html+='<div class="month-cell '+(hit?'hit':'miss')+'">'+m.label+'<br>'+(hit?'✓':'✗')+'</div>';
   });
   html+='</div></div>';
-
-  const mColor=manualPct===null?'n':manualPct<=15?'g':manualPct<=35?'a':'r';
-  html+='<div class="fc"><div class="ct">Manual Check-Ins</div><div class="big-stat">'+
-    '<span class="v '+mColor+'">'+(manualPct!==null?manualPct.toFixed(1)+'%':'—')+'</span></div>'+
-    '<div class="stat-foot">'+(ck?ck.manual+' of '+ck.manualDen+' check-ins entered manually (not via app)':'No data')+'</div></div>';
 
   html+='<div class="fc"><div class="ct">Weekend Work (Viv)</div>';
   if(!v){
@@ -800,6 +807,33 @@ function renderCaregiver(){
       html+='<div class="no-data">Worked a weekend in every active month</div>';
     } else {
       html+='<div class="no-data">No visits in the window</div>';
+    }
+  }
+  html+='</div>';
+
+  // Hours vs desired — answers the Rise form prep question directly
+  html+='<div class="fc"><div class="ct">Weeks at ≥75% of Desired Hours '+
+    '<a class="card-link" style="float:right" target="_blank" href="https://andrewdobsonn-cell.github.io/Tribute-Operating-System/caregiver_utilization_v2.html">Desired hours over time →</a></div>';
+  if(!v){
+    html+='<div class="no-data">Not matched in Viv</div>';
+  } else if(!v.desiredHours){
+    html+='<div class="no-data">No desired hours set in Viv'+(v.prn?' (PRN)':'')+'</div>';
+  } else {
+    const fr=v.weeksAt75!==null?v.weeksAt75+' / '+v.weeksEligible:'—';
+    const frColor=v.weeksAt75===null?'n':(v.weeksAt75>=v.weeksEligible*0.75?'g':v.weeksAt75>=v.weeksEligible*0.5?'a':'r');
+    html+='<div class="big-stat"><span class="v '+frColor+'">'+fr+'</span>'+
+      '<span class="stat-foot">weeks · desired '+v.desiredHours+' hrs/wk</span></div>';
+    if(v.weeklyHours||viv.hoursWeekStarts){
+      const ws=viv.hoursWeekStarts||[];
+      const hire=v.hireDate?String(v.hireDate).slice(0,10):'';
+      html+='<div class="wk-strip">'+ws.map((w,i)=>{
+        if(hire&&w<hire)return '<div class="wk-cell" title="'+w+' · before hire"></div>';
+        const got=(v.weeklyHours&&v.weeklyHours[i])||0;
+        const ratio=got/v.desiredHours;
+        const cls=ratio>=0.75?'g':ratio>=0.5?'a':'r';
+        return '<div class="wk-cell '+cls+'" title="wk of '+w+' · '+got.toFixed(1)+' hrs ('+Math.round(ratio*100)+'%)"></div>';
+      }).join('')+'</div>'+
+      '<div class="stat-foot" style="margin-top:4px">past 12 complete weeks · billable + PTO hours · hover for detail</div>';
     }
   }
   html+='</div></div>';
@@ -865,6 +899,13 @@ function renderCaregiver(){
     html+='</div>';
     html+='<div class="meeting-field"><div class="mf-label">Goal Set</div>';
     html+=lastMeeting.goal?'<div class="meeting-goal">'+escHtml(lastMeeting.goal)+'</div>':'<div class="no-data">No goal recorded</div>';
+    html+='</div>';
+    html+='<div class="meeting-field"><div class="mf-label">Next Rise Meeting</div>';
+    const nmDate=parseDate(lastMeeting.nextMeeting);
+    if(lastMeeting.nextMeeting||lastMeeting.notes){
+      html+='<div style="font-size:13px">'+(lastMeeting.nextMeeting?'Scheduled: <strong>'+(nmDate?formatDate(nmDate):escHtml(lastMeeting.nextMeeting))+'</strong>':'Not scheduled yet')+'</div>';
+      if(lastMeeting.notes)html+='<div style="font-size:13px;margin-top:4px;white-space:pre-wrap">'+escHtml(lastMeeting.notes)+'</div>';
+    } else html+='<div class="no-data">Nothing recorded</div>';
     html+='</div>';
   }
   html+='</div></div>';
