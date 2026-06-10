@@ -28,7 +28,9 @@ meeting forms, ~6 h for the heavy feeds):
 
 ## What's still uploaded (iSolved — optional)
 
-These add data Viv doesn't have; everything else works without them:
+These add data Viv doesn't have; everything else works without them. Uploads are
+**saved server-side and shared**: upload once and every MCE's dashboard restores
+the latest file automatically — re-uploading replaces it for everyone.
 
 | File | Adds |
 |---|---|

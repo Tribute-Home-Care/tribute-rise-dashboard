@@ -214,7 +214,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 
 <!-- UPLOADS (iSolved only — everything else streams from Viv) -->
 <details class="upload-strip" open>
-  <summary>iSolved uploads — optional, adds PTO/sick balances, supervisor &amp; document alerts (weekend data is live from Viv)</summary>
+  <summary>iSolved uploads — optional, adds PTO/sick balances, supervisor &amp; document alerts. Saved for the whole team: upload once, everyone sees it until a newer file replaces it.</summary>
   <div class="upload-grid">
     <div class="upload-slot" id="slot-roster">
       <input type="file" accept=".xlsx,.csv" onchange="handleFile('roster',this)">
@@ -330,6 +330,7 @@ async function syncViv(manual){
     setSyncLine('<span class="dot"></span>Live · '+viv.counts.caregivers+' caregivers · '+viv.counts.riseForms+' Rise forms · data as of '+fmtTime(viv.generatedAt),'');
     buildSpine(); buildManagerFilter(); buildSearchIndex(); renderTracker(); renderLiveChips();
     if(selectedKey)renderCaregiver();
+    restoreUploads();   // shared iSolved files (roster/certs) saved by whoever uploaded last
   }catch(e){
     if(e.message!=='unauthorized'){
       showErr('Live sync failed: '+e.message+'. If this was a first load, the server may still be building its cache — try again in a minute.');
@@ -354,8 +355,29 @@ function renderLiveChips(){
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// iSOLVED FILE UPLOADS
+// iSOLVED FILE UPLOADS — saved to the server (shared with all MCEs) and
+// restored on every load until a newer file replaces them.
 // ════════════════════════════════════════════════════════════════════════════
+const UPLOAD_COLS={
+  roster:['Employee Number','EmployeeNumber','#Employee Name','Employee Name','Employment Status','Department Title','#Dept Name','Supervisor','Job Title','Hire Date','Original Hire Date','CA-PTO Balance','CA-Sick Balance'],
+  certs:['Employee Number','Employee Name','Certification','End Date']
+};
+function slimRows(type,rows){
+  const cols=UPLOAD_COLS[type];
+  return rows.map(r=>{
+    const o={};
+    for(const c of cols){ if(r[c]!==undefined&&r[c]!=='')o[c]=(r[c] instanceof Date)?r[c].toISOString().slice(0,10):r[c]; }
+    return o;
+  }).filter(r=>Object.keys(r).length);
+}
+function applyUpload(type,rows,label){
+  store[type]=rows;
+  document.getElementById('slot-'+type).classList.add('loaded');
+  document.getElementById('status-'+type).textContent=label;
+  if(type==='roster'){ buildSpine(); buildManagerFilter(); buildSearchIndex(); renderTracker(); }
+  renderLiveChips();
+  if(selectedKey)renderCaregiver();
+}
 function handleFile(type,input){
   const file=input.files[0]; if(!file)return;
   const isCSV=file.name.toLowerCase().endsWith('.csv');
@@ -367,14 +389,38 @@ function handleFile(type,input){
       const wb=XLSX.read(e.target.result,{type:'binary',cellDates:true});
       data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
     }
-    store[type]=data;
-    document.getElementById('slot-'+type).classList.add('loaded');
-    document.getElementById('status-'+type).textContent='✓ '+file.name;
-    if(type==='roster'){ buildSpine(); buildManagerFilter(); buildSearchIndex(); renderTracker(); }
-    renderLiveChips();
-    if(selectedKey)renderCaregiver();
+    const rows=slimRows(type,data);
+    applyUpload(type,rows,'✓ '+file.name+' · saving…');
+    saveUpload(type,rows,file.name);
   };
   if(isCSV)reader.readAsText(file); else reader.readAsBinaryString(file);
+}
+async function saveUpload(type,rows,fileName){
+  const key=getKey(); if(!key)return;
+  try{
+    const r=await fetch(PROXY+'?endpoint=rise_uploads',{method:'POST',
+      headers:{'Content-Type':'application/json','X-Retention-Key':key},
+      body:JSON.stringify({kind:type,rows,fileName})});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    document.getElementById('status-'+type).textContent='✓ '+fileName+' · saved for all MCEs';
+  }catch(e){
+    document.getElementById('status-'+type).textContent='✓ '+fileName+' · loaded here, but server save failed — others won’t see it';
+  }
+}
+async function restoreUploads(){
+  const key=getKey(); if(!key)return;
+  try{
+    const r=await fetch(PROXY+'?endpoint=rise_uploads',{headers:{'X-Retention-Key':key}});
+    if(!r.ok)return;
+    const j=await r.json();
+    for(const kind of ['roster','certs']){
+      const u=j.uploads&&j.uploads[kind];
+      if(u&&u.rows&&u.rows.length&&!store[kind]){
+        const when=u.savedAt?new Date(u.savedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
+        applyUpload(kind,u.rows,'✓ '+(u.fileName||kind)+(when?' · uploaded '+when:''));
+      }
+    }
+  }catch(e){/* uploads are an enhancement — ignore restore failures */}
 }
 
 function parseCSV(text){
