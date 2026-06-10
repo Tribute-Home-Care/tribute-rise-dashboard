@@ -1,3 +1,17 @@
+# Tribute Caregiver Intelligence Suite
+
+One page, one password, two tools in tabs:
+
+- **Rise Dashboard** (`rise.html`, documented below)
+- **Caregiver Retention Tracker** (lives in the Tribute-Operating-System repo;
+  the suite embeds it and hands off the password via URL hash)
+
+`index.html` is the suite shell: it validates the shared team password against
+the gated API, then loads each app in an iframe with `#k=<key>` so neither app
+prompts again.
+
+---
+
 # Tribute Rise Dashboard
 
 MCE workspace for caregiver 6-month performance reviews ("Rise meetings") and the
