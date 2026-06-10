@@ -3,179 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tribute — Rise Dashboard</title>
+<title>Tribute — Caregiver Intelligence Suite</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23FF671F'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#fff;--bg2:#F4F6F9;--bg3:#E8EDF3;--text:#0F1E35;--text2:#5B6B80;--text3:#8E9AAB;--border:rgba(15,30,53,0.09);--border2:rgba(15,30,53,0.18);--green:#14B8A6;--amber:#EF9F27;--red:#E24B4A;--blue:#407EC9;--purple:#AA0061;--orange:#FF671F;--orange-dark:#E25309;--green-bg:#E0F5F1;--amber-bg:#FAEEDA;--red-bg:#FCEBEB;--blue-bg:#ECF3FB;--orange-bg:#FFF1E8;--purple-bg:#F7E6EF;--green-text:#0B6E62;--amber-text:#633806;--red-text:#791F1F;--blue-text:#33659F;--orange-text:#9A3D08;--purple-text:#7A0046;--r:8px;--rl:12px}
-@media(prefers-color-scheme:dark){:root{--bg:#101826;--bg2:#18222F;--bg3:#22303F;--text:#E8ECF2;--text2:#9AA7B8;--text3:#6B7889;--border:rgba(255,255,255,0.09);--border2:rgba(255,255,255,0.16);--green-bg:#04342C;--amber-bg:#412402;--red-bg:#501313;--blue-bg:#0E2A47;--orange-bg:#3A1C0A;--purple-bg:#3B0A24;--green-text:#9FE1CB;--amber-text:#FAC775;--red-text:#F09595;--blue-text:#9CC2EE;--orange-text:#FFB28A;--purple-text:#F0A8CC}}
-body{font-family:'Source Sans 3',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding:20px;max-width:1400px;margin:0 auto;font-size:14px;line-height:1.5}
+:root{--bg:#fff;--bg2:#F4F6F9;--text:#0F1E35;--text2:#5B6B80;--text3:#8E9AAB;--border:rgba(15,30,53,0.09);--border2:rgba(15,30,53,0.18);--orange:#FF671F;--orange-dark:#E25309;--red-text:#791F1F;--r:8px}
+@media(prefers-color-scheme:dark){:root{--bg:#101826;--bg2:#18222F;--text:#E8ECF2;--text2:#9AA7B8;--text3:#6B7889;--border:rgba(255,255,255,0.09);--border2:rgba(255,255,255,0.16);--red-text:#F09595}}
+html,body{height:100%}
+body{font-family:'Source Sans 3',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;display:flex;flex-direction:column}
 body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#FF671F 70%,#FDDA24);z-index:300}
 
-/* HEADER */
-.hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:.5px solid var(--border);margin-bottom:16px;flex-wrap:wrap;gap:10px}
-.logo{display:flex;align-items:baseline;gap:7px}
-.wordmark{color:var(--orange);font-size:17px;font-weight:700;letter-spacing:-.01em;line-height:1}
-.wordmark-sub{font-size:9px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--text3)}
-.title{font-size:22px;font-weight:500;margin-top:3px}
-.sub{font-size:11px;color:var(--text3);margin-top:2px}
-.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:4px;animation:pulse 2s infinite}
-.dot.r{background:var(--red);animation:none}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.hdr-right{text-align:right}
-.sync-line{font-size:11px;color:var(--text3)}
-.sync-btn{margin-top:6px;padding:6px 14px;font-size:11px;font-weight:600;border:none;border-radius:6px;cursor:pointer;background:var(--orange);color:#fff}
-.sync-btn:hover{background:var(--orange-dark)}
-.sync-btn[disabled]{opacity:.5;cursor:default}
-
-/* TABS */
-.nav-tabs{display:flex;border-bottom:.5px solid var(--border);margin-bottom:14px;overflow-x:auto;align-items:center}
-.ntab{font-size:13px;font-weight:500;color:var(--text2);padding:8px 16px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-.5px;white-space:nowrap;user-select:none}
-.ntab.on{color:var(--text);border-bottom-color:var(--orange);font-weight:600}
-
 /* GATE */
-.gate{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:400}
-.gate.show{display:flex}
-.gate-box{width:360px;max-width:90vw;text-align:center}
-.gate-box .gt{font-size:18px;font-weight:600;margin-top:14px}
-.gate-box .gs{font-size:12px;color:var(--text3);margin-top:4px}
-.gate-box input{width:100%;padding:10px 12px;font-size:14px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg2);color:var(--text);margin:14px 0 10px}
-.gate-box button{width:100%;padding:10px;font-size:13px;font-weight:600;border:none;border-radius:var(--r);background:var(--orange);color:#fff;cursor:pointer}
+.gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:200}
+.gate-box{width:380px;max-width:90vw;text-align:center}
+.logo{display:flex;align-items:baseline;gap:7px;justify-content:center}
+.wordmark{color:var(--orange);font-size:20px;font-weight:700;letter-spacing:-.01em;line-height:1}
+.wordmark-sub{font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--text3)}
+.gate-box .gt{font-size:21px;font-weight:600;margin-top:18px}
+.gate-box .gs{font-size:13px;color:var(--text3);margin-top:6px;line-height:1.5}
+.gate-box input{width:100%;padding:11px 13px;font-size:14px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg2);color:var(--text);margin:18px 0 10px}
+.gate-box button{width:100%;padding:11px;font-size:13px;font-weight:600;border:none;border-radius:var(--r);background:var(--orange);color:#fff;cursor:pointer}
+.gate-box button:hover{background:var(--orange-dark)}
 .gate-err{color:var(--red-text);font-size:12px;margin-top:10px;min-height:16px}
 
-/* UPLOAD STRIP */
-.upload-strip{background:var(--bg2);border-radius:var(--rl);padding:12px 14px;margin-bottom:16px}
-.upload-strip summary{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);cursor:pointer;user-select:none}
-.upload-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;margin-top:10px}
-.upload-slot{border:1.5px dashed var(--border2);border-radius:var(--r);padding:9px 13px;cursor:pointer;position:relative;background:var(--bg)}
-.upload-slot:hover{border-color:var(--blue)}
-.upload-slot.loaded{border-style:solid;border-color:var(--green)}
-.upload-slot input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
-.slot-name{font-weight:600;font-size:12px}
-.slot-status{font-size:11px;color:var(--text3);margin-top:2px}
-.upload-slot.loaded .slot-status{color:var(--green-text)}
-.live-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
-.live-chip{font-size:10px;font-weight:600;padding:3px 9px;border-radius:10px;background:var(--bg3);color:var(--text3)}
-.live-chip.ok{background:var(--green-bg);color:var(--green-text)}
+/* SUITE HEADER */
+.suite-hdr{display:flex;align-items:center;gap:24px;padding:10px 20px 0;border-bottom:.5px solid var(--border);background:var(--bg);flex-wrap:wrap}
+.suite-hdr .logo{padding-bottom:10px}
+.suite-tabs{display:flex;gap:2px;margin-left:8px}
+.stab{font-size:14px;font-weight:600;color:var(--text2);padding:10px 20px;cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-.5px;user-select:none;white-space:nowrap}
+.stab.on{color:var(--text);border-bottom-color:var(--orange)}
+.stab:hover:not(.on){color:var(--text)}
 
-/* FILTER / SEARCH BARS */
-.bar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;padding:10px 12px;background:var(--bg2);border-radius:var(--r)}
-.bar label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3)}
-.bar select,.bar input[type=text]{padding:7px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)}
-.bar .count{font-size:12px;color:var(--text3);margin-left:auto}
-.search-wrapper{position:relative;flex:1;min-width:280px;max-width:420px}
-.search-wrapper input{width:100%}
-.search-dropdown{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--bg);border:.5px solid var(--border2);border-radius:var(--r);box-shadow:0 4px 12px rgba(0,0,0,0.12);max-height:300px;overflow-y:auto;display:none;z-index:200}
-.search-dropdown.open{display:block}
-.dropdown-item{padding:8px 13px;cursor:pointer;border-bottom:.5px solid var(--border);font-size:13px;line-height:1.35}
-.dropdown-item:last-child{border-bottom:none}
-.dropdown-item:hover,.dropdown-item.active{background:var(--orange-bg);color:var(--orange-text)}
-.dropdown-item .item-market{font-size:11px;color:var(--text3)}
-.dropdown-empty{padding:12px 14px;color:var(--text3);font-style:italic;font-size:13px}
-
-/* TABLES */
-.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r)}
-.tbl{width:100%;border-collapse:collapse;font-size:12px}
-.tbl th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);padding:8px 12px;border-bottom:.5px solid var(--border2);text-align:left;white-space:nowrap;background:var(--bg2);position:sticky;top:0;z-index:1}
-.tbl td{padding:9px 12px;border-bottom:.5px solid var(--border);vertical-align:top}
-.tbl tbody tr:last-child td{border-bottom:none}
-.tbl tbody tr:hover td{background:var(--bg2)}
-.tbl tr.clickable{cursor:pointer}
-.td-name{font-weight:600;white-space:nowrap}
-.td-date{white-space:nowrap;color:var(--text2)}
-.td-notes{font-size:11px;color:var(--text2);max-width:240px;line-height:1.4}
-
-/* PILLS / CHIPS */
-.bdg{font-size:10px;font-weight:700;padding:2px 9px;border-radius:10px;display:inline-block;white-space:nowrap}
-.bg-g{background:var(--green-bg);color:var(--green-text)}
-.bg-a{background:var(--amber-bg);color:var(--amber-text)}
-.bg-r{background:var(--red-bg);color:var(--red-text)}
-.bg-b{background:var(--blue-bg);color:var(--blue-text)}
-.bg-p{background:var(--purple-bg);color:var(--purple-text)}
-.bg-o{background:var(--orange-bg);color:var(--orange-text)}
-.bg-n{background:var(--bg3);color:var(--text2)}
-
-/* CAREGIVER HEADER */
-.cg-header{background:var(--bg2);border-radius:var(--rl);padding:18px 22px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px}
-.cg-name{font-size:21px;font-weight:600}
-.cg-meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--text2)}
-.cg-meta strong{color:var(--text)}
-.points-box{background:var(--bg);border:1px solid var(--orange);border-radius:var(--rl);padding:12px 22px;text-align:center;min-width:170px}
-.points-num{font-size:32px;font-weight:700;color:var(--orange);font-variant-numeric:tabular-nums}
-.points-label{font-size:10px;color:var(--orange-text);font-weight:600;line-height:1.4;margin-top:2px;text-transform:uppercase;letter-spacing:.05em}
-
-/* CARD GRID */
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-.grid.three{grid-template-columns:1fr 1fr 1fr}
-.grid.four{grid-template-columns:1fr 1fr 1fr 1fr}
-.grid.full{grid-template-columns:1fr}
-@media(max-width:1100px){.grid.four{grid-template-columns:1fr 1fr}}
-@media(max-width:900px){.grid,.grid.three,.grid.four{grid-template-columns:1fr}}
-.wk-strip{display:flex;gap:3px;margin-top:8px}
-.wk-cell{flex:1;height:26px;border-radius:4px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--text3);white-space:nowrap;overflow:hidden}
-.wk-cell.g{background:var(--green)}.wk-cell.a{background:var(--amber)}.wk-cell.r{background:var(--red)}
-.wk-cell.g,.wk-cell.a,.wk-cell.r{color:#fff}
-.card-link{font-size:11px;font-weight:600;color:var(--blue);text-decoration:none}
-.card-link:hover{text-decoration:underline}
-.fc{background:var(--bg);border:.5px solid var(--border);border-radius:var(--rl);padding:14px 18px}
-.ct{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin-bottom:10px}
-.metric-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:.5px solid var(--border);font-size:13px}
-.metric-row:last-child{border-bottom:none}
-.metric-value{font-weight:600;font-variant-numeric:tabular-nums}
-.big-stat{display:flex;align-items:center;gap:12px;padding:6px 0}
-.big-stat .v{font-size:27px;font-weight:700;font-variant-numeric:tabular-nums}
-.v.g{color:var(--green)}.v.r{color:var(--red)}.v.a{color:var(--amber)}.v.n{color:var(--text3)}
-.stat-foot{font-size:11px;color:var(--text3)}
-.no-data{color:var(--text3);font-style:italic;font-size:12px;padding:6px 0}
-
-/* MONTH GRID */
-.month-grid{display:flex;gap:6px;flex-wrap:wrap}
-.month-cell{padding:5px 9px;border-radius:6px;font-size:11px;font-weight:600;text-align:center;min-width:50px}
-.month-cell.hit{background:var(--green-bg);color:var(--green-text)}
-.month-cell.miss{background:var(--red-bg);color:var(--red-text)}
-
-/* LISTS */
-.doc-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:.5px solid var(--border);font-size:12px;gap:8px}
-.doc-item:last-child{border-bottom:none}
-.flag{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:6px;background:var(--amber-bg);color:var(--amber-text);font-size:12px;font-weight:600;margin:3px 4px 3px 0}
-.rise-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:.5px solid var(--border);font-size:13px}
-.rise-row:last-child{border-bottom:none}
-.rise-row .pts{font-weight:700;color:var(--orange);font-variant-numeric:tabular-nums}
-.comp-item{border-left:2px solid var(--green);padding:6px 0 6px 12px;margin-bottom:8px;font-size:12px}
-.comp-meta{font-size:10px;color:var(--text3);margin-bottom:2px}
-
-/* MEETING CARD */
-.meeting-field{margin-bottom:13px}
-.meeting-field:last-child{margin-bottom:0}
-.mf-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px}
-.meeting-points{font-size:22px;font-weight:700;color:var(--orange)}
-.meeting-comments ul{list-style:disc;padding-left:18px}
-.meeting-comments li{font-size:13px;line-height:1.55;padding:2px 0;white-space:pre-wrap}
-.meeting-goal{font-size:13px;line-height:1.55;background:var(--bg2);border-left:3px solid var(--orange);padding:9px 13px;border-radius:0 var(--r) var(--r) 0;white-space:pre-wrap}
-
-/* SE ACCORDION */
-.se-cat{border:.5px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:7px}
-.se-head{display:flex;justify-content:space-between;align-items:center;padding:9px 13px;cursor:pointer;background:var(--bg2);user-select:none;font-size:13px}
-.se-head:hover{background:var(--bg3)}
-.se-count{background:var(--orange);color:#fff;border-radius:10px;padding:1px 9px;font-size:11px;font-weight:700}
-.se-count.zero{background:var(--bg3);color:var(--text3)}
-.se-list{display:none}
-.se-list.open{display:block}
-.se-item{padding:9px 13px;border-top:.5px solid var(--border)}
-.se-type{font-weight:600;font-size:11px;color:var(--text2)}
-.se-date{font-size:11px;color:var(--text3);float:right}
-.se-desc{margin-top:3px;font-size:12px;line-height:1.5;white-space:pre-wrap}
-
-.empty-state{text-align:center;padding:56px 20px;color:var(--text3);font-size:13px}
-.empty-state .big{font-size:30px;margin-bottom:10px}
-.err{background:var(--red-bg);color:var(--red-text);border-radius:var(--r);padding:11px 15px;margin-bottom:14px;font-size:13px;display:none}
-.spin{width:22px;height:22px;border:2px solid var(--border2);border-top-color:var(--orange);border-radius:50%;animation:sp .8s linear infinite;margin:0 auto 12px}
-@keyframes sp{to{transform:rotate(360deg)}}
-.muted{color:var(--text3);font-size:11px}
+/* FRAMES */
+.frames{flex:1;position:relative;min-height:0}
+.frames iframe{position:absolute;inset:0;width:100%;height:100%;border:none;display:none;background:var(--bg)}
+.frames iframe.on{display:block}
+.frame-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:13px;pointer-events:none}
 </style>
 </head>
 <body>
@@ -183,862 +49,77 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 <!-- GATE -->
 <div class="gate" id="gate">
   <div class="gate-box">
-    <div class="logo" style="justify-content:center"><span class="wordmark">Tribute</span><span class="wordmark-sub">Rise Dashboard</span></div>
-    <div class="gt">Team access</div>
-    <div class="gs">Enter the shared team password to connect live Viv data.</div>
-    <input type="password" id="gateInput" placeholder="Team password" onkeydown="if(event.key==='Enter')submitGate()">
-    <button onclick="submitGate()">Connect</button>
+    <div class="logo"><span class="wordmark">Tribute</span><span class="wordmark-sub">Home Care</span></div>
+    <div class="gt">Welcome to the Caregiver Intelligence Suite</div>
+    <div class="gs">The Rise Dashboard and Caregiver Retention Tracker, in one place.<br>Enter the shared team password to continue.</div>
+    <input type="password" id="gateInput" placeholder="Team password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitGate()">
+    <button onclick="submitGate()">Enter</button>
     <div class="gate-err" id="gateErr"></div>
   </div>
 </div>
 
-<!-- HEADER -->
-<div class="hdr">
-  <div>
-    <div class="logo"><span class="wordmark">Tribute</span><span class="wordmark-sub">Caregiver Excellence</span></div>
-    <div class="title">Rise Dashboard</div>
-    <div class="sub">6-month performance reviews &amp; Rise meeting tracking · MCE workspace</div>
-  </div>
-  <div class="hdr-right">
-    <div class="sync-line" id="syncLine"><span class="dot r"></span>Not connected to Viv</div>
-    <button class="sync-btn" id="syncBtn" onclick="syncViv(true)">Sync Viv data</button>
+<!-- SUITE -->
+<div class="suite-hdr" style="display:none" id="suiteHdr">
+  <div class="logo"><span class="wordmark">Tribute</span><span class="wordmark-sub">Caregiver Intelligence Suite</span></div>
+  <div class="suite-tabs">
+    <div class="stab on" id="stab-rise" onclick="showApp('rise')">Rise Dashboard</div>
+    <div class="stab" id="stab-retention" onclick="showApp('retention')">Retention Tracker</div>
   </div>
 </div>
-
-<div class="err" id="errBox"></div>
-
-<!-- TABS -->
-<div class="nav-tabs">
-  <div class="ntab on" id="tab-tracker" onclick="switchTab('tracker')">Rise Meeting Tracker</div>
-  <div class="ntab" id="tab-dashboard" onclick="switchTab('dashboard')">Caregiver Dashboard</div>
-</div>
-
-<!-- UPLOADS (iSolved only — everything else streams from Viv) -->
-<details class="upload-strip" open>
-  <summary>iSolved uploads — optional, adds PTO/sick balances, supervisor &amp; document alerts. Saved for the whole team: upload once, everyone sees it until a newer file replaces it.</summary>
-  <div class="upload-grid">
-    <div class="upload-slot" id="slot-roster">
-      <input type="file" accept=".xlsx,.csv" onchange="handleFile('roster',this)">
-      <div class="slot-name">Caregiver Roster (PTO/Sick)</div>
-      <div class="slot-status" id="status-roster">PTO_and_Sick_Balances.xlsx</div>
-    </div>
-    <div class="upload-slot" id="slot-certs">
-      <input type="file" accept=".xlsx,.csv" onchange="handleFile('certs',this)">
-      <div class="slot-name">Certifications</div>
-      <div class="slot-status" id="status-certs">Certifications.xlsx</div>
-    </div>
-  </div>
-  <div class="live-chips" id="liveChips"></div>
-</details>
-
-<!-- PAGE: TRACKER -->
-<div id="page-tracker">
-  <div class="bar">
-    <label for="managerFilter">Manager</label>
-    <select id="managerFilter" onchange="renderTracker()"><option value="">All Managers</option></select>
-    <span class="count" id="trackerCount"></span>
-  </div>
-  <div id="trackerEmpty" class="empty-state">
-    <div class="big">📋</div>
-    <div>Sync Viv data (or upload the iSolved roster) to build the tracker.</div>
-  </div>
-  <div class="tbl-wrap" id="trackerWrap" style="display:none">
-    <table class="tbl">
-      <thead><tr>
-        <th>Caregiver</th><th>Market</th><th>Hire Date</th><th>Due Date</th><th>Days Until Due</th>
-        <th>Next Meeting Scheduled</th><th>Segment of Support</th><th>Notes</th>
-      </tr></thead>
-      <tbody id="trackerBody"></tbody>
-    </table>
-  </div>
-</div>
-
-<!-- PAGE: CAREGIVER DASHBOARD -->
-<div id="page-dashboard" style="display:none">
-  <div class="bar">
-    <div class="search-wrapper" id="searchWrapper">
-      <input type="text" id="cgSearch" placeholder="Search caregivers…"
-             oninput="filterCaregivers(this.value)" onfocus="openDropdown()"
-             onkeydown="handleSearchKey(event)" autocomplete="off">
-      <div class="search-dropdown" id="searchDropdown"></div>
-    </div>
-  </div>
-  <div id="emptyState" class="empty-state">
-    <div class="big">🔍</div>
-    <div>Search for a caregiver to open their Rise review.</div>
-  </div>
-  <div id="dashboard" style="display:none"></div>
+<div class="frames" id="frames" style="display:none">
+  <iframe id="frame-rise" class="on" title="Rise Dashboard"></iframe>
+  <iframe id="frame-retention" title="Caregiver Retention Tracker"></iframe>
 </div>
 
 <script>
-// ════════════════════════════════════════════════════════════════════════════
-// CONFIG
-// ════════════════════════════════════════════════════════════════════════════
 const PROXY='https://tribute-api-prod-bkc4hfcwf3f2f6bf.centralus-01.azurewebsites.net/api/vivProxy';
-const KEY_LS='tribute_rise_viv_key';
-const LM_THRESHOLD_HRS=24;       // a booking filled within this many hours of visit start counts as "last-minute"
-const ONTIME_RULE='onTime1';     // 'onTime1' = Viv "CheckIn On Time" (≤1 min late); 'onTime7' = 7-min grace
-
-const BAB_KEYWORDS=['baltimore','annapolis','bethesda'];
-const CERT_EXCLUDE=['car insurance','covid vaccination',"driver's license",'drivers license','hha','pca','pto expiration reminder','tb test results','hire: travel limitations','cannot drive clients'];
-const NINETY_DAY_FORMS=new Set([10137,10139,10142]);   // MA / MD / CHI 90-day meetings
-// The 90-day meeting program started Oct 2025 — only hires from this date on
-// get a 90-day due date (earlier caregivers never had one to complete).
-const NINETY_RULE_HIRE_CUTOFF=new Date('2025-07-01T12:00:00');
-
-const TODAY=new Date(); TODAY.setHours(0,0,0,0);
-const in30=new Date(TODAY); in30.setDate(in30.getDate()+30);
-const in6m=new Date(TODAY); in6m.setMonth(in6m.getMonth()+6);
-
-// ════════════════════════════════════════════════════════════════════════════
-// STATE
-// ════════════════════════════════════════════════════════════════════════════
-let viv=null;                    // payload from vivProxy?endpoint=rise_dashboard
-const store={roster:null,certs:null};   // iSolved uploads
-let spine=[];                    // unified caregiver list
-let selectedKey='';
-
-// ════════════════════════════════════════════════════════════════════════════
-// GATE + SYNC
-// ════════════════════════════════════════════════════════════════════════════
-function getKey(){ return localStorage.getItem(KEY_LS)||''; }
-function submitGate(){
-  const v=document.getElementById('gateInput').value.trim();
-  if(!v){ document.getElementById('gateErr').textContent='Enter the team password.'; return; }
-  localStorage.setItem(KEY_LS,v);
-  document.getElementById('gate').classList.remove('show');
-  syncViv(true);
-}
-function showGate(msg){
-  document.getElementById('gate').classList.add('show');
-  document.getElementById('gateErr').textContent=msg||'';
-}
-
-async function syncViv(manual){
-  const key=getKey();
-  if(!key){ showGate(); return; }
-  const btn=document.getElementById('syncBtn');
-  btn.disabled=true; btn.textContent='Syncing…';
-  setSyncLine('<span class="dot"></span>Syncing from Viv… first build can take ~2 minutes','');
-  try{
-    let r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers:{'X-Retention-Key':key}});
-    if(r.status===401){ localStorage.removeItem(KEY_LS); showGate('That password was not accepted.'); throw new Error('unauthorized'); }
-    if(r.status>=500){
-      // Cold cache build can outlive the Azure HTTP timeout; the server kept the
-      // finished pieces, so one automatic retry usually completes the build.
-      setSyncLine('<span class="dot"></span>Server is building its data cache — retrying automatically…');
-      r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers:{'X-Retention-Key':key}});
-    }
-    if(!r.ok) throw new Error('Viv proxy returned HTTP '+r.status);
-    viv=await r.json();
-    setSyncLine('<span class="dot"></span>Live · '+viv.counts.caregivers+' caregivers · '+viv.counts.riseForms+' Rise forms · data as of '+fmtTime(viv.generatedAt),'');
-    buildSpine(); buildManagerFilter(); buildSearchIndex(); renderTracker(); renderLiveChips();
-    if(selectedKey)renderCaregiver();
-    restoreUploads();   // shared iSolved files (roster/certs) saved by whoever uploaded last
-  }catch(e){
-    if(e.message!=='unauthorized'){
-      showErr('Live sync failed: '+e.message+'. If this was a first load, the server may still be building its cache — try again in a minute.');
-      setSyncLine('<span class="dot r"></span>Sync failed','');
-    }
-  }finally{
-    btn.disabled=false; btn.textContent='Sync Viv data';
-  }
-}
-function setSyncLine(html){ document.getElementById('syncLine').innerHTML=html; }
-function showErr(msg){ const e=document.getElementById('errBox'); e.textContent=msg; e.style.display='block'; setTimeout(()=>{e.style.display='none';},12000); }
-function fmtTime(iso){ const d=new Date(iso); return isNaN(d)?'—':d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
-
-function renderLiveChips(){
-  const el=document.getElementById('liveChips');
-  const chips=[
-    ['Viv roster + Tribute Secure',!!viv],['Service exceptions',!!viv],['On-time & manual check-ins',!!viv],
-    ['Task completion',!!viv],['Compliments',!!viv],['Last-minute bookings',!!viv],['Weekend visits',!!viv],['Rise + 90-day forms',!!viv],
-    ['PTO/Sick (iSolved)',!!store.roster],['Certifications (iSolved)',!!store.certs]
-  ];
-  el.innerHTML=chips.map(c=>'<span class="live-chip '+(c[1]?'ok':'')+'">'+(c[1]?'✓ ':'')+c[0]+'</span>').join('');
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// iSOLVED FILE UPLOADS — saved to the server (shared with all MCEs) and
-// restored on every load until a newer file replaces them.
-// ════════════════════════════════════════════════════════════════════════════
-const UPLOAD_COLS={
-  roster:['Employee Number','EmployeeNumber','#Employee Name','Employee Name','Employment Status','Department Title','#Dept Name','Supervisor','Job Title','Hire Date','Original Hire Date','CA-PTO Balance','CA-Sick Balance'],
-  certs:['Employee Number','Employee Name','Certification','End Date']
+const KEY_LS='tribute_suite_key';
+const APPS={
+  rise:'rise.html',
+  retention:'https://andrewdobsonn-cell.github.io/Tribute-Operating-System/retention_tracker.html'
 };
-function slimRows(type,rows){
-  const cols=UPLOAD_COLS[type];
-  return rows.map(r=>{
-    const o={};
-    for(const c of cols){ if(r[c]!==undefined&&r[c]!=='')o[c]=(r[c] instanceof Date)?r[c].toISOString().slice(0,10):r[c]; }
-    return o;
-  }).filter(r=>Object.keys(r).length);
-}
-function applyUpload(type,rows,label){
-  store[type]=rows;
-  document.getElementById('slot-'+type).classList.add('loaded');
-  document.getElementById('status-'+type).textContent=label;
-  if(type==='roster'){ buildSpine(); buildManagerFilter(); buildSearchIndex(); renderTracker(); }
-  renderLiveChips();
-  if(selectedKey)renderCaregiver();
-}
-function handleFile(type,input){
-  const file=input.files[0]; if(!file)return;
-  const isCSV=file.name.toLowerCase().endsWith('.csv');
-  const reader=new FileReader();
-  reader.onload=e=>{
-    let data;
-    if(isCSV)data=parseCSV(e.target.result);
-    else{
-      const wb=XLSX.read(e.target.result,{type:'binary',cellDates:true});
-      data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
-    }
-    const rows=slimRows(type,data);
-    applyUpload(type,rows,'✓ '+file.name+' · saving…');
-    saveUpload(type,rows,file.name);
-  };
-  if(isCSV)reader.readAsText(file); else reader.readAsBinaryString(file);
-}
-async function saveUpload(type,rows,fileName){
-  const key=getKey(); if(!key)return;
+const loaded={rise:false,retention:false};
+
+function getKey(){ try{return localStorage.getItem(KEY_LS)||'';}catch(e){return '';} }
+
+async function submitGate(){
+  const v=document.getElementById('gateInput').value.trim();
+  const err=document.getElementById('gateErr');
+  if(!v){ err.textContent='Enter the team password.'; return; }
+  err.textContent='Checking…';
   try{
-    const r=await fetch(PROXY+'?endpoint=rise_uploads',{method:'POST',
-      headers:{'Content-Type':'application/json','X-Retention-Key':key},
-      body:JSON.stringify({kind:type,rows,fileName})});
+    const r=await fetch(PROXY+'?endpoint=rise_uploads',{headers:{'X-Retention-Key':v}});
+    if(r.status===401){ err.textContent='Incorrect password.'; return; }
     if(!r.ok)throw new Error('HTTP '+r.status);
-    document.getElementById('status-'+type).textContent='✓ '+fileName+' · saved for all MCEs';
-  }catch(e){
-    document.getElementById('status-'+type).textContent='✓ '+fileName+' · loaded here, but server save failed — others won’t see it';
+  }catch(e){ err.textContent='Could not verify right now ('+e.message+') — try again.'; return; }
+  try{localStorage.setItem(KEY_LS,v);}catch(e){}
+  enter(v);
+}
+
+function enter(key){
+  document.getElementById('gate').style.display='none';
+  document.getElementById('suiteHdr').style.display='';
+  document.getElementById('frames').style.display='';
+  showApp('rise',key);
+}
+
+// Lazy-load each app on first open, handing the key off via the URL hash —
+// the apps store it themselves and strip it from their address bar.
+function showApp(which,key){
+  key=key||getKey();
+  document.querySelectorAll('.stab').forEach(t=>t.classList.remove('on'));
+  document.getElementById('stab-'+which).classList.add('on');
+  document.querySelectorAll('.frames iframe').forEach(f=>f.classList.remove('on'));
+  const f=document.getElementById('frame-'+which);
+  f.classList.add('on');
+  if(!loaded[which]){
+    f.src=APPS[which]+'#k='+encodeURIComponent(key);
+    loaded[which]=true;
   }
 }
-async function restoreUploads(){
-  const key=getKey(); if(!key)return;
-  try{
-    const r=await fetch(PROXY+'?endpoint=rise_uploads',{headers:{'X-Retention-Key':key}});
-    if(!r.ok)return;
-    const j=await r.json();
-    for(const kind of ['roster','certs']){
-      const u=j.uploads&&j.uploads[kind];
-      if(u&&u.rows&&u.rows.length&&!store[kind]){
-        const when=u.savedAt?new Date(u.savedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
-        applyUpload(kind,u.rows,'✓ '+(u.fileName||kind)+(when?' · uploaded '+when:''));
-      }
-    }
-  }catch(e){/* uploads are an enhancement — ignore restore failures */}
-}
 
-function parseCSV(text){
-  text=text.replace(/^﻿/,'');
-  const rows=[]; let cur='',inQ=false,fields=[];
-  for(let i=0;i<text.length;i++){
-    const c=text[i];
-    if(c==='"'){ if(inQ&&text[i+1]==='"'){cur+='"';i++;} else inQ=!inQ; }
-    else if(c===','&&!inQ){ fields.push(cur); cur=''; }
-    else if((c==='\n'||c==='\r')&&!inQ){
-      if(c==='\r'&&text[i+1]==='\n')i++;
-      if(fields.length||cur.trim()){fields.push(cur);rows.push(fields);fields=[];cur='';}
-    } else cur+=c;
-  }
-  if(fields.length||cur.trim()){fields.push(cur);rows.push(fields);}
-  if(!rows.length)return[];
-  const headers=rows[0].map(h=>h.trim());
-  return rows.slice(1).map(vals=>{
-    const obj={}; headers.forEach((h,i)=>{obj[h]=(vals[i]||'').trim();}); return obj;
-  }).filter(r=>Object.values(r).some(v=>v));
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// SPINE — unified caregiver list (iSolved roster when uploaded, else Viv)
-// ════════════════════════════════════════════════════════════════════════════
-function buildSpine(){
-  spine=[];
-  const vivByName={}, vivByNum={};
-  if(viv)for(const cg of viv.caregivers){
-    vivByNum[String(cg.mnum)]=cg;
-    vivByName[normName(cg.name)]=cg;
-  }
-  if(store.roster){
-    for(const r of store.roster){
-      const status=(r['Employment Status']||'').toString().trim().toUpperCase();
-      if(status&&status!=='A')continue;
-      const nameRaw=(r['#Employee Name']||r['Employee Name']||'').trim();
-      if(!nameRaw)continue;
-      const displayName=formatDisplayName(nameRaw);
-      const empNum=(r['Employee Number']||r['EmployeeNumber']||'').toString().trim();
-      const v=vivByNum[empNum]||vivByName[normName(displayName)]||findVivByName(displayName);
-      spine.push({
-        key:'e'+(empNum||displayName), empNum, viv:v||null,
-        name:displayName,
-        market:(r['Department Title']||r['#Dept Name']||'').trim()||(v?(v.market||v.state||''):''),
-        manager:(r['Supervisor']||'').trim()||(v?(v.mce||''):''),
-        title:(r['Job Title']||'').trim(),
-        hireDate:parseDate(r['Hire Date']||r['Original Hire Date'])||(v?parseDate(v.hireDate):null),
-        pto:parseFloat(r['CA-PTO Balance'])||0, sick:parseFloat(r['CA-Sick Balance'])||0, hasBalances:true
-      });
-    }
-  } else if(viv){
-    for(const cg of viv.caregivers){
-      if(cg.status!=='hired')continue;   // Viv status vocabulary: hired = active
-      spine.push({
-        key:'v'+cg.id, empNum:String(cg.mnum||''), viv:cg,
-        name:cg.name, market:cg.market||cg.state||'', manager:cg.mce||'',
-        title:'', hireDate:parseDate(cg.hireDate), pto:null, sick:null, hasBalances:false
-      });
-    }
-  }
-  spine.sort((a,b)=>a.name.localeCompare(b.name));
-}
-function findVivByName(displayName){
-  if(!viv)return null;
-  return viv.caregivers.find(cg=>namesMatch(cg.name,displayName))||null;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// FORM LOOKUPS (live Viv forms)
-// ════════════════════════════════════════════════════════════════════════════
-function formsFor(person,list){
-  if(!viv)return[];
-  return list.filter(f=>{
-    if(person.viv&&f.mid&&person.viv.id===f.mid)return true;
-    if(person.empNum&&f.mnum!=null&&String(f.mnum)===person.empNum)return true;
-    return f.name&&namesMatch(stripCaregiverSuffix(f.name),person.name);
-  });
-}
-function riseFormsFor(person){ return viv?formsFor(person,viv.forms.rise):[]; }
-function ninetyFormsFor(person){ return viv?formsFor(person,viv.forms.early.filter(f=>NINETY_DAY_FORMS.has(f.formNum))):[]; }
-function getMostRecentForm(rows){
-  if(!rows.length)return null;
-  return rows.reduce((best,row)=>{
-    const d=parseDate(row.meetingDate||row.submittedAt);
-    const bd=parseDate(best.meetingDate||best.submittedAt);
-    return (d&&bd&&d>bd)?row:best;
-  });
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// DUE DATE LOGIC (unchanged from Charlotte's build)
-// ════════════════════════════════════════════════════════════════════════════
-function generateDueDates(hireDate){
-  const dates=[];
-  let d=new Date(hireDate.getFullYear(),hireDate.getMonth(),hireDate.getDate());
-  d.setMonth(d.getMonth()+6);
-  const ceiling=new Date(TODAY); ceiling.setFullYear(ceiling.getFullYear()+2);
-  while(d<=ceiling){ dates.push(new Date(d)); d=new Date(d.getFullYear(),d.getMonth()+6,d.getDate()); }
-  return dates;
-}
-// Only a real Meeting Date (≤ today) counts as a completed meeting. A meeting
-// covers a due date if it falls within 3 weeks early / 10 weeks late of it.
-function getActiveDueDate(hireDate,riseRows){
-  const dueDates=generateDueDates(hireDate);
-  if(!dueDates.length)return null;
-  const meetings=riseRows.map(r=>parseDate(r.meetingDate)).filter(d=>d&&d<=TODAY).sort((a,b)=>b-a);
-  const latestMeeting=meetings.length?meetings[0]:null;
-  if(!latestMeeting){
-    const pastDues=dueDates.filter(d=>d<=TODAY);
-    return pastDues.length?pastDues[pastDues.length-1]:dueDates[0];
-  }
-  const lateWindow=new Date(latestMeeting); lateWindow.setDate(lateWindow.getDate()+21);
-  const earlyLimit=new Date(latestMeeting); earlyLimit.setDate(earlyLimit.getDate()-70);
-  let coveredIdx=-1;
-  for(let i=dueDates.length-1;i>=0;i--){
-    if(dueDates[i]<=lateWindow){
-      if(dueDates[i]>=earlyLimit)coveredIdx=i;
-      break;
-    }
-  }
-  if(coveredIdx===-1){
-    const futureDues=dueDates.filter(d=>d>TODAY);
-    return futureDues.length?futureDues[0]:dueDates[0];
-  }
-  const nextIdx=coveredIdx+1;
-  if(nextIdx<dueDates.length)return dueDates[nextIdx];
-  const lastDue=dueDates[dueDates.length-1];
-  return new Date(lastDue.getFullYear(),lastDue.getMonth()+6,lastDue.getDate());
-}
-
-function normalizeSegment(val){
-  if(!val)return'';
-  const v=String(val).toLowerCase();
-  if(v.includes('performance support'))return'Performance Support';
-  if(v.includes('professional development'))return'Professional Development';
-  if(v.includes('prn'))return'PRN';
-  return String(val);
-}
-function segPill(segment){
-  if(segment==='Performance Support')return'<span class="bdg bg-a">Performance Support</span>';
-  if(segment==='Professional Development')return'<span class="bdg bg-b">Professional Development</span>';
-  if(segment==='PRN')return'<span class="bdg bg-n">PRN</span>';
-  if(segment==='First 90 Days')return'<span class="bdg bg-p">First 90 Days</span>';
-  return'<span class="muted">—</span>';
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// PAGE 1: TRACKER
-// ════════════════════════════════════════════════════════════════════════════
-function buildManagerFilter(){
-  const managers=new Set();
-  spine.forEach(p=>{
-    if((p.market||'').toLowerCase().includes('virginia'))return;
-    if(p.manager)managers.add(p.manager);
-  });
-  const sel=document.getElementById('managerFilter');
-  const cur=sel.value;
-  sel.innerHTML='<option value="">All Managers</option>'+[...managers].sort().map(s=>'<option value="'+escHtml(s)+'">'+escHtml(s)+'</option>').join('');
-  if([...managers].includes(cur))sel.value=cur;
-}
-
-function renderTracker(){
-  if(!spine.length){
-    document.getElementById('trackerEmpty').style.display='';
-    document.getElementById('trackerWrap').style.display='none';
-    document.getElementById('trackerCount').textContent='';
-    return;
-  }
-  const managerFilter=document.getElementById('managerFilter').value;
-  const rows=[];
-  spine.forEach(p=>{
-    if((p.market||'').toLowerCase().includes('virginia'))return;   // Virginia inactive for Rise
-    if(managerFilter&&p.manager!==managerFilter)return;
-    const riseRows=riseFormsFor(p);
-    const ninetyRows=ninetyFormsFor(p);
-    const hireDate=p.hireDate||firstFormHireDate(riseRows,ninetyRows);
-    if(!hireDate)return;
-    // First meeting for recent hires is the 90-day: due at hire+90 (overdue
-    // until the 90-day form is submitted), then the 6-month cycle takes over.
-    const ninetyDone=ninetyRows.some(r=>{const d=parseDate(r.meetingDate||r.submittedAt);return d&&d<=TODAY;});
-    const riseDone=riseRows.some(r=>{const d=parseDate(r.meetingDate);return d&&d<=TODAY;});
-    let activeDueDate,dueKind='';
-    if(!ninetyDone&&!riseDone&&hireDate>=NINETY_RULE_HIRE_CUTOFF){
-      activeDueDate=new Date(hireDate); activeDueDate.setDate(activeDueDate.getDate()+90);
-      dueKind='90-day';
-    } else {
-      activeDueDate=getActiveDueDate(hireDate,riseRows);
-    }
-    const daysUntil=activeDueDate?Math.round((activeDueDate-TODAY)/86400000):null;
-
-    // Segment priority: latest 90-day form → First 90 Days window → latest Rise form
-    let segment='';
-    const latestNinety=getMostRecentForm(ninetyRows);
-    if(latestNinety)segment=normalizeSegment(latestNinety.segment);
-    if(!segment){
-      const daysSinceHire=Math.round((TODAY-hireDate)/86400000);
-      if(daysSinceHire>=0&&daysSinceHire<=90)segment='First 90 Days';
-    }
-    const latestRise=getMostRecentForm(riseRows);
-    if(!segment&&latestRise)segment=normalizeSegment(latestRise.segment);
-
-    let notes='';
-    if(latestRise&&latestRise.notes)notes=latestRise.notes;
-    if(!notes&&latestNinety&&latestNinety.notes)notes=latestNinety.notes;
-    const nextMeeting=latestRise?(latestRise.nextMeeting||''):'';
-
-    rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting});
-  });
-  rows.sort((a,b)=>{
-    if(a.daysUntil===null&&b.daysUntil===null)return 0;
-    if(a.daysUntil===null)return 1;
-    if(b.daysUntil===null)return -1;
-    return a.daysUntil-b.daysUntil;
-  });
-  document.getElementById('trackerEmpty').style.display='none';
-  document.getElementById('trackerWrap').style.display='';
-  document.getElementById('trackerCount').textContent=rows.length+' caregiver'+(rows.length!==1?'s':'');
-  const tbody=document.getElementById('trackerBody');
-  if(!rows.length){
-    tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:22px;font-style:italic">No caregivers found</td></tr>';
-    return;
-  }
-  tbody.innerHTML=rows.map(row=>{
-    let chip='<span class="bdg bg-g">—</span>';
-    if(row.daysUntil!==null){
-      if(row.daysUntil<=0)chip='<span class="bdg bg-r">'+(row.daysUntil===0?'Due Today':Math.abs(row.daysUntil)+' days overdue')+'</span>';
-      else if(row.daysUntil<=14)chip='<span class="bdg bg-a">'+row.daysUntil+' day'+(row.daysUntil!==1?'s':'')+'</span>';
-      else chip='<span class="bdg bg-g">'+row.daysUntil+' days</span>';
-    }
-    return '<tr class="clickable" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')">'+
-      '<td class="td-name">'+escHtml(row.p.name)+'</td>'+
-      '<td class="td-date">'+escHtml(row.p.market||'—')+'</td>'+
-      '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
-      '<td class="td-date" style="font-weight:600">'+(row.activeDueDate?formatDate(row.activeDueDate)+(row.dueKind==='90-day'?' <span class="bdg bg-p">90-day</span>':''):'—')+'</td>'+
-      '<td>'+chip+'</td>'+
-      '<td class="td-date">'+(row.nextMeeting?(parseDate(row.nextMeeting)?formatDate(row.nextMeeting):escHtml(row.nextMeeting)):'<span class="muted">—</span>')+'</td>'+
-      '<td>'+segPill(row.segment)+'</td>'+
-      '<td class="td-notes">'+(row.notes?escHtml(row.notes):'')+'</td></tr>';
-  }).join('');
-}
-function firstFormHireDate(riseRows,ninetyRows){
-  for(const r of riseRows){ const d=parseDate(r.hiredDate); if(d)return d; }
-  for(const r of ninetyRows){ const d=parseDate(r.hiredDate); if(d)return d; }
-  return null;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// PAGE 2: CAREGIVER DASHBOARD
-// ════════════════════════════════════════════════════════════════════════════
-let searchIndex=[];
-function buildSearchIndex(){
-  searchIndex=spine.map(p=>({key:p.key,name:p.name,market:p.market,empNum:p.empNum}));
-  document.getElementById('cgSearch').placeholder='Search '+searchIndex.length+' caregivers…';
-}
-function filterCaregivers(query){
-  const dd=document.getElementById('searchDropdown');
-  if(!searchIndex.length){dd.classList.remove('open');return;}
-  const q=(query||'').toLowerCase().trim();
-  const matches=q?searchIndex.filter(c=>c.name.toLowerCase().includes(q)||c.market.toLowerCase().includes(q)||c.empNum.includes(q)):searchIndex;
-  renderDropdown(matches.slice(0,80));
-}
-function renderDropdown(items){
-  const dd=document.getElementById('searchDropdown');
-  dd.innerHTML=items.length?items.map(c=>
-    '<div class="dropdown-item" onmousedown="selectCaregiver(\''+c.key.replace(/'/g,"\\'")+'\')">'+escHtml(c.name)+'<div class="item-market">'+escHtml(c.market)+'</div></div>'
-  ).join(''):'<div class="dropdown-empty">No caregivers found</div>';
-  dd.classList.add('open');
-}
-function openDropdown(){ if(searchIndex.length)filterCaregivers(document.getElementById('cgSearch').value); }
-function selectCaregiver(key){
-  selectedKey=key;
-  const p=spine.find(x=>x.key===key);
-  document.getElementById('cgSearch').value=p?p.name:'';
-  document.getElementById('searchDropdown').classList.remove('open');
-  renderCaregiver();
-}
-function openCaregiver(key){ switchTab('dashboard'); selectCaregiver(key); }
-function handleSearchKey(e){
-  const dd=document.getElementById('searchDropdown');
-  const items=dd.querySelectorAll('.dropdown-item');
-  const active=dd.querySelector('.dropdown-item.active');
-  if(e.key==='ArrowDown'){e.preventDefault();const n=active?active.nextElementSibling:items[0];if(n){active&&active.classList.remove('active');n.classList.add('active');n.scrollIntoView({block:'nearest'});}}
-  else if(e.key==='ArrowUp'){e.preventDefault();const pr=active?active.previousElementSibling:items[items.length-1];if(pr){active&&active.classList.remove('active');pr.classList.add('active');pr.scrollIntoView({block:'nearest'});}}
-  else if(e.key==='Enter'){if(active)active.dispatchEvent(new MouseEvent('mousedown'));}
-  else if(e.key==='Escape'){dd.classList.remove('open');}
-}
-document.addEventListener('click',e=>{
-  const sw=document.getElementById('searchWrapper');
-  if(sw&&!sw.contains(e.target))document.getElementById('searchDropdown').classList.remove('open');
-});
-
-// ── Service-exception categorization (Charlotte's rules, on live data) ──
-function categorizeExceptions(items){
-  const result={connection:[],communication:[],reliability:[],flexibility:[],callout:[],calloutMonths:new Set()};
-  for(const inc of items){
-    const tl=(inc.type||'').toLowerCase();
-    const item={type:inc.type,date:inc.date,desc:inc.desc};
-    if(tl.includes('connection complaint:'))result.connection.push(item);
-    else if(tl.includes('communication complaint:'))result.communication.push(item);
-    else if(tl.includes('no complaint: call out'))result.callout.push(item);
-    else if(tl.includes('reliability complaint:'))result.reliability.push(item);
-    else if(tl.includes('flexibility complaint:'))result.flexibility.push(item);
-    const isCallout=tl.includes('no complaint: call out')||tl.includes('reliability complaint: preventable call out')||tl.includes('reliability complaint: ncns');
-    if(isCallout){
-      const d=parseDate(inc.date);
-      if(d)result.calloutMonths.add(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'));
-    }
-  }
-  return result;
-}
-
-function getPast6Months(){
-  const months=[];
-  for(let i=5;i>=0;i--){
-    const d=new Date(TODAY.getFullYear(),TODAY.getMonth()-i,1);
-    months.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),label:d.toLocaleString('default',{month:'short',year:'2-digit'})});
-  }
-  return months;
-}
-
-function getCertAlerts(p,isBab){
-  if(!store.certs)return null;   // null = not uploaded (vs [] = none found)
-  const alerts=[];
-  store.certs.filter(r=>{
-    const en=(r['Employee Number']||'').toString().trim();
-    const rn=(r['Employee Name']||'').trim();
-    return (p.empNum&&en===p.empNum)||namesMatch(rn,p.name);
-  }).forEach(r=>{
-    const cert=(r['Certification']||'').trim();
-    const cl=cert.toLowerCase();
-    if(CERT_EXCLUDE.some(ex=>cl.includes(ex)))return;
-    const endDate=parseDate(r['End Date']);
-    if(!endDate)return;
-    if(cl.includes('employment authorization')){ if(endDate<=in6m)alerts.push({cert,date:endDate}); return; }
-    if(cl.includes('abuse and neglect')||cl.includes('drive clients')){ if(endDate<=in30)alerts.push({cert,date:endDate}); return; }
-    if(isBab&&(cl.includes('cpr')||cl==='cna'||cl==='gna'||cl.includes('med tech'))){ if(endDate<=in30)alerts.push({cert,date:endDate}); return; }
-  });
-  alerts.sort((a,b)=>a.date-b.date);
-  return alerts;
-}
-
-function calcRisePoints(compliments,taskPct,onTimePct,lastMinute,calloutMonths){
-  const past6=getPast6Months();
-  const noCalloutMonths=past6.filter(m=>!calloutMonths.has(m.key)).length;
-  const complimentPts=compliments*40;
-  const visitNotePts=(taskPct!==null&&taskPct>=99.9)?100:0;
-  const ontimePts=(onTimePct!==null&&onTimePct>95)?100:0;
-  const lastMinutePts=lastMinute*10;
-  const noCalloutPts=noCalloutMonths*10;
-  return{complimentPts,visitNotePts,ontimePts,lastMinutePts,noCalloutPts,noCalloutMonths,
-    total:complimentPts+visitNotePts+ontimePts+lastMinutePts+noCalloutPts};
-}
-
-function renderCaregiver(){
-  if(!selectedKey){return;}
-  const p=spine.find(x=>x.key===selectedKey);
-  if(!p){return;}
-  document.getElementById('emptyState').style.display='none';
-  document.getElementById('dashboard').style.display='';
-  const v=p.viv;
-  const isBab=BAB_KEYWORDS.some(k=>(p.market||'').toLowerCase().includes(k));
-
-  // ── Live metrics ──
-  const exc=categorizeExceptions(v?v.exceptions:[]);
-  const compliments=v?v.compliments.length:null;
-  const lastMin=v?v.lastMinute.filter(b=>b.leadHrs>=0&&b.leadHrs<=LM_THRESHOLD_HRS):null;
-  const ck=v&&v.checkin;
-  const onTimePct=(ck&&ck.checked>0)?(ck[ONTIME_RULE]/ck.checked*100):null;
-  const manualPct=(ck&&ck.manualDen>0)?(ck.manual/ck.manualDen*100):null;
-  const taskPct=(v&&v.tasks&&v.tasks.total>0)?(v.tasks.completed/v.tasks.total*100):null;
-  const monthsWithVisit=new Set(v?v.monthsWithVisit:[]);
-  const weekendWorked=new Set(v?v.weekendMonthsWorked:[]);
-  const risePoints=calcRisePoints(compliments||0,taskPct,onTimePct,lastMin?lastMin.length:0,exc.calloutMonths);
-  const certAlerts=getCertAlerts(p,isBab);
-  const riseRows=riseFormsFor(p);
-  const lastMeeting=getMostRecentForm(riseRows);
-  const past6=getPast6Months();
-
-  let html='';
-
-  // ── Header card ──
-  const tsBadge=(v&&v.tsEnrolled)?' <span class="bdg bg-p" style="vertical-align:middle">Tribute Secure'+(v.tsLevel?' · TS'+v.tsLevel:'')+'</span>':'';
-  html+='<div class="cg-header"><div>'+
-    '<div class="cg-name">'+escHtml(p.name)+tsBadge+'</div>'+
-    '<div class="cg-meta">'+
-      (p.title?'<span><strong>Title:</strong> '+escHtml(p.title)+'</span>':'')+
-      '<span><strong>Market:</strong> '+escHtml(p.market||'—')+'</span>'+
-      '<span><strong>Manager:</strong> '+escHtml(p.manager||'—')+'</span>'+
-      '<span><strong>Hire Date:</strong> '+(p.hireDate?formatDate(p.hireDate):'—')+'</span>'+
-      (v?'':'<span class="bdg bg-a">Not matched in Viv — live metrics unavailable</span>')+
-    '</div></div>'+
-    '<div class="points-box"><div class="points-num">'+risePoints.total+'</div><div class="points-label">Rise Above points<br>past 6 months</div></div>'+
-  '</div>';
-
-  // ── Row 1: Balances | On-time | Visit notes | Manual check-ins ──
-  html+='<div class="grid four">';
-  html+='<div class="fc"><div class="ct">Balances (iSolved)</div>';
-  if(p.hasBalances){
-    html+='<div class="metric-row"><span>PTO Balance</span><span class="metric-value">'+p.pto.toFixed(2)+' hrs</span></div>'+
-          '<div class="metric-row"><span>Sick Balance</span><span class="metric-value">'+p.sick.toFixed(2)+' hrs</span></div>';
-  } else html+='<div class="no-data">Upload the PTO/Sick roster to see balances</div>';
-  html+='</div>';
-
-  const otColor=onTimePct===null?'n':onTimePct>=92?'g':'r';
-  html+='<div class="fc"><div class="ct">On-Time Check-In</div><div class="big-stat">'+
-    '<span class="v '+otColor+'">'+(onTimePct!==null?onTimePct.toFixed(1)+'%':'—')+'</span>'+
-    (onTimePct!==null?'<span class="bdg '+(otColor==='g'?'bg-g">✓ ≥92%':'bg-r">✗ <92%')+'</span>':'<span class="bdg bg-n">No data</span>')+
-    '</div><div class="stat-foot">6-month · threshold 92% · '+(ck?ck.checked+' checked-in visits':'')+'</div></div>';
-
-  const vnColor=taskPct===null?'n':taskPct>=95?'g':'r';
-  html+='<div class="fc"><div class="ct">Visit Note / Task Completion</div><div class="big-stat">'+
-    '<span class="v '+vnColor+'">'+(taskPct!==null?taskPct.toFixed(1)+'%':'—')+'</span>'+
-    (taskPct!==null?'<span class="bdg '+(vnColor==='g'?'bg-g">✓ ≥95%':'bg-r">✗ <95%')+'</span>':'<span class="bdg bg-n">No data</span>')+
-    '</div><div class="stat-foot">6-month · threshold 95%'+(v&&v.tasks?' · '+v.tasks.completed+' / '+v.tasks.total+' tasks':'')+'</div></div>';
-
-  const mColor=manualPct===null?'n':manualPct<=15?'g':manualPct<=35?'a':'r';
-  html+='<div class="fc"><div class="ct">Manual Check-Ins</div><div class="big-stat">'+
-    '<span class="v '+mColor+'">'+(manualPct!==null?manualPct.toFixed(1)+'%':'—')+'</span></div>'+
-    '<div class="stat-foot">'+(ck?ck.manual+' of '+ck.manualDen+' check-ins entered manually (not via app)':'No data')+'</div></div>';
-  html+='</div>';
-
-  // ── Row 2: Visits per month | Weekend | Hours vs desired ──
-  html+='<div class="grid three">';
-  html+='<div class="fc"><div class="ct">1 Visit Per Month</div><div class="month-grid">';
-  past6.forEach(m=>{
-    const hit=monthsWithVisit.has(m.key);
-    html+='<div class="month-cell '+(hit?'hit':'miss')+'">'+m.label+'<br>'+(hit?'✓':'✗')+'</div>';
-  });
-  html+='</div></div>';
-
-  html+='<div class="fc"><div class="ct">Weekend Work (Viv)</div>';
-  if(!v){
-    html+='<div class="no-data">Not matched in Viv</div>';
-  } else {
-    const missed=past6.filter(m=>!weekendWorked.has(m.key)&&monthsWithVisit.has(m.key));
-    if(missed.length){
-      html+='<div class="stat-foot" style="margin-bottom:6px">Months worked but with no weekend visit:</div>'+missed.map(m=>'<span class="flag">⚑ '+m.label+'</span>').join('');
-    } else if(monthsWithVisit.size){
-      html+='<div class="no-data">Worked a weekend in every active month</div>';
-    } else {
-      html+='<div class="no-data">No visits in the window</div>';
-    }
-  }
-  html+='</div>';
-
-  // Hours vs desired — answers the Rise form prep question directly
-  html+='<div class="fc"><div class="ct">Weeks at ≥75% of Desired Hours '+
-    '<a class="card-link" style="float:right" target="_blank" href="https://andrewdobsonn-cell.github.io/Tribute-Operating-System/caregiver_hours.html">Desired hours over time →</a></div>';
-  if(!v){
-    html+='<div class="no-data">Not matched in Viv</div>';
-  } else if(!v.desiredHours){
-    html+='<div class="no-data">No desired hours set in Viv'+(v.prn?' (PRN)':'')+'</div>';
-  } else {
-    const fr=v.weeksAt75!==null?v.weeksAt75+' / '+v.weeksEligible:'—';
-    const frColor=v.weeksAt75===null?'n':(v.weeksAt75>=v.weeksEligible*0.75?'g':v.weeksAt75>=v.weeksEligible*0.5?'a':'r');
-    html+='<div class="big-stat"><span class="v '+frColor+'">'+fr+'</span>'+
-      '<span class="stat-foot">weeks · desired '+v.desiredHours+' hrs/wk</span></div>';
-    if(v.weeklyHours||viv.hoursWeekStarts){
-      const ws=viv.hoursWeekStarts||[];
-      const hire=v.hireDate?String(v.hireDate).slice(0,10):'';
-      html+='<div class="wk-strip">'+ws.map((w,i)=>{
-        const lbl=parseInt(w.slice(5,7),10)+'/'+parseInt(w.slice(8,10),10);   // Sunday week-start, e.g. 3/15
-        if(hire&&w<hire)return '<div class="wk-cell" title="week of '+w+' · before hire">'+lbl+'</div>';
-        const got=(v.weeklyHours&&v.weeklyHours[i])||0;
-        const ratio=got/v.desiredHours;
-        const cls=ratio>=0.75?'g':ratio>=0.5?'a':'r';
-        return '<div class="wk-cell '+cls+'" title="week of Sun '+w+' · '+got.toFixed(1)+' hrs ('+Math.round(ratio*100)+'%)">'+lbl+'</div>';
-      }).join('')+'</div>'+
-      '<div class="stat-foot" style="margin-top:4px">labels = Sunday week-start · past 12 complete weeks · billable + PTO hours · hover for hours</div>';
-    }
-  }
-  html+='</div></div>';
-
-  // ── Row 3: Performance metrics | Points breakdown ──
-  html+='<div class="grid">';
-  html+='<div class="fc"><div class="ct">Performance Metrics</div>'+
-    '<div class="metric-row"><span>Total Compliments (6 months)</span><span class="metric-value">'+(compliments!==null?compliments:'—')+'</span></div>'+
-    '<div class="metric-row"><span>Last-Minute Bookings (6 months, ≤'+LM_THRESHOLD_HRS+'h)</span><span class="metric-value">'+(lastMin?lastMin.length:'—')+'</span></div>'+
-    '<div class="metric-row"><span>Months with No Call-Outs</span><span class="metric-value">'+risePoints.noCalloutMonths+' / 6</span></div>'+
-    '<div class="metric-row"><span>Care visits in window (Viv)</span><span class="metric-value">'+(v?v.careVisits:'—')+'</span></div>'+
-  '</div>';
-  const lmCount=lastMin?lastMin.length:0;
-  html+='<div class="fc"><div class="ct">Rise Above Points Breakdown (past 6 months)</div>'+
-    '<div class="rise-row"><span>Compliments ('+(compliments||0)+' × 40)</span><span class="pts">+'+risePoints.complimentPts+'</span></div>'+
-    '<div class="rise-row"><span>Visit note completion 100% (+100)</span><span class="pts">'+(risePoints.visitNotePts>0?'+':'')+risePoints.visitNotePts+'</span></div>'+
-    '<div class="rise-row"><span>On-time check-in &gt;95% (+100)</span><span class="pts">'+(risePoints.ontimePts>0?'+':'')+risePoints.ontimePts+'</span></div>'+
-    '<div class="rise-row"><span>Last-minute bookings ('+lmCount+' × 10)</span><span class="pts">+'+risePoints.lastMinutePts+'</span></div>'+
-    '<div class="rise-row"><span>No call-out months ('+risePoints.noCalloutMonths+' × 10)</span><span class="pts">+'+risePoints.noCalloutPts+'</span></div>'+
-    '<div class="rise-row" style="font-weight:700"><span>Total</span><span class="pts">'+risePoints.total+'</span></div>'+
-  '</div></div>';
-
-  // ── Row 4: Compliment detail | Documents ──
-  html+='<div class="grid">';
-  html+='<div class="fc"><div class="ct">Compliments — what people said</div>';
-  if(v&&v.compliments.length){
-    v.compliments.slice().sort((a,b)=>b.date<a.date?-1:1).forEach(c=>{
-      html+='<div class="comp-item"><div class="comp-meta">'+escHtml(c.date)+' · '+escHtml(c.reason)+(c.from?' · logged by '+escHtml(c.from):'')+'</div>'+escHtml(c.desc||'')+'</div>';
-    });
-  } else html+='<div class="no-data">No compliments recorded in the past 6 months</div>';
-  html+='</div>';
-
-  html+='<div class="fc"><div class="ct">Documents Expiring / Expired (iSolved)</div>';
-  if(certAlerts===null)html+='<div class="no-data">Upload Certifications.xlsx to see document alerts</div>';
-  else if(!certAlerts.length)html+='<div class="no-data">No documents requiring attention</div>';
-  else certAlerts.forEach(c=>{
-    const expired=c.date<TODAY;
-    html+='<div class="doc-item"><span>'+escHtml(c.cert)+'</span><span class="bdg '+(expired?'bg-r':'bg-a')+'">'+(expired?'Expired':'Exp')+' '+formatDate(c.date)+'</span></div>';
-  });
-  html+='</div></div>';
-
-  // ── Last Rise Meeting ──
-  html+='<div class="grid full"><div class="fc"><div class="ct">Last Rise Meeting</div>';
-  if(!lastMeeting){
-    html+='<div class="no-data">No Rise meeting form found for this caregiver.</div>';
-  } else {
-    const segLabel=normalizeSegment(lastMeeting.segment);
-    let meta='';
-    if(lastMeeting.meetingDate)meta+='Meeting date: <strong>'+formatDate(lastMeeting.meetingDate)+'</strong>';
-    if(segLabel)meta+=(meta?' &nbsp;·&nbsp; ':'')+'Segment: '+segPill(segLabel);
-    if(lastMeeting.author)meta+=(meta?' &nbsp;·&nbsp; ':'')+'Held by: '+escHtml(lastMeeting.author);
-    if(meta)html+='<div style="font-size:12px;color:var(--text2);margin-bottom:14px">'+meta+'</div>';
-    html+='<div class="meeting-field"><div class="mf-label">Rise Above Points Recorded</div>';
-    if(lastMeeting.points){
-      const numMatch=String(lastMeeting.points).match(/\b(\d+)\b/);
-      html+=(numMatch&&String(lastMeeting.points).length<30)?'<div class="meeting-points">'+numMatch[1]+'</div>':'<div style="font-size:13px">'+escHtml(lastMeeting.points)+'</div>';
-    } else html+='<div class="no-data">Not recorded</div>';
-    html+='</div>';
-    html+='<div class="meeting-field"><div class="mf-label">Discussion Notes</div>';
-    if(lastMeeting.discussion&&lastMeeting.discussion.length){
-      html+='<div class="meeting-comments"><ul>'+lastMeeting.discussion.map(c=>'<li>'+escHtml(c)+'</li>').join('')+'</ul></div>';
-    } else html+='<div class="no-data">No discussion notes recorded</div>';
-    html+='</div>';
-    html+='<div class="meeting-field"><div class="mf-label">Goal Set</div>';
-    html+=lastMeeting.goal?'<div class="meeting-goal">'+escHtml(lastMeeting.goal)+'</div>':'<div class="no-data">No goal recorded</div>';
-    html+='</div>';
-    html+='<div class="meeting-field"><div class="mf-label">Next Rise Meeting</div>';
-    const nmDate=parseDate(lastMeeting.nextMeeting);
-    if(lastMeeting.nextMeeting||lastMeeting.notes){
-      html+='<div style="font-size:13px">'+(lastMeeting.nextMeeting?'Scheduled: <strong>'+(nmDate?formatDate(nmDate):escHtml(lastMeeting.nextMeeting))+'</strong>':'Not scheduled yet')+'</div>';
-      if(lastMeeting.notes)html+='<div style="font-size:13px;margin-top:4px;white-space:pre-wrap">'+escHtml(lastMeeting.notes)+'</div>';
-    } else html+='<div class="no-data">Nothing recorded</div>';
-    html+='</div>';
-  }
-  html+='</div></div>';
-
-  // ── Service exceptions ──
-  html+='<div class="grid full"><div class="fc"><div class="ct">Service Exceptions (click to expand)</div>';
-  [['connection','Connection'],['communication','Communication'],['reliability','Reliability'],['flexibility','Flexibility'],['callout','Waived Call-Outs']].forEach(cat=>{
-    const items=exc[cat[0]]||[];
-    html+='<div class="se-cat"><div class="se-head" onclick="toggleSe(\'se-'+cat[0]+'\')">'+
-      '<span style="font-weight:600">'+cat[1]+'</span><span class="se-count '+(items.length===0?'zero':'')+'">'+items.length+'</span></div>'+
-      '<div class="se-list" id="se-'+cat[0]+'">';
-    if(!items.length)html+='<div class="se-item"><span class="no-data">No incidents</span></div>';
-    else items.forEach(inc=>{
-      html+='<div class="se-item"><span class="se-type">'+escHtml(inc.type)+'</span><span class="se-date">'+escHtml(inc.date)+'</span><div class="se-desc">'+escHtml(inc.desc||'')+'</div></div>';
-    });
-    html+='</div></div>';
-  });
-  html+='</div></div>';
-
-  document.getElementById('dashboard').innerHTML=html;
-}
-function toggleSe(id){ const el=document.getElementById(id); if(el)el.classList.toggle('open'); }
-
-// ════════════════════════════════════════════════════════════════════════════
-// TABS / UTILITIES
-// ════════════════════════════════════════════════════════════════════════════
-function switchTab(tab){
-  document.getElementById('page-tracker').style.display=tab==='tracker'?'':'none';
-  document.getElementById('page-dashboard').style.display=tab==='dashboard'?'':'none';
-  document.getElementById('tab-tracker').classList.toggle('on',tab==='tracker');
-  document.getElementById('tab-dashboard').classList.toggle('on',tab==='dashboard');
-  if(tab==='tracker')renderTracker();
-}
-function stripCaregiverSuffix(name){ return String(name||'').replace(/\s+caregiver\s*$/i,'').trim(); }
-function formatDisplayName(raw){
-  if(!raw)return'';
-  if(raw.includes(',')){ const[last,first]=raw.split(',').map(s=>s.trim()); return first+' '+last; }
-  return raw;
-}
-function stripNickname(name){ return String(name||'').replace(/\s*['‘’"][^'‘’"]*['‘’"][,\s]*/g,' ').replace(/\s+/g,' ').trim(); }
-function normName(n){
-  return String(n||'').toLowerCase().replace(/[^a-z\s]/g,' ').replace(/\s+/g,' ').trim().split(' ').filter(Boolean).sort().join(' ');
-}
-function namesMatch(a,b){
-  if(!a||!b)return false;
-  const na=normName(formatDisplayName(a)),nb=normName(formatDisplayName(b));
-  if(na===nb)return true;
-  const ta=na.split(' '),tb=nb.split(' ');
-  const[shorter,longer]=ta.length<=tb.length?[ta,tb]:[tb,ta];
-  if(shorter.filter(t=>t.length>1).every(t=>longer.includes(t)))return true;
-  const na2=normName(formatDisplayName(stripNickname(a))),nb2=normName(formatDisplayName(stripNickname(b)));
-  if(na2===nb2)return true;
-  const ta2=na2.split(' '),tb2=nb2.split(' ');
-  const[s2,l2]=ta2.length<=tb2.length?[ta2,tb2]:[tb2,ta2];
-  return s2.filter(t=>t.length>1).every(t=>l2.includes(t));
-}
-function escHtml(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function parseDate(val){
-  if(!val)return null;
-  if(val instanceof Date)return isNaN(val)?null:val;
-  const s=val.toString().trim().substring(0,10);
-  const d=new Date(s+'T12:00:00');
-  return isNaN(d)?null:d;
-}
-function formatDate(val){
-  const d=parseDate(val);
-  return d?d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—';
-}
-
-// ── Boot ──
-renderLiveChips();
-if(getKey())syncViv(false); else showGate();
+// Boot: stored key skips the gate (it was validated when first saved)
+if(getKey())enter(getKey());
 </script>
 </body>
 </html>
