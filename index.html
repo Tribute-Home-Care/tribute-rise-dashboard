@@ -282,6 +282,9 @@ const ONTIME_RULE='onTime1';     // 'onTime1' = Viv "CheckIn On Time" (≤1 min 
 const BAB_KEYWORDS=['baltimore','annapolis','bethesda'];
 const CERT_EXCLUDE=['car insurance','covid vaccination',"driver's license",'drivers license','hha','pca','pto expiration reminder','tb test results','hire: travel limitations','cannot drive clients'];
 const NINETY_DAY_FORMS=new Set([10137,10139,10142]);   // MA / MD / CHI 90-day meetings
+// The 90-day meeting program started Oct 2025 — only hires from this date on
+// get a 90-day due date (earlier caregivers never had one to complete).
+const NINETY_RULE_HIRE_CUTOFF=new Date('2025-07-01T12:00:00');
 
 const TODAY=new Date(); TODAY.setHours(0,0,0,0);
 const in30=new Date(TODAY); in30.setDate(in30.getDate()+30);
@@ -600,7 +603,17 @@ function renderTracker(){
     const ninetyRows=ninetyFormsFor(p);
     const hireDate=p.hireDate||firstFormHireDate(riseRows,ninetyRows);
     if(!hireDate)return;
-    const activeDueDate=getActiveDueDate(hireDate,riseRows);
+    // First meeting for recent hires is the 90-day: due at hire+90 (overdue
+    // until the 90-day form is submitted), then the 6-month cycle takes over.
+    const ninetyDone=ninetyRows.some(r=>{const d=parseDate(r.meetingDate||r.submittedAt);return d&&d<=TODAY;});
+    const riseDone=riseRows.some(r=>{const d=parseDate(r.meetingDate);return d&&d<=TODAY;});
+    let activeDueDate,dueKind='';
+    if(!ninetyDone&&!riseDone&&hireDate>=NINETY_RULE_HIRE_CUTOFF){
+      activeDueDate=new Date(hireDate); activeDueDate.setDate(activeDueDate.getDate()+90);
+      dueKind='90-day';
+    } else {
+      activeDueDate=getActiveDueDate(hireDate,riseRows);
+    }
     const daysUntil=activeDueDate?Math.round((activeDueDate-TODAY)/86400000):null;
 
     // Segment priority: latest 90-day form → First 90 Days window → latest Rise form
@@ -619,7 +632,7 @@ function renderTracker(){
     if(!notes&&latestNinety&&latestNinety.notes)notes=latestNinety.notes;
     const nextMeeting=latestRise?(latestRise.nextMeeting||''):'';
 
-    rows.push({p,hireDate,activeDueDate,daysUntil,segment,notes,nextMeeting});
+    rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting});
   });
   rows.sort((a,b)=>{
     if(a.daysUntil===null&&b.daysUntil===null)return 0;
@@ -646,7 +659,7 @@ function renderTracker(){
       '<td class="td-name">'+escHtml(row.p.name)+'</td>'+
       '<td class="td-date">'+escHtml(row.p.market||'—')+'</td>'+
       '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
-      '<td class="td-date" style="font-weight:600">'+(row.activeDueDate?formatDate(row.activeDueDate):'—')+'</td>'+
+      '<td class="td-date" style="font-weight:600">'+(row.activeDueDate?formatDate(row.activeDueDate)+(row.dueKind==='90-day'?' <span class="bdg bg-p">90-day</span>':''):'—')+'</td>'+
       '<td>'+chip+'</td>'+
       '<td class="td-date">'+(row.nextMeeting?(parseDate(row.nextMeeting)?formatDate(row.nextMeeting):escHtml(row.nextMeeting)):'<span class="muted">—</span>')+'</td>'+
       '<td>'+segPill(row.segment)+'</td>'+
