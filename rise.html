@@ -839,10 +839,10 @@ function renderCaregiver(){
     '</div><div class="stat-foot">6-month · threshold 92% · '+(ck?ck.checked+' checked-in visits':'')+'</div></div>';
 
   const vnColor=taskPct===null?'n':taskPct>=95?'g':'r';
-  html+='<div class="fc"><div class="ct">Visit Note / Task Completion</div><div class="big-stat">'+
+  html+='<div class="fc"><div class="ct">Visit Note Completion</div><div class="big-stat">'+
     '<span class="v '+vnColor+'">'+(taskPct!==null?taskPct.toFixed(1)+'%':'—')+'</span>'+
     (taskPct!==null?'<span class="bdg '+(vnColor==='g'?'bg-g">✓ ≥95%':'bg-r">✗ <95%')+'</span>':'<span class="bdg bg-n">No data</span>')+
-    '</div><div class="stat-foot">6-month · threshold 95%'+(v&&v.tasks?' · '+v.tasks.completed+' / '+v.tasks.total+' tasks':'')+'</div></div>';
+    '</div><div class="stat-foot">6-month · threshold 95%'+(v&&v.tasks&&v.tasks.total>0?' · '+v.tasks.completed+' of '+v.tasks.total+' checked-out visits passed':'')+'</div></div>';
 
   const mColor=manualPct===null?'n':manualPct<=15?'g':manualPct<=35?'a':'r';
   html+='<div class="fc"><div class="ct">Manual Check-Ins</div><div class="big-stat">'+
