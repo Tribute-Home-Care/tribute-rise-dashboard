@@ -797,6 +797,18 @@ function renderCaregiver(){
   const lastMin=v?v.lastMinute.filter(b=>b.leadHrs>=0&&b.leadHrs<=LM_THRESHOLD_HRS):null;
   const ck=v&&v.checkin;
   const onTimePct=(ck&&ck.checked>0)?(ck[ONTIME_RULE]/ck.checked*100):null;
+  // On-time "verify in Viv" flag. Viv applies a small per-visit check-in grace
+  // window that this dashboard can't reproduce exactly (see Belinda Clark: her
+  // 2–6 min-late check-ins read late here but on-time in Viv, while another
+  // caregiver with the same lateness reads late in both — Viv's per-visit rule
+  // isn't exposed in any feed). We can't predict which way Viv lands, so we
+  // flag the only case that can wrongly hurt a caregiver: dashboard shows BELOW
+  // the 92% line on the strict ≤1-min rule, but their misses are clustered in
+  // the 1–7 min band Viv may forgive (grace rate would pass). Prompts a quick
+  // cross-check before treating it as a miss in the Rise meeting.
+  const onTime7Pct=(ck&&ck.checked>0)?(ck.onTime7/ck.checked*100):null;
+  const otMarginalLate=ck?(ck.onTime7-ck.onTime1):0;   // check-ins 1–7 min late
+  const otVerify=onTimePct!==null&&onTimePct<92&&onTime7Pct>=92&&otMarginalLate>=2;
   const manualPct=(ck&&ck.manualDen>0)?(ck.manual/ck.manualDen*100):null;
   const taskPct=(v&&v.tasks&&v.tasks.total>0)?(v.tasks.completed/v.tasks.total*100):null;
   const monthsWithVisit=new Set(v?v.monthsWithVisit:[]);
@@ -833,10 +845,14 @@ function renderCaregiver(){
   html+='</div>';
 
   const otColor=onTimePct===null?'n':onTimePct>=92?'g':'r';
-  html+='<div class="fc"><div class="ct">On-Time Check-In</div><div class="big-stat">'+
+  html+='<div class="fc"><div class="ct">On-Time Check-In'+
+    (otVerify?' <span class="bdg bg-a" style="font-weight:700" title="Viv applies a small per-visit grace window to check-ins that this dashboard cannot reproduce exactly. This caregiver is below 92% on the strict 1-minute rule, but '+otMarginalLate+' of their check-ins are only 1–7 min late — Viv may count some on-time (up to '+onTime7Pct.toFixed(1)+'%). Confirm in Viv before treating this as a miss.">⚑ Verify in Viv</span>':'')+
+    '</div><div class="big-stat">'+
     '<span class="v '+otColor+'">'+(onTimePct!==null?onTimePct.toFixed(1)+'%':'—')+'</span>'+
     (onTimePct!==null?'<span class="bdg '+(otColor==='g'?'bg-g">✓ ≥92%':'bg-r">✗ <92%')+'</span>':'<span class="bdg bg-n">No data</span>')+
-    '</div><div class="stat-foot">6-month · threshold 92% · '+(ck?ck.checked+' checked-in visits':'')+'</div></div>';
+    '</div><div class="stat-foot">6-month · threshold 92% · '+(ck?ck.checked+' checked-in visits':'')+'</div>'+
+    (otVerify?'<div class="stat-foot" style="color:var(--amber-text);margin-top:5px;border-top:.5px solid var(--border);padding-top:5px">⚑ '+otMarginalLate+(otMarginalLate!==1?' check-ins were':' check-in was')+' 1–7 min late — Viv’s grace window may score some on-time (up to '+onTime7Pct.toFixed(1)+'%). Cross-check in Viv before counting this as a miss.</div>':'')+
+    '</div>';
 
   const vnColor=taskPct===null?'n':taskPct>=95?'g':'r';
   html+='<div class="fc"><div class="ct">Visit Note Completion</div><div class="big-stat">'+
