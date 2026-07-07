@@ -384,13 +384,40 @@ function slimRows(type,rows){
     return o;
   }).filter(r=>Object.keys(r).length);
 }
-function applyUpload(type,rows,label){
+const UPLOAD_LS='rise_upload_';   // localStorage cache so uploads persist between sessions in this browser
+function persistLocal(type,rows,fileName){
+  try{ localStorage.setItem(UPLOAD_LS+type,JSON.stringify({rows,fileName,savedAt:new Date().toISOString()})); }catch(e){}
+}
+function applyUpload(type,rows,label,persist){
   store[type]=rows;
   document.getElementById('slot-'+type).classList.add('loaded');
   document.getElementById('status-'+type).textContent=label;
+  if(persist)persistLocal(type,rows,label.replace(/^✓ /,'').split(' · ')[0]);
   if(type==='roster'){ buildSpine(); buildManagerFilter(); buildSearchIndex(); renderTracker(); }
   renderLiveChips();
   if(selectedKey)renderCaregiver();
+}
+// Instant restore from this browser's localStorage — runs at boot, before any
+// network, so uploaded certs/roster survive a page close until cleared or replaced.
+function restoreLocalUploads(){
+  for(const kind of ['roster','certs']){
+    try{
+      const raw=localStorage.getItem(UPLOAD_LS+kind); if(!raw)continue;
+      const u=JSON.parse(raw);
+      if(u&&u.rows&&u.rows.length&&!store[kind]){
+        const when=u.savedAt?new Date(u.savedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
+        applyUpload(kind,u.rows,'✓ '+(u.fileName||kind)+(when?' · saved '+when:''),false);
+      }
+    }catch(e){}
+  }
+}
+function clearUpload(type){
+  store[type]=null;
+  try{ localStorage.removeItem(UPLOAD_LS+type); }catch(e){}
+  const slot=document.getElementById('slot-'+type); if(slot)slot.classList.remove('loaded');
+  const st=document.getElementById('status-'+type); if(st)st.textContent='cleared';
+  if(type==='roster'){ buildSpine(); buildManagerFilter(); buildSearchIndex(); renderTracker(); }
+  renderLiveChips(); if(selectedKey)renderCaregiver();
 }
 function handleFile(type,input){
   const file=input.files[0]; if(!file)return;
@@ -404,7 +431,7 @@ function handleFile(type,input){
       data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
     }
     const rows=slimRows(type,data);
-    applyUpload(type,rows,'✓ '+file.name+' · saving…');
+    applyUpload(type,rows,'✓ '+file.name+' · saving…',true);
     saveUpload(type,rows,file.name);
   };
   if(isCSV)reader.readAsText(file); else reader.readAsBinaryString(file);
@@ -433,7 +460,7 @@ async function restoreUploads(){
       const u=j.uploads&&j.uploads[kind];
       if(u&&u.rows&&u.rows.length&&!store[kind]){
         const when=u.savedAt?new Date(u.savedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
-        applyUpload(kind,u.rows,'✓ '+(u.fileName||kind)+(when?' · uploaded '+when:''));
+        applyUpload(kind,u.rows,'✓ '+(u.fileName||kind)+(when?' · uploaded '+when:''),true);
       }
     }
   }catch(e){/* uploads are an enhancement — ignore restore failures */}
@@ -478,6 +505,10 @@ function buildSpine(){
       const displayName=formatDisplayName(nameRaw);
       const empNum=(r['Employee Number']||r['EmployeeNumber']||'').toString().trim();
       const v=vivByNum[empNum]||vivByName[normName(displayName)]||findVivByName(displayName);
+      // Prefer Viv PTO/Sick (live); fall back to the uploaded roster's columns.
+      const vivPto=v&&v.pto!=null, vivSick=v&&v.sick!=null;
+      const pto=vivPto?v.pto:(parseFloat(r['CA-PTO Balance'])||0);
+      const sick=vivSick?v.sick:(parseFloat(r['CA-Sick Balance'])||0);
       spine.push({
         key:'e'+(empNum||displayName), empNum, viv:v||null,
         name:displayName,
@@ -485,16 +516,18 @@ function buildSpine(){
         manager:(r['Supervisor']||'').trim()||(v?(v.mce||''):''),
         title:(r['Job Title']||'').trim(),
         hireDate:parseDate(r['Hire Date']||r['Original Hire Date'])||(v?parseDate(v.hireDate):null),
-        pto:parseFloat(r['CA-PTO Balance'])||0, sick:parseFloat(r['CA-Sick Balance'])||0, hasBalances:true
+        pto, sick, hasBalances:true, balancesSource:(vivPto||vivSick)?'Viv':'iSolved'
       });
     }
   } else if(viv){
     for(const cg of viv.caregivers){
       if(cg.status!=='hired')continue;   // Viv status vocabulary: hired = active
+      const hasBal=cg.pto!=null||cg.sick!=null;
       spine.push({
         key:'v'+cg.id, empNum:String(cg.mnum||''), viv:cg,
         name:cg.name, market:cg.market||cg.state||'', manager:cg.mce||'',
-        title:'', hireDate:parseDate(cg.hireDate), pto:null, sick:null, hasBalances:false
+        title:'', hireDate:parseDate(cg.hireDate),
+        pto:cg.pto!=null?cg.pto:0, sick:cg.sick!=null?cg.sick:0, hasBalances:hasBal, balancesSource:'Viv'
       });
     }
   }
@@ -774,9 +807,8 @@ function getCertAlerts(p,isBab){
     if(CERT_EXCLUDE.some(ex=>cl.includes(ex)))return;
     const endDate=parseDate(r['End Date']);
     if(!endDate)return;
-    if(cl.includes('employment authorization')){ if(endDate<=in6m)alerts.push({cert,date:endDate}); return; }
-    if(cl.includes('abuse and neglect')||cl.includes('drive clients')){ if(endDate<=in30)alerts.push({cert,date:endDate}); return; }
-    if(isBab&&(cl.includes('cpr')||cl==='cna'||cl==='gna'||cl.includes('med tech'))){ if(endDate<=in30)alerts.push({cert,date:endDate}); return; }
+    // Flag ANY non-excluded certification expiring within the next 6 months (per Charlotte).
+    if(endDate<=in6m)alerts.push({cert,date:endDate});
   });
   alerts.sort((a,b)=>a.date-b.date);
   return alerts;
@@ -786,13 +818,26 @@ function calcRisePoints(compliments,taskPct,onTimePct,lastMinute,calloutMonths){
   const past6=getPast6Months();
   const noCalloutMonths=past6.filter(m=>!calloutMonths.has(m.key)).length;
   const complimentPts=compliments*40;
-  const visitNotePts=(taskPct!==null&&taskPct>=99.9)?100:0;
+  const visitNotePts=(taskPct!==null&&taskPct>=97)?100:0;   // full credit at 97%+ (per Charlotte)
   const ontimePts=(onTimePct!==null&&onTimePct>95)?100:0;
   const lastMinutePts=lastMinute*10;
   const noCalloutPts=noCalloutMonths*10;
   return{complimentPts,visitNotePts,ontimePts,lastMinutePts,noCalloutPts,noCalloutMonths,
     total:complimentPts+visitNotePts+ontimePts+lastMinutePts+noCalloutPts};
 }
+
+// PTO expiration = the caregiver's NEXT work anniversary + 30 days. (Skipped for
+// Dova Weinberger's caregivers — her market doesn't expire PTO.)
+function ptoExpiration(hireDate,manager){
+  if(!hireDate)return null;
+  if(/dova\s+weinberger/i.test(manager||''))return null;
+  const now=new Date(TODAY);
+  let anniv=new Date(now.getFullYear(),hireDate.getMonth(),hireDate.getDate());
+  if(anniv<now)anniv=new Date(now.getFullYear()+1,hireDate.getMonth(),hireDate.getDate());
+  anniv.setDate(anniv.getDate()+30);
+  return anniv;
+}
+const SICK_CAP=40;  // hours carried into the next calendar year; excess expires 12/31
 
 function renderCaregiver(){
   if(!selectedKey){return;}
@@ -834,9 +879,12 @@ function renderCaregiver(){
   let html='';
 
   // ── Header card ──
+  const liveIn=v?(v.liveInVisits||0):0;
+  const isLiveIn=liveIn>0||(p.hireDate&&(v&&v.desiredHours>=140));
   const tsBadge=(v&&v.tsEnrolled)?' <span class="bdg bg-p" style="vertical-align:middle">Tribute Secure'+(v.tsLevel?' · TS'+v.tsLevel:'')+'</span>':'';
+  const liBadge=isLiveIn?' <span class="bdg bg-b" style="vertical-align:middle">Live-In</span>':'';
   html+='<div class="cg-header"><div>'+
-    '<div class="cg-name">'+escHtml(p.name)+tsBadge+'</div>'+
+    '<div class="cg-name">'+escHtml(p.name)+tsBadge+liBadge+'</div>'+
     '<div class="cg-meta">'+
       (p.title?'<span><strong>Title:</strong> '+escHtml(p.title)+'</span>':'')+
       '<span><strong>Market:</strong> '+escHtml(p.market||'—')+'</span>'+
@@ -846,14 +894,21 @@ function renderCaregiver(){
     '</div></div>'+
     '<div class="points-box"><div class="points-num">'+risePoints.total+'</div><div class="points-label">Rise Above points<br>past 6 months</div></div>'+
   '</div>';
+  if(isLiveIn)html+='<div class="fc" style="border-left:3px solid var(--blue);margin-bottom:12px;padding:10px 16px"><span class="bdg bg-b">Live-In caregiver</span> <span style="font-size:12px;color:var(--text2)">'+liveIn+' live-in visit'+(liveIn!==1?'s':'')+' in the window. On-time check-in, manual-check-in and visit-note metrics below cover this caregiver\'s <strong>hourly</strong> visits only — live-in visits don\'t generate hourly EVV check-ins, so they aren\'t reflected in those percentages.</span></div>';
 
   // ── Row 1: Balances | On-time | Visit notes | Manual check-ins ──
   html+='<div class="grid four">';
-  html+='<div class="fc"><div class="ct">Balances (iSolved)</div>';
+  html+='<div class="fc"><div class="ct">Balances'+(p.balancesSource?' ('+p.balancesSource+')':'')+'</div>';
   if(p.hasBalances){
-    html+='<div class="metric-row"><span>PTO Balance</span><span class="metric-value">'+p.pto.toFixed(2)+' hrs</span></div>'+
-          '<div class="metric-row"><span>Sick Balance</span><span class="metric-value">'+p.sick.toFixed(2)+' hrs</span></div>';
-  } else html+='<div class="no-data">Upload the PTO/Sick roster to see balances</div>';
+    const ptoExp=ptoExpiration(p.hireDate,p.manager);
+    html+='<div class="metric-row"><span>PTO Balance</span><span class="metric-value">'+p.pto.toFixed(2)+' hrs</span></div>';
+    if(ptoExp)html+='<div class="stat-foot" style="margin:-2px 0 6px">Expires '+formatDate(ptoExp)+' (anniversary + 30d)</div>';
+    const sickOver=p.sick-SICK_CAP;
+    const thisYE='Dec 31, '+TODAY.getFullYear();
+    html+='<div class="metric-row"><span>Sick Balance</span><span class="metric-value">'+p.sick.toFixed(2)+' hrs</span></div>';
+    if(sickOver>0.01)html+='<div class="stat-foot" style="margin-top:-2px;color:var(--amber-text)">⚠ '+sickOver.toFixed(1)+' hrs over the 40-hr carryover cap expire '+thisYE+'</div>';
+    else html+='<div class="stat-foot" style="margin-top:-2px">Up to 40 hrs carry over; excess expires '+thisYE+'</div>';
+  } else html+='<div class="no-data">Balances unavailable — syncing from Viv, or upload the PTO/Sick roster</div>';
   html+='</div>';
 
   const otColor=onTimePct===null?'n':onTimePct>=92?'g':'r';
@@ -941,7 +996,7 @@ function renderCaregiver(){
   const lmCount=lastMin?lastMin.length:0;
   html+='<div class="fc"><div class="ct">Rise Above Points Breakdown (past 6 months)</div>'+
     '<div class="rise-row"><span>Compliments ('+(compliments||0)+' × 40)</span><span class="pts">+'+risePoints.complimentPts+'</span></div>'+
-    '<div class="rise-row"><span>Visit note completion 100% (+100)</span><span class="pts">'+(risePoints.visitNotePts>0?'+':'')+risePoints.visitNotePts+'</span></div>'+
+    '<div class="rise-row"><span>Visit note completion ≥97% (+100)</span><span class="pts">'+(risePoints.visitNotePts>0?'+':'')+risePoints.visitNotePts+'</span></div>'+
     '<div class="rise-row"><span>On-time check-in &gt;95% (+100)</span><span class="pts">'+(risePoints.ontimePts>0?'+':'')+risePoints.ontimePts+'</span></div>'+
     '<div class="rise-row"><span>Last-minute bookings ('+lmCount+' × 10)</span><span class="pts">+'+risePoints.lastMinutePts+'</span></div>'+
     '<div class="rise-row"><span>No call-out months ('+risePoints.noCalloutMonths+' × 10)</span><span class="pts">+'+risePoints.noCalloutPts+'</span></div>'+
@@ -1077,6 +1132,7 @@ function formatDate(val){
     try{history.replaceState(null,'',location.pathname+location.search);}catch(e){}
   }
 })();
+restoreLocalUploads();   // restore this browser's saved certs/roster before anything else
 renderLiveChips();
 if(getKey())syncViv(false); else showGate();
 </script>
