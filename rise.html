@@ -215,17 +215,13 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
   <div class="ntab" id="tab-dashboard" onclick="switchTab('dashboard')">Caregiver Dashboard</div>
   <div class="ntab" id="tab-summary" onclick="switchTab('summary')">Program Summary</div>
   <div class="ntab" id="tab-newhires" onclick="switchTab('newhires')">New Hires</div>
+  <div class="ntab" id="tab-referrals" onclick="switchTab('referrals')">Referrals</div>
 </div>
 
 <!-- UPLOADS (iSolved only — everything else streams from Viv) -->
-<details class="upload-strip" open>
-  <summary>iSolved uploads — optional, adds PTO/sick balances, supervisor &amp; document alerts. Saved for the whole team: upload once, everyone sees it until a newer file replaces it.</summary>
+<details class="upload-strip">
+  <summary>Certifications upload — PTO &amp; Sick now come live from Viv (no upload needed). Upload the certifications report to enable document-expiration alerts; it persists in this browser until replaced.</summary>
   <div class="upload-grid">
-    <div class="upload-slot" id="slot-roster">
-      <input type="file" accept=".xlsx,.csv" onchange="handleFile('roster',this)">
-      <div class="slot-name">Caregiver Roster (PTO/Sick)</div>
-      <div class="slot-status" id="status-roster">PTO_and_Sick_Balances.xlsx</div>
-    </div>
     <div class="upload-slot" id="slot-certs">
       <input type="file" accept=".xlsx,.csv" onchange="handleFile('certs',this)">
       <div class="slot-name">Certifications</div>
@@ -300,6 +296,17 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
     <span class="count" id="nhCount"></span>
   </div>
   <div id="newhires"><div class="empty-state"><div class="big">🧭</div><div>Loading new-hire visit tracking…</div></div></div>
+</div>
+
+<!-- PAGE: REFERRALS -->
+<div id="page-referrals" style="display:none">
+  <div class="bar" style="flex-wrap:wrap">
+    <label>Market</label>
+    <select id="refMarket" onchange="renderReferrals()"><option value="">All markets</option></select>
+    <input type="text" id="refSearch" placeholder="Search caregiver or referred name…" oninput="renderReferrals()" style="padding:7px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);min-width:240px">
+    <span class="count" id="refCount"></span>
+  </div>
+  <div id="referrals"><div class="empty-state"><div class="big">🤝</div><div>Loading caregiver referrals…</div></div></div>
 </div>
 
 <script>
@@ -430,7 +437,8 @@ function applyUpload(type,rows,label,persist){
 // Instant restore from this browser's localStorage — runs at boot, before any
 // network, so uploaded certs/roster survive a page close until cleared or replaced.
 function restoreLocalUploads(){
-  for(const kind of ['roster','certs']){
+  try{ localStorage.removeItem(UPLOAD_LS+'roster'); }catch(e){}   // PTO/Sick now from Viv — never restore a stale roster upload
+  for(const kind of ['certs']){
     try{
       const raw=localStorage.getItem(UPLOAD_LS+kind); if(!raw)continue;
       const u=JSON.parse(raw);
@@ -1110,13 +1118,62 @@ function toggleSe(id){ const el=document.getElementById(id); if(el)el.classList.
 // TABS / UTILITIES
 // ════════════════════════════════════════════════════════════════════════════
 function switchTab(tab){
-  ['tracker','dashboard','summary','newhires'].forEach(t=>{
+  ['tracker','dashboard','summary','newhires','referrals'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
   });
   if(tab==='tracker')renderTracker();
   if(tab==='summary')renderSummary();
   if(tab==='newhires')loadNewHires();
+  if(tab==='referrals')loadReferrals();
+}
+
+// ── REFERRALS (caregiver referral shout-outs from in-app chat) ──
+let refData=null, refLoading=false;
+async function loadReferrals(){
+  if(refData){ renderReferrals(); return; }
+  if(refLoading)return; refLoading=true;
+  const key=getKey(); if(!key){ showGate(); refLoading=false; return; }
+  document.getElementById('referrals').innerHTML='<div class="empty-state"><div class="spin"></div>Scanning caregiver chats for referrals… first load can take ~1 minute.</div>';
+  try{
+    let r=await fetch(PROXY+'?endpoint=rise_referrals',{headers:{'X-Retention-Key':key}});
+    if(r.status>=500){ await new Promise(s=>setTimeout(s,2000)); r=await fetch(PROXY+'?endpoint=rise_referrals',{headers:{'X-Retention-Key':key}}); }
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    refData=await r.json();
+  }catch(e){
+    document.getElementById('referrals').innerHTML='<div class="err" style="display:block">Couldn\'t load referrals: '+escHtml(e.message)+'. First scan is slow — try reopening the tab in a minute.</div>';
+    refLoading=false; return;
+  }
+  refLoading=false; renderReferrals();
+}
+function renderReferrals(){
+  const el=document.getElementById('referrals');
+  if(!refData){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading…</div>'; return; }
+  const rows0=refData.referrals||[];
+  const mSel=document.getElementById('refMarket');
+  if(mSel.options.length<=1){
+    const mkts=[...new Set(rows0.map(r=>r.market).filter(Boolean))].sort();
+    mSel.innerHTML='<option value="">All markets</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+  }
+  const market=mSel.value, q=(document.getElementById('refSearch').value||'').toLowerCase().trim();
+  let rows=rows0.filter(r=>(!market||r.market===market)&&(!q||(r.caregiver+' '+(r.referred||'')).toLowerCase().includes(q)));
+  document.getElementById('refCount').textContent=rows.length+' referral message'+(rows.length!==1?'s':'')+' · '+refData.caregiversWithReferrals+' caregivers';
+  // per-caregiver counts
+  const byCg={}; rows0.forEach(r=>{ byCg[r.caregiver]=(byCg[r.caregiver]||0)+1; });
+  const topCg=Object.entries(byCg).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  let h='<div class="grid four" style="margin-bottom:14px">'+
+    '<div class="fc"><div class="ct">Referral messages</div><div class="big-stat"><span class="v g">'+refData.count+'</span></div><div class="stat-foot">from recruiting, in-app</div></div>'+
+    '<div class="fc"><div class="ct">Caregivers referring</div><div class="big-stat"><span class="v b">'+refData.caregiversWithReferrals+'</span></div><div class="stat-foot">have ≥1 referral note</div></div>'+
+    '<div class="fc" style="grid-column:span 2"><div class="ct">Top referrers</div><div style="font-size:12px;line-height:1.7">'+(topCg.map(c=>escHtml(c[0])+' <span class="bdg bg-g">'+c[1]+'</span>').join(' · ')||'—')+'</div></div>'+
+  '</div>';
+  if(!rows.length){ el.innerHTML=h+'<div class="no-data">No referral messages match the filters.</div>'; return; }
+  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Referred</th><th>Market</th><th>Date</th><th>From</th><th>Message</th></tr></thead><tbody>';
+  rows.forEach(r=>{
+    h+='<tr><td class="td-name">'+escHtml(r.caregiver)+'</td><td>'+(r.referred?'<span class="bdg bg-b">'+escHtml(r.referred)+'</span>':'<span class="muted">—</span>')+'</td>'+
+      '<td class="td-date">'+escHtml(r.market||'—')+'</td><td class="td-date">'+(r.date?formatDate(r.date):'—')+'</td>'+
+      '<td class="td-date">'+escHtml(r.from||'—')+'</td><td style="font-size:12px;max-width:380px;line-height:1.4">"'+escHtml(r.message)+'"</td></tr>';
+  });
+  el.innerHTML=h+'</tbody></table></div>';
 }
 
 // ── NEW HIRES (first-visit tracking, lazy-loaded from rise_newhires) ──
