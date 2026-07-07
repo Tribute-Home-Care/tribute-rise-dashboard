@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.1/lib/msal-browser.min.js"></script>
+<script src="./entra-auth.js?v=2026-07-07a"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tribute — Rise Dashboard</title>
@@ -302,6 +304,14 @@ let selectedKey='';
 // GATE + SYNC
 // ════════════════════════════════════════════════════════════════════════════
 function getKey(){ return localStorage.getItem(KEY_LS)||''; }
+// Prefer the signed-in Microsoft account; fall back to the manually-entered
+// team password only if that's unavailable (e.g. this page reached via an
+// older embed that hands off a key rather than a token).
+async function authHeaders(extra){
+  const token=window.tributeKsfGate&&window.tributeKsfGate.getToken?await window.tributeKsfGate.getToken():null;
+  const base=token?{'Authorization':'Bearer '+token}:{'X-Retention-Key':getKey()};
+  return extra?Object.assign({},base,extra):base;
+}
 function submitGate(){
   const v=document.getElementById('gateInput').value.trim();
   if(!v){ document.getElementById('gateErr').textContent='Enter the team password.'; return; }
@@ -315,19 +325,19 @@ function showGate(msg){
 }
 
 async function syncViv(manual){
-  const key=getKey();
-  if(!key){ showGate(); return; }
+  const headers=await authHeaders();
+  if(!headers.Authorization&&!headers['X-Retention-Key']){ showGate(); return; }
   const btn=document.getElementById('syncBtn');
   btn.disabled=true; btn.textContent='Syncing…';
   setSyncLine('<span class="dot"></span>Syncing from Viv… first build can take ~2 minutes','');
   try{
-    let r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers:{'X-Retention-Key':key}});
+    let r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers});
     if(r.status===401){ localStorage.removeItem(KEY_LS); showGate('That password was not accepted.'); throw new Error('unauthorized'); }
     if(r.status>=500){
       // Cold cache build can outlive the Azure HTTP timeout; the server kept the
       // finished pieces, so one automatic retry usually completes the build.
       setSyncLine('<span class="dot"></span>Server is building its data cache — retrying automatically…');
-      r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers:{'X-Retention-Key':key}});
+      r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers});
     }
     if(!r.ok) throw new Error('Viv proxy returned HTTP '+r.status);
     viv=await r.json();
@@ -400,10 +410,11 @@ function handleFile(type,input){
   if(isCSV)reader.readAsText(file); else reader.readAsBinaryString(file);
 }
 async function saveUpload(type,rows,fileName){
-  const key=getKey(); if(!key)return;
+  const headers=await authHeaders({'Content-Type':'application/json'});
+  if(!headers.Authorization&&!headers['X-Retention-Key'])return;
   try{
     const r=await fetch(PROXY+'?endpoint=rise_uploads',{method:'POST',
-      headers:{'Content-Type':'application/json','X-Retention-Key':key},
+      headers,
       body:JSON.stringify({kind:type,rows,fileName})});
     if(!r.ok)throw new Error('HTTP '+r.status);
     document.getElementById('status-'+type).textContent='✓ '+fileName+' · saved for all MCEs';
@@ -412,9 +423,10 @@ async function saveUpload(type,rows,fileName){
   }
 }
 async function restoreUploads(){
-  const key=getKey(); if(!key)return;
+  const headers=await authHeaders();
+  if(!headers.Authorization&&!headers['X-Retention-Key'])return;
   try{
-    const r=await fetch(PROXY+'?endpoint=rise_uploads',{headers:{'X-Retention-Key':key}});
+    const r=await fetch(PROXY+'?endpoint=rise_uploads',{headers});
     if(!r.ok)return;
     const j=await r.json();
     for(const kind of ['roster','certs']){
