@@ -213,6 +213,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 <div class="nav-tabs">
   <div class="ntab on" id="tab-tracker" onclick="switchTab('tracker')">Rise Meeting Tracker</div>
   <div class="ntab" id="tab-dashboard" onclick="switchTab('dashboard')">Caregiver Dashboard</div>
+  <div class="ntab" id="tab-summary" onclick="switchTab('summary')">Program Summary</div>
 </div>
 
 <!-- UPLOADS (iSolved only — everything else streams from Viv) -->
@@ -270,6 +271,22 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
     <div>Search for a caregiver to open their Rise review.</div>
   </div>
   <div id="dashboard" style="display:none"></div>
+</div>
+
+<!-- PAGE: PROGRAM SUMMARY -->
+<div id="page-summary" style="display:none">
+  <div class="bar" style="flex-wrap:wrap">
+    <label>MCE</label>
+    <select id="sumMce" onchange="renderSummary()"><option value="">All MCEs</option></select>
+    <label>Market</label>
+    <select id="sumMarket" onchange="renderSummary()"><option value="">All markets</option></select>
+    <label>Meetings from</label>
+    <input type="date" id="sumFrom" onchange="renderSummary()" style="padding:6px 8px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
+    <label>to</label>
+    <input type="date" id="sumTo" onchange="renderSummary()" style="padding:6px 8px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
+    <span class="count" id="sumCount"></span>
+  </div>
+  <div id="summary"></div>
 </div>
 
 <script>
@@ -1080,11 +1097,178 @@ function toggleSe(id){ const el=document.getElementById(id); if(el)el.classList.
 // TABS / UTILITIES
 // ════════════════════════════════════════════════════════════════════════════
 function switchTab(tab){
-  document.getElementById('page-tracker').style.display=tab==='tracker'?'':'none';
-  document.getElementById('page-dashboard').style.display=tab==='dashboard'?'':'none';
-  document.getElementById('tab-tracker').classList.toggle('on',tab==='tracker');
-  document.getElementById('tab-dashboard').classList.toggle('on',tab==='dashboard');
+  ['tracker','dashboard','summary'].forEach(t=>{
+    document.getElementById('page-'+t).style.display=tab===t?'':'none';
+    document.getElementById('tab-'+t).classList.toggle('on',tab===t);
+  });
   if(tab==='tracker')renderTracker();
+  if(tab==='summary')renderSummary();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PROGRAM SUMMARY (Rise overview: segments · journey · PIPs/WWs)
+// ════════════════════════════════════════════════════════════════════════════
+const SEG_ORDER=['First 90 Days','Performance Support','Professional Development','PRN'];
+const SEG_CLS={'First 90 Days':'bg-p','Performance Support':'bg-a','Professional Development':'bg-b','PRN':'bg-n'};
+let pipww=null;   // uploaded corrective-action rows {name,empNum,type,action,date,endDate,market}
+const PIPWW_LS='rise_pipww';
+
+function personCurrentSegment(p){
+  const n=getMostRecentForm(ninetyFormsFor(p));
+  if(n){ const s=normalizeSegment(n.segment); if(s)return s; }
+  if(p.hireDate){ const d=Math.round((TODAY-p.hireDate)/86400000); if(d>=0&&d<=90)return 'First 90 Days'; }
+  const r=getMostRecentForm(riseFormsFor(p));
+  if(r){ const s=normalizeSegment(r.segment); if(s)return s; }
+  return null;
+}
+function segmentHistory(p){
+  return [...riseFormsFor(p),...ninetyFormsFor(p)]
+    .map(f=>({date:parseDate(f.meetingDate||f.submittedAt),seg:normalizeSegment(f.segment)}))
+    .filter(x=>x.date&&x.seg)
+    .sort((a,b)=>a.date-b.date);
+}
+function parsePipww(rows){
+  const out=[];
+  rows.forEach(r=>{
+    const empNum=(r['Employee Number']||'').toString().trim();
+    if(!empNum)return;   // market header rows have no employee number
+    const action=(r['Action Taken']||'').trim();
+    out.push({
+      name:(r['Employee Name']||'').trim(), empNum,
+      type:(r['Occurrence Type']||'').trim(), action,
+      isPip:/pip/i.test(action), isWW:/written warning|ww/i.test(action),
+      date:parseDate(r['Date Of Occurrence']||r['Date Action Taken']),
+      endDate:parseDate(r['Notes']), notes:(r['Notes']||'').trim()
+    });
+  });
+  return out;
+}
+function pipwwUpload(input){
+  const f=input.files[0]; if(!f)return;
+  const rd=new FileReader();
+  rd.onload=e=>{
+    let data;
+    if(f.name.toLowerCase().endsWith('.csv'))data=parseCSV(e.target.result);
+    else{ const wb=XLSX.read(e.target.result,{type:'binary',cellDates:true}); data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}); }
+    pipww=parsePipww(data);
+    try{ localStorage.setItem(PIPWW_LS,JSON.stringify({rows:data,at:new Date().toISOString()})); }catch(_){}
+    renderSummary();
+  };
+  if(f.name.toLowerCase().endsWith('.csv'))rd.readAsText(f); else rd.readAsBinaryString(f);
+}
+function restorePipww(){
+  try{ const raw=localStorage.getItem(PIPWW_LS); if(raw){ const j=JSON.parse(raw); if(j&&j.rows)pipww=parsePipww(j.rows); } }catch(_){}
+}
+function fillSummaryFilters(){
+  const mceSel=document.getElementById('sumMce'), mSel=document.getElementById('sumMarket');
+  if(mceSel.options.length<=1){
+    const mces=[...new Set(spine.map(p=>p.manager).filter(Boolean))].sort();
+    mceSel.innerHTML='<option value="">All MCEs</option>'+mces.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+  }
+  if(mSel.options.length<=1){
+    const mkts=[...new Set(spine.map(p=>p.market).filter(Boolean))].sort();
+    mSel.innerHTML='<option value="">All markets</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+  }
+}
+function renderSummary(){
+  const el=document.getElementById('summary');
+  if(!viv){ el.innerHTML='<div class="empty-state"><div class="big">📊</div><div>Sync Viv data to see the Rise program summary.</div></div>'; return; }
+  fillSummaryFilters();
+  const mce=document.getElementById('sumMce').value;
+  const market=document.getElementById('sumMarket').value;
+  const from=parseDate(document.getElementById('sumFrom').value);
+  const to=parseDate(document.getElementById('sumTo').value);
+  const inScope=p=>(!mce||p.manager===mce)&&(!market||p.market===market);
+  const active=spine.filter(p=>p.viv&&p.viv.status==='hired'&&inScope(p));
+  document.getElementById('sumCount').textContent=active.length+' active caregivers';
+
+  // ── 1) Segment distribution (current) ──
+  const segCounts={}; SEG_ORDER.forEach(s=>segCounts[s]=0); let segUnknown=0;
+  active.forEach(p=>{ const s=personCurrentSegment(p); if(s&&segCounts[s]!=null)segCounts[s]++; else segUnknown++; });
+  const segTotal=SEG_ORDER.reduce((a,s)=>a+segCounts[s],0)||1;
+
+  // ── 2) Journey (segment transitions from meeting history, within date range) ──
+  const inRange=d=>(!from||d>=from)&&(!to||d<=to);
+  let exitedPS=0, psDurations=[], enteredPS_fromPD=0, stillInPS=0;
+  active.forEach(p=>{
+    const h=segmentHistory(p).filter(x=>inRange(x.date));
+    if(h.length<1)return;
+    // walk transitions
+    let psStart=null;
+    for(let i=0;i<h.length;i++){
+      const seg=h[i].seg, prev=i>0?h[i-1].seg:null;
+      if(seg==='Performance Support'&&psStart==null)psStart=h[i].date;
+      if(prev==='Performance Support'&&seg!=='Performance Support'){
+        exitedPS++;
+        if(psStart)psDurations.push(Math.round((h[i].date-psStart)/86400000));
+        psStart=null;
+      }
+      if(prev==='Professional Development'&&seg==='Performance Support')enteredPS_fromPD++;
+    }
+    if(h[h.length-1].seg==='Performance Support')stillInPS++;
+  });
+  const avgPSdays=psDurations.length?Math.round(psDurations.reduce((a,b)=>a+b,0)/psDurations.length):null;
+
+  // ── 3) PIPs / WWs (from uploaded corrective-action report) ──
+  let pipRows=[];
+  if(pipww){
+    pipRows=pipww.filter(r=>inRange(r.date||TODAY));
+    // scope by MCE/market via roster match on empNum/name
+    if(mce||market){
+      pipRows=pipRows.filter(r=>{
+        const p=spine.find(x=>(x.empNum&&x.empNum===r.empNum)||namesMatch(x.name,r.name));
+        return p&&inScope(p);
+      });
+    }
+  }
+  const pips=pipRows.filter(r=>r.isPip).length, wws=pipRows.filter(r=>r.isWW).length;
+
+  let h='';
+  // KPI row
+  h+='<div class="grid four" style="margin-bottom:14px">'+
+    '<div class="fc"><div class="ct">Active in Rise</div><div class="big-stat"><span class="v">'+active.length+'</span></div><div class="stat-foot">under '+(mce||'all 7 MCEs')+'</div></div>'+
+    '<div class="fc"><div class="ct">Performance Support</div><div class="big-stat"><span class="v a">'+segCounts['Performance Support']+'</span></div><div class="stat-foot">'+Math.round(100*segCounts['Performance Support']/segTotal)+'% of segmented</div></div>'+
+    '<div class="fc"><div class="ct">Exited Perf. Support</div><div class="big-stat"><span class="v g">'+exitedPS+'</span></div><div class="stat-foot">'+(avgPSdays!=null?'avg '+avgPSdays+' days in PS':'improved out')+'</div></div>'+
+    '<div class="fc"><div class="ct">PIPs / WWs</div><div class="big-stat"><span class="v r">'+(pipww?(pips+wws):'—')+'</span></div><div class="stat-foot">'+(pipww?pips+' PIP · '+wws+' WW':'upload report below')+'</div></div>'+
+  '</div>';
+
+  // Segment distribution bars
+  h+='<div class="fc" style="margin-bottom:14px"><div class="ct">Caregivers by Segment of Support</div>';
+  SEG_ORDER.forEach(s=>{
+    const n=segCounts[s], pct=Math.round(100*n/segTotal);
+    h+='<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><span class="bdg '+SEG_CLS[s]+'" style="min-width:170px">'+s+'</span>'+
+      '<div style="flex:1;height:16px;background:var(--bg3);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:var(--orange)"></div></div>'+
+      '<span style="min-width:70px;text-align:right;font-variant-numeric:tabular-nums"><strong>'+n+'</strong> · '+pct+'%</span></div>';
+  });
+  if(segUnknown)h+='<div class="stat-foot" style="margin-top:6px">'+segUnknown+' caregiver'+(segUnknown!==1?'s':'')+' have no recorded segment yet (no Rise/90-day meeting).</div>';
+  h+='</div>';
+
+  // Journey card
+  h+='<div class="grid"><div class="fc"><div class="ct">Caregiver Journey — improving</div>'+
+    '<div class="metric-row"><span>Exited Performance Support (improved)</span><span class="metric-value g">'+exitedPS+'</span></div>'+
+    '<div class="metric-row"><span>Avg time in Performance Support</span><span class="metric-value">'+(avgPSdays!=null?avgPSdays+' days':'—')+'</span></div>'+
+    '<div class="metric-row"><span>Currently in Performance Support</span><span class="metric-value a">'+stillInPS+'</span></div>'+
+    '<div class="stat-foot" style="margin-top:8px">Derived from segment changes across each caregiver\'s Rise + 90-day meeting history'+(from||to?' in the selected date range':'')+'.</div></div>';
+  h+='<div class="fc"><div class="ct">Caregiver Journey — declining</div>'+
+    '<div class="metric-row"><span>Moved Professional Development → Performance Support</span><span class="metric-value r">'+enteredPS_fromPD+'</span></div>'+
+    '<div class="stat-foot" style="margin-top:8px">A caregiver whose meeting segment stepped back from Professional Development into Performance Support.</div></div></div>';
+
+  // PIP/WW section
+  h+='<div class="fc" style="margin-top:14px"><div class="ct">PIPs &amp; Written Warnings</div>';
+  h+='<div style="margin-bottom:10px"><label class="pw-upload" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:1px solid var(--blue);color:var(--blue);cursor:pointer;font-size:12px;font-weight:600">Upload corrective-action report (.xlsx)<input type="file" accept=".xlsx,.xls,.csv" onchange="pipwwUpload(this)" style="display:none"></label> <span class="muted">Notes column = end date. Persists in this browser.</span></div>';
+  if(pipww&&pipRows.length){
+    h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Type</th><th>Action</th><th>Issued</th><th>Ends</th></tr></thead><tbody>';
+    pipRows.sort((a,b)=>(b.date||0)-(a.date||0)).forEach(r=>{
+      h+='<tr><td class="td-name">'+escHtml(r.name)+'</td><td>'+escHtml(r.type)+'</td>'+
+        '<td><span class="bdg '+(r.isPip?'bg-r':'bg-a')+'">'+escHtml(r.action||'—')+'</span></td>'+
+        '<td class="td-date">'+(r.date?formatDate(r.date):'—')+'</td><td class="td-date">'+(r.endDate?formatDate(r.endDate):(r.notes?escHtml(r.notes):'—'))+'</td></tr>';
+    });
+    h+='</tbody></table></div>';
+  } else if(pipww){ h+='<div class="no-data">No PIPs/WWs match the current filters.</div>'; }
+  else { h+='<div class="no-data">Upload the iSolved corrective-action report to track PIPs and written warnings here.</div>'; }
+  h+='</div>';
+
+  el.innerHTML=h;
 }
 function stripCaregiverSuffix(name){ return String(name||'').replace(/\s+caregiver\s*$/i,'').trim(); }
 function formatDisplayName(raw){
@@ -1133,6 +1317,7 @@ function formatDate(val){
   }
 })();
 restoreLocalUploads();   // restore this browser's saved certs/roster before anything else
+restorePipww();          // restore uploaded PIP/WW report for the Program Summary
 renderLiveChips();
 if(getKey())syncViv(false); else showGate();
 </script>
