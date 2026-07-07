@@ -870,10 +870,17 @@ function ptoExpiration(hireDate,manager){
   if(!hireDate)return null;
   if(/dova\s+weinberger/i.test(manager||''))return null;
   const now=new Date(TODAY);
-  let anniv=new Date(now.getFullYear(),hireDate.getMonth(),hireDate.getDate());
-  if(anniv<now)anniv=new Date(now.getFullYear()+1,hireDate.getMonth(),hireDate.getDate());
-  anniv.setDate(anniv.getDate()+30);
-  return anniv;
+  // Expiration = work anniversary + 30 days. Compare the +30 DEADLINE to today
+  // (not the anniversary itself): in the 30-day window right after an anniversary
+  // the balance hasn't expired yet, so this year's date still applies. Only roll
+  // to next year once that deadline has actually passed.
+  let exp=new Date(now.getFullYear(),hireDate.getMonth(),hireDate.getDate());
+  exp.setDate(exp.getDate()+30);
+  if(exp<now){
+    exp=new Date(now.getFullYear()+1,hireDate.getMonth(),hireDate.getDate());
+    exp.setDate(exp.getDate()+30);
+  }
+  return exp;
 }
 const SICK_CAP=40;  // hours carried into the next calendar year; excess expires 12/31
 
