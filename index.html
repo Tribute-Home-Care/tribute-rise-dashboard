@@ -75,11 +75,13 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
   <div class="logo"><span class="wordmark">Tribute</span><span class="wordmark-sub">Caregiver Intelligence Suite</span></div>
   <div class="suite-tabs">
     <div class="stab on" id="stab-rise" onclick="showApp('rise')">Rise Dashboard</div>
+    <div class="stab" id="stab-hours" onclick="showApp('hours')">Desired Hours</div>
     <div class="stab" id="stab-retention" onclick="showApp('retention')">Retention Tracker</div>
   </div>
 </div>
 <div class="frames" id="frames" style="display:none">
   <iframe id="frame-rise" class="on" title="Rise Dashboard"></iframe>
+  <iframe id="frame-hours" title="Caregiver Hours & Happiness"></iframe>
   <iframe id="frame-retention" title="Caregiver Retention Tracker"></iframe>
 </div>
 
@@ -88,9 +90,10 @@ const PROXY='https://tribute-api-prod-bkc4hfcwf3f2f6bf.centralus-01.azurewebsite
 const KEY_LS='tribute_suite_key';
 const APPS={
   rise:'rise.html',
+  hours:'https://andrewdobsonn-cell.github.io/Tribute-Operating-System/caregiver_hours.html',
   retention:'https://andrewdobsonn-cell.github.io/Tribute-Operating-System/retention_tracker.html'
 };
-const loaded={rise:false,retention:false};
+const loaded={rise:false,hours:false,retention:false};
 
 function getKey(){ try{return localStorage.getItem(KEY_LS)||'';}catch(e){return '';} }
 
