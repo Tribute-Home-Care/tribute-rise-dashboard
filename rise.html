@@ -528,7 +528,13 @@ function buildSpine(){
     vivByNum[String(cg.mnum)]=cg;
     vivByName[normName(cg.name)]=cg;
   }
-  if(store.roster){
+  // Balances/certs are now 100% live from iSolved via the Viv payload, so always
+  // build from `viv` when it's present. The uploaded-roster branch is a pure
+  // offline fallback (used only if the live pull is unavailable). NB in the live
+  // payload cg.pto/cg.sick are bank-split OBJECTS and the numeric totals live in
+  // cg.ptoHrs/cg.sickHrs — the roster branch below assumes numbers, so it must
+  // never run against live data.
+  if(store.roster&&!viv){
     for(const r of store.roster){
       const status=(r['Employment Status']||'').toString().trim().toUpperCase();
       if(status&&status!=='A')continue;
@@ -957,7 +963,9 @@ function renderCaregiver(){
   if(p.hasBalances){
     const ptoExp=ptoExpiration(p.hireDate,p.manager);
     const pb=p.ptoBank;
-    html+='<div class="metric-row"><span>PTO Balance</span><span class="metric-value">'+p.pto.toFixed(2)+' hrs</span></div>';
+    // Coerce defensively: pto/sick should be numbers, but never let a bad value blank the panel.
+    const ptoNum=Number(p.pto)||0, sickNum=Number(p.sick)||0;
+    html+='<div class="metric-row"><span>PTO Balance</span><span class="metric-value">'+ptoNum.toFixed(2)+' hrs</span></div>';
     // iSolved gives the bank split: carryover = expiring at anniversary+30, rest is new.
     if(pb&&pb.carryover>0.01){
       html+='<div class="stat-foot" style="margin:-2px 0 2px;color:var(--amber-text)">⚠ '+pb.carryover.toFixed(1)+' hrs carryover'+(ptoExp?' — expiring '+formatDate(ptoExp):'')+'</div>';
@@ -965,9 +973,9 @@ function renderCaregiver(){
     } else if(ptoExp){
       html+='<div class="stat-foot" style="margin:-2px 0 6px">Expires '+formatDate(ptoExp)+' (anniversary + 30d)</div>';
     }
-    const sickOver=p.sick-SICK_CAP;
+    const sickOver=sickNum-SICK_CAP;
     const thisYE='Dec 31, '+TODAY.getFullYear();
-    html+='<div class="metric-row"><span>Sick Balance</span><span class="metric-value">'+p.sick.toFixed(2)+' hrs</span></div>';
+    html+='<div class="metric-row"><span>Sick Balance</span><span class="metric-value">'+sickNum.toFixed(2)+' hrs</span></div>';
     if(sickOver>0.01)html+='<div class="stat-foot" style="margin-top:-2px;color:var(--amber-text)">⚠ '+sickOver.toFixed(1)+' hrs over the 40-hr carryover cap expire '+thisYE+'</div>';
     else html+='<div class="stat-foot" style="margin-top:-2px">Up to 40 hrs carry over; excess expires '+thisYE+'</div>';
   } else html+='<div class="no-data">Balances unavailable — syncing from Viv, or upload the PTO/Sick roster</div>';
