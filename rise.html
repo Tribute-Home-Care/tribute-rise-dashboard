@@ -219,17 +219,10 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 </div>
 
 <!-- UPLOADS (iSolved only — everything else streams from Viv) -->
-<details class="upload-strip">
-  <summary>Certifications upload — PTO &amp; Sick now come live from Viv (no upload needed). Upload the certifications report to enable document-expiration alerts; it persists in this browser until replaced.</summary>
-  <div class="upload-grid">
-    <div class="upload-slot" id="slot-certs">
-      <input type="file" accept=".xlsx,.csv" onchange="handleFile('certs',this)">
-      <div class="slot-name">Certifications</div>
-      <div class="slot-status" id="status-certs">Certifications.xlsx</div>
-    </div>
-  </div>
-  <div class="live-chips" id="liveChips"></div>
-</details>
+<div class="upload-strip" style="padding:9px 14px">
+  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text2)">All data is live — nothing to upload</div>
+  <div class="live-chips" id="liveChips" style="margin-top:8px"></div>
+</div>
 
 <!-- PAGE: TRACKER -->
 <div id="page-tracker">
@@ -396,11 +389,11 @@ function showErr(msg){ const e=document.getElementById('errBox'); e.textContent=
 function fmtTime(iso){ const d=new Date(iso); return isNaN(d)?'—':d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }
 
 function renderLiveChips(){
-  const el=document.getElementById('liveChips');
+  const el=document.getElementById('liveChips'); if(!el)return;
   const chips=[
     ['Viv roster + Tribute Secure',!!viv],['Service exceptions',!!viv],['On-time & manual check-ins',!!viv],
     ['Task completion',!!viv],['Compliments',!!viv],['Last-minute bookings',!!viv],['Weekend visits',!!viv],['Rise + 90-day forms',!!viv],
-    ['PTO/Sick (iSolved)',!!store.roster],['Certifications (iSolved)',!!store.certs]
+    ['PTO / Sick banks (iSolved)',!!viv],['Certifications (iSolved)',!!viv]
   ];
   el.innerHTML=chips.map(c=>'<span class="live-chip '+(c[1]?'ok':'')+'">'+(c[1]?'✓ ':'')+c[0]+'</span>').join('');
 }
@@ -427,8 +420,8 @@ function persistLocal(type,rows,fileName){
 }
 function applyUpload(type,rows,label,persist){
   store[type]=rows;
-  document.getElementById('slot-'+type).classList.add('loaded');
-  document.getElementById('status-'+type).textContent=label;
+  const slot=document.getElementById('slot-'+type); if(slot)slot.classList.add('loaded');
+  const st=document.getElementById('status-'+type); if(st)st.textContent=label;
   if(persist)persistLocal(type,rows,label.replace(/^✓ /,'').split(' · ')[0]);
   if(type==='roster'){ buildSpine(); buildManagerFilter(); buildSearchIndex(); renderTracker(); }
   renderLiveChips();
@@ -437,8 +430,9 @@ function applyUpload(type,rows,label,persist){
 // Instant restore from this browser's localStorage — runs at boot, before any
 // network, so uploaded certs/roster survive a page close until cleared or replaced.
 function restoreLocalUploads(){
-  try{ localStorage.removeItem(UPLOAD_LS+'roster'); }catch(e){}   // PTO/Sick now from Viv — never restore a stale roster upload
-  for(const kind of ['certs']){
+  // PTO/Sick + certifications now come live from iSolved — clear any stale uploads.
+  try{ localStorage.removeItem(UPLOAD_LS+'roster'); localStorage.removeItem(UPLOAD_LS+'certs'); }catch(e){}
+  for(const kind of []){
     try{
       const raw=localStorage.getItem(UPLOAD_LS+kind); if(!raw)continue;
       const u=JSON.parse(raw);
@@ -560,12 +554,16 @@ function buildSpine(){
   } else if(viv){
     for(const cg of viv.caregivers){
       if(cg.status!=='hired')continue;   // Viv status vocabulary: hired = active
-      const hasBal=cg.pto!=null||cg.sick!=null;
+      // PTO/Sick now come from iSolved: cg.ptoHrs/sickHrs are the totals; cg.pto/sick
+      // carry the {total,carryover,newAccrued} bank split; cg.certs are live cert rows.
+      const hasBal=cg.ptoHrs!=null||cg.sickHrs!=null;
       spine.push({
         key:'v'+cg.id, empNum:String(cg.mnum||''), viv:cg,
         name:cg.name, market:cg.market||cg.state||'', manager:cg.mce||'',
         title:'', hireDate:parseDate(cg.hireDate),
-        pto:cg.pto!=null?cg.pto:0, sick:cg.sick!=null?cg.sick:0, hasBalances:hasBal, balancesSource:'Viv'
+        pto:cg.ptoHrs!=null?cg.ptoHrs:0, sick:cg.sickHrs!=null?cg.sickHrs:0,
+        ptoBank:cg.pto||null, sickBank:cg.sick||null, isoCerts:cg.certs||null,
+        hasBalances:hasBal, balancesSource:'iSolved'
       });
     }
   }
@@ -833,8 +831,20 @@ function getPast6Months(){
 }
 
 function getCertAlerts(p,isBab){
-  if(!store.certs)return null;   // null = not uploaded (vs [] = none found)
   const alerts=[];
+  // Prefer live iSolved certifications; fall back to an uploaded certs report.
+  if(p.isoCerts){
+    p.isoCerts.forEach(c=>{
+      const cert=(c.name||'').trim(); const cl=cert.toLowerCase();
+      if(CERT_EXCLUDE.some(ex=>cl.includes(ex)))return;
+      const endDate=parseDate(c.expiration);
+      if(!endDate)return;   // no-expiration certs (e.g. COVID) don't alert
+      if(endDate<=in6m)alerts.push({cert,date:endDate});
+    });
+    alerts.sort((a,b)=>a.date-b.date);
+    return alerts;
+  }
+  if(!store.certs)return null;   // null = neither iSolved nor upload available
   store.certs.filter(r=>{
     const en=(r['Employee Number']||'').toString().trim();
     const rn=(r['Employee Name']||'').trim();
@@ -946,8 +956,15 @@ function renderCaregiver(){
   html+='<div class="fc"><div class="ct">Balances'+(p.balancesSource?' ('+p.balancesSource+')':'')+'</div>';
   if(p.hasBalances){
     const ptoExp=ptoExpiration(p.hireDate,p.manager);
+    const pb=p.ptoBank;
     html+='<div class="metric-row"><span>PTO Balance</span><span class="metric-value">'+p.pto.toFixed(2)+' hrs</span></div>';
-    if(ptoExp)html+='<div class="stat-foot" style="margin:-2px 0 6px">Expires '+formatDate(ptoExp)+' (anniversary + 30d)</div>';
+    // iSolved gives the bank split: carryover = expiring at anniversary+30, rest is new.
+    if(pb&&pb.carryover>0.01){
+      html+='<div class="stat-foot" style="margin:-2px 0 2px;color:var(--amber-text)">⚠ '+pb.carryover.toFixed(1)+' hrs carryover'+(ptoExp?' — expiring '+formatDate(ptoExp):'')+'</div>';
+      if(pb.newAccrued>0.01)html+='<div class="stat-foot" style="margin:0 0 6px">'+pb.newAccrued.toFixed(1)+' hrs new (this year)</div>';
+    } else if(ptoExp){
+      html+='<div class="stat-foot" style="margin:-2px 0 6px">Expires '+formatDate(ptoExp)+' (anniversary + 30d)</div>';
+    }
     const sickOver=p.sick-SICK_CAP;
     const thisYE='Dec 31, '+TODAY.getFullYear();
     html+='<div class="metric-row"><span>Sick Balance</span><span class="metric-value">'+p.sick.toFixed(2)+' hrs</span></div>';
@@ -1058,9 +1075,9 @@ function renderCaregiver(){
   } else html+='<div class="no-data">No compliments recorded in the past 6 months</div>';
   html+='</div>';
 
-  html+='<div class="fc"><div class="ct">Documents Expiring / Expired (iSolved)</div>';
-  if(certAlerts===null)html+='<div class="no-data">Upload Certifications.xlsx to see document alerts</div>';
-  else if(!certAlerts.length)html+='<div class="no-data">No documents requiring attention</div>';
+  html+='<div class="fc"><div class="ct">Documents Expiring / Expired (iSolved · live)</div>';
+  if(certAlerts===null)html+='<div class="no-data">Certifications sync from iSolved automatically.</div>';
+  else if(!certAlerts.length)html+='<div class="no-data">No documents requiring attention (next 6 months)</div>';
   else certAlerts.forEach(c=>{
     const expired=c.date<TODAY;
     html+='<div class="doc-item"><span>'+escHtml(c.cert)+'</span><span class="bdg '+(expired?'bg-r':'bg-a')+'">'+(expired?'Expired':'Exp')+' '+formatDate(c.date)+'</span></div>';
