@@ -178,6 +178,58 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 .spin{width:22px;height:22px;border:2px solid var(--border2);border-top-color:var(--orange);border-radius:50%;animation:sp .8s linear infinite;margin:0 auto 12px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .muted{color:var(--text3);font-size:11px}
+
+/* ── SCOREBOARD (gamified MCE Performance) ── */
+.sb-hero{position:relative;overflow:hidden;border-radius:var(--rl);padding:20px 24px;margin-bottom:16px;color:#fff;background:linear-gradient(135deg,var(--orange) 0%,var(--purple) 100%);box-shadow:0 6px 22px rgba(170,0,97,.20)}
+.sb-hero h2{font-size:20px;font-weight:700;letter-spacing:-.01em;margin-bottom:2px}
+.sb-hero .sb-sub{font-size:12px;opacity:.9}
+.sb-hero .sb-spark{position:absolute;right:-14px;top:-18px;font-size:120px;opacity:.12;transform:rotate(-12deg);pointer-events:none}
+.sb-heronums{display:flex;flex-wrap:wrap;gap:22px;margin-top:14px}
+.sb-heronum .n{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.sb-heronum .l{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;opacity:.85;margin-top:2px}
+.sb-bar{height:8px;border-radius:6px;background:var(--bg3);overflow:hidden;margin-top:6px}
+.sb-bar>i{display:block;height:100%;border-radius:6px;transition:width .9s cubic-bezier(.2,.8,.2,1)}
+.sb-bar.on-hero{background:rgba(255,255,255,.25)}
+.sb-fill-g{background:var(--green)}.sb-fill-a{background:var(--amber)}.sb-fill-r{background:var(--red)}.sb-fill-w{background:#fff}
+.sb-section-h{font-size:13px;font-weight:700;color:var(--text);margin:18px 0 10px;display:flex;align-items:center;gap:8px}
+.sb-section-h .pill{font-size:11px;font-weight:600;color:var(--text3)}
+.sb-teams{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.sb-team{background:var(--bg);border:.5px solid var(--border);border-radius:var(--rl);padding:14px 16px;cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .15s;position:relative}
+.sb-team:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(15,30,53,.10);border-color:var(--border2)}
+.sb-team .rk{position:absolute;top:12px;right:14px;font-size:22px}
+.sb-team .nm{font-size:14px;font-weight:700;padding-right:30px}
+.sb-team .mk{font-size:11px;color:var(--text3);margin-bottom:8px}
+.sb-team .big{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.sb-team .sub{font-size:11px;color:var(--text3);margin-top:2px}
+.sb-team .chips{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+.sb-lb{border:.5px solid var(--border);border-radius:var(--rl);overflow:hidden;background:var(--bg)}
+.sb-lrow{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:.5px solid var(--border);cursor:pointer;transition:background .12s}
+.sb-lrow:last-child{border-bottom:none}
+.sb-lrow:hover{background:var(--bg2)}
+.sb-lrow .rank{width:34px;text-align:center;font-size:18px;font-weight:800;color:var(--text3);font-variant-numeric:tabular-nums;flex:none}
+.sb-lrow .rank.medal{font-size:22px}
+.sb-lrow .who{flex:1;min-width:0}
+.sb-lrow .who .nm{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb-lrow .who .mk{font-size:11px;color:var(--text3)}
+.sb-lrow .who .badges{margin-top:3px;display:flex;gap:5px;flex-wrap:wrap}
+.sb-abadge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:9px;background:var(--bg3);color:var(--text2);white-space:nowrap}
+.sb-lrow .stat{text-align:right;flex:none;width:74px}
+.sb-lrow .stat .v{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
+.sb-lrow .stat .l{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)}
+.sb-lrow .pts{text-align:right;flex:none;width:66px}
+.sb-lrow .pts .v{font-size:18px;font-weight:800;color:var(--orange);font-variant-numeric:tabular-nums}
+.sb-lrow .pts .l{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)}
+.sb-coach{border:.5px solid var(--border);border-left:3px solid var(--amber);border-radius:var(--r);background:var(--bg);padding:10px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:background .12s}
+.sb-coach:hover{background:var(--bg2)}
+.sb-coach .dot{width:9px;height:9px;border-radius:50%;flex:none;animation:none}
+.sb-coach.sev-r{border-left-color:var(--red)}.sb-coach.sev-r .dot{background:var(--red)}
+.sb-coach.sev-a{border-left-color:var(--amber)}.sb-coach.sev-a .dot{background:var(--amber)}
+.sb-coach .nm{font-weight:700;font-size:13px;flex:none;min-width:150px}
+.sb-coach .why{font-size:12px;color:var(--text2);display:flex;gap:6px;flex-wrap:wrap}
+.sb-coach .why b{color:var(--red-text);font-weight:600}
+.sb-allgood{padding:20px;text-align:center;color:var(--green-text);background:var(--green-bg);border-radius:var(--r);font-size:13px;font-weight:600}
+.sb-note{font-size:11px;color:var(--text3);margin:4px 0 14px}
+@media(max-width:640px){.sb-lrow .stat{width:56px}.sb-lrow .stat.hide-sm{display:none}}
 </style>
 </head>
 <body>
@@ -212,6 +264,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 <!-- TABS -->
 <div class="nav-tabs">
   <div class="ntab on" id="tab-tracker" onclick="switchTab('tracker')">Rise Meeting Tracker</div>
+  <div class="ntab" id="tab-scoreboard" onclick="switchTab('scoreboard')">🏆 Performance</div>
   <div class="ntab" id="tab-dashboard" onclick="switchTab('dashboard')">Caregiver Dashboard</div>
   <div class="ntab" id="tab-summary" onclick="switchTab('summary')">Program Summary</div>
   <div class="ntab" id="tab-newhires" onclick="switchTab('newhires')">New Hires</div>
@@ -244,6 +297,24 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
       <tbody id="trackerBody"></tbody>
     </table>
   </div>
+</div>
+
+<!-- PAGE: PERFORMANCE SCOREBOARD -->
+<div id="page-scoreboard" style="display:none">
+  <div class="bar" style="flex-wrap:wrap">
+    <label>Team (MCE)</label>
+    <select id="sbMce" onchange="renderScoreboard()"><option value="">🏁 All Teams</option></select>
+    <label>Market</label>
+    <select id="sbMarket" onchange="renderScoreboard()"><option value="">All markets</option></select>
+    <label>Rank by</label>
+    <select id="sbRankBy" onchange="renderScoreboard()">
+      <option value="points">Rise points</option>
+      <option value="onTime">On-time %</option>
+      <option value="compliments">Compliments</option>
+    </select>
+    <span class="count" id="sbCount"></span>
+  </div>
+  <div id="scoreboard"><div class="empty-state"><div class="big">🏆</div><div>Sync Viv data to build the team scoreboard.</div></div></div>
 </div>
 
 <!-- PAGE: CAREGIVER DASHBOARD -->
@@ -1150,14 +1221,197 @@ function toggleSe(id){ const el=document.getElementById(id); if(el)el.classList.
 // TABS / UTILITIES
 // ════════════════════════════════════════════════════════════════════════════
 function switchTab(tab){
-  ['tracker','dashboard','summary','newhires','referrals'].forEach(t=>{
+  ['tracker','scoreboard','dashboard','summary','newhires','referrals'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
   });
   if(tab==='tracker')renderTracker();
+  if(tab==='scoreboard')renderScoreboard();
   if(tab==='summary')renderSummary();
   if(tab==='newhires')loadNewHires();
   if(tab==='referrals')loadReferrals();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PERFORMANCE SCOREBOARD — gamified MCE team view built from the same live
+// per-caregiver metrics as the Caregiver Dashboard (Rise window ≈ last 6 months).
+// ════════════════════════════════════════════════════════════════════════════
+function sbScore(p){
+  const v=p.viv; if(!v)return null;
+  const exc=categorizeExceptions(v.exceptions||[]);
+  const compliments=(v.compliments||[]).length;
+  const ck=v.checkin;
+  const visits=ck?ck.checked:0;
+  const onTimeN=ck?(ck[ONTIME_RULE]||0):0;
+  const onTimePct=(ck&&ck.checked>0)?(onTimeN/ck.checked*100):null;
+  const manualPct=(ck&&ck.manualDen>0)?(ck.manual/ck.manualDen*100):null;
+  const taskT=(v.tasks&&v.tasks.total)||0, taskC=(v.tasks&&v.tasks.completed)||0;
+  const taskPct=taskT>0?(taskC/taskT*100):null;
+  const missingTasks=Math.max(0,taskT-taskC);
+  const lastMin=(v.lastMinute||[]).filter(b=>b.leadHrs>=0&&b.leadHrs<=LM_THRESHOLD_HRS).length;
+  const calloutMonths=exc.calloutMonths.size;
+  const complaints=exc.connection.length+exc.communication.length+exc.reliability.length+exc.flexibility.length;
+  const rp=calcRisePoints(compliments,taskPct,onTimePct,lastMin,exc.calloutMonths);
+  return {key:p.key,name:p.name,mce:p.manager||'—',market:p.market||'—',visits,onTimeN,onTimePct,
+    manualPct,taskPct,taskC,taskT,missingTasks,compliments,lastMin,calloutMonths,complaints,points:rp.total,
+    liveIn:(v.liveInVisits||0)>0};
+}
+function sbFillClass(pct,goal){ if(pct==null)return 'sb-fill-r'; return pct>=goal?'sb-fill-g':(pct>=goal-12?'sb-fill-a':'sb-fill-r'); }
+function sbBadges(s){
+  const b=[];
+  if(s.onTimePct!=null&&s.onTimePct>=99.9&&s.visits>=3)b.push('🎯 Perfect On-Time');
+  if(s.taskPct!=null&&s.taskPct>=99.5&&s.visits>=3)b.push('📝 Flawless Notes');
+  if(s.compliments>=3)b.push('⭐ '+s.compliments+' Compliments');
+  else if(s.compliments>=1)b.push('💛 Loved');
+  if(s.calloutMonths===0&&s.visits>=4)b.push('🛡️ Rock Solid');
+  if(s.manualPct!=null&&s.manualPct<=2&&s.visits>=4)b.push('📱 App Pro');
+  return b;
+}
+function sbFlags(s){
+  const f=[];
+  if(s.onTimePct!=null&&s.onTimePct<92&&s.visits>=2)f.push({t:Math.round(s.onTimePct)+'% on-time',hard:s.onTimePct<80});
+  if(s.missingTasks>=3)f.push({t:s.missingTasks+' missing notes',hard:s.missingTasks>=6});
+  if(s.calloutMonths>0)f.push({t:s.calloutMonths+' call-out mo'+(s.calloutMonths>1?'s':''),hard:true});
+  if(s.complaints>0)f.push({t:s.complaints+' complaint'+(s.complaints>1?'s':''),hard:s.complaints>=2});
+  return f;
+}
+function sbTeamAgg(list){
+  let onT=0,ck=0,tc=0,tt=0,comp=0,co=0,pts=0;
+  list.forEach(s=>{ onT+=s.onTimeN; ck+=s.visits; tc+=s.taskC; tt+=s.taskT;
+    comp+=s.compliments; co+=s.calloutMonths; pts+=s.points; });
+  return { onTimePct:ck?onT/ck*100:null, taskPct:tt?tc/tt*100:null, compliments:comp,
+    callouts:co, points:pts, cgs:list.length, avgPts:list.length?Math.round(pts/list.length):0, visits:ck };
+}
+function sbBar(pct,goal,onHero){
+  const w=pct==null?0:Math.min(100,pct);
+  const fill=onHero?'sb-fill-w':sbFillClass(pct,goal);
+  return '<div class="sb-bar'+(onHero?' on-hero':'')+'"><i class="'+fill+'" style="width:'+w.toFixed(0)+'%"></i></div>';
+}
+function sbMedal(i){ return i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1); }
+
+function renderScoreboard(){
+  const el=document.getElementById('scoreboard');
+  if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="big">🏆</div><div>Sync Viv data to build the team scoreboard.</div></div>'; return; }
+  // populate filters once
+  const mceSel=document.getElementById('sbMce'), mktSel=document.getElementById('sbMarket');
+  if(mceSel.options.length<=1){
+    const mces=[...new Set(spine.map(p=>p.manager).filter(Boolean))].sort();
+    mceSel.innerHTML='<option value="">🏁 All Teams</option>'+mces.map(m=>'<option value="'+escHtml(m)+'">'+escHtml(m)+'</option>').join('');
+  }
+  if(mktSel.options.length<=1){
+    const mkts=[...new Set(spine.map(p=>p.market).filter(Boolean))].sort();
+    mktSel.innerHTML='<option value="">All markets</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+  }
+  const mce=mceSel.value, market=mktSel.value, rankBy=document.getElementById('sbRankBy').value;
+  // score every in-scope caregiver with live metrics
+  let scores=spine.map(sbScore).filter(Boolean)
+    .filter(s=>!(s.market||'').toLowerCase().includes('virginia'))
+    .filter(s=>!market||s.market===market);
+  const active=scores.filter(s=>s.visits>0);
+  const rankVal=s=>rankBy==='onTime'?(s.onTimePct==null?-1:s.onTimePct):rankBy==='compliments'?s.compliments:s.points;
+  const sortFn=(a,b)=>rankVal(b)-rankVal(a)||b.points-a.points||b.visits-a.visits;
+
+  document.getElementById('sbCount').textContent=(mce?1:new Set(active.map(s=>s.mce)).size+' teams · ')+active.length+' active caregivers';
+
+  if(!mce){ el.innerHTML=sbAllTeams(active,sortFn); return; }
+  el.innerHTML=sbOneTeam(mce,active.filter(s=>s.mce===mce),sortFn);
+}
+
+function sbAllTeams(active,sortFn){
+  // company hero
+  const co=sbTeamAgg(active);
+  let h='<div class="sb-hero"><div class="sb-spark">🏆</div>'+
+    '<h2>Caregiver Excellence Scoreboard</h2>'+
+    '<div class="sb-sub">All teams · live from Viv · performance over the last ~6 months</div>'+
+    '<div class="sb-heronums">'+
+      sbHeroNum(co.onTimePct==null?'—':co.onTimePct.toFixed(1)+'%','Team On-Time',sbBar(co.onTimePct,92,true))+
+      sbHeroNum(co.taskPct==null?'—':co.taskPct.toFixed(1)+'%','Visit Notes',sbBar(co.taskPct,95,true))+
+      sbHeroNum('⭐ '+co.compliments,'Compliments','')+
+      sbHeroNum(co.cgs,'Caregivers','')+
+    '</div></div>';
+  // team standings
+  const byMce={}; active.forEach(s=>{ (byMce[s.mce]=byMce[s.mce]||[]).push(s); });
+  const teams=Object.entries(byMce).map(([m,list])=>({mce:m,agg:sbTeamAgg(list)}))
+    .sort((a,b)=>(b.agg.onTimePct||0)-(a.agg.onTimePct||0));
+  h+='<div class="sb-section-h">🏅 Team Standings <span class="pill">ranked by on-time % · tap a team to dive in</span></div>';
+  h+='<div class="sb-teams">'+teams.map((t,i)=>{
+    const a=t.agg;
+    return '<div class="sb-team" onclick="sbPickTeam(\''+encodeURIComponent(t.mce)+'\')">'+
+      '<div class="rk">'+(i<3?sbMedal(i):'<span style="font-size:13px;color:var(--text3);font-weight:700">#'+(i+1)+'</span>')+'</div>'+
+      '<div class="nm">'+escHtml(t.mce)+'</div><div class="mk">'+a.cgs+' caregivers · '+a.visits+' visits</div>'+
+      '<div class="big">'+(a.onTimePct==null?'—':a.onTimePct.toFixed(1)+'%')+'</div><div class="sub">on-time check-in</div>'+
+      sbBar(a.onTimePct,92)+
+      '<div class="chips"><span class="bdg bg-g">⭐ '+a.compliments+'</span>'+
+        (a.callouts>0?'<span class="bdg bg-r">'+a.callouts+' call-outs</span>':'<span class="bdg bg-b">✓ no call-outs</span>')+'</div>'+
+    '</div>';
+  }).join('')+'</div>';
+  // top performers across all teams
+  const top=[...active].sort(sortFn).slice(0,10);
+  h+='<div class="sb-section-h">🌟 Top Performers <span class="pill">all teams</span></div>';
+  h+=sbLeaderboard(top,true);
+  // needs coaching across all teams
+  h+=sbCoachSection(active);
+  h+='<div class="sb-note">Metrics reflect the live Rise window (~6 months) from Viv: on-time = check-in ≤1 min late; visit notes = checkout task validation; compliments, call-outs & complaints from service exceptions. Rise points = compliments×40 + on-time bonus + notes bonus + last-minute pickups + no-call-out months.</div>';
+  return h;
+}
+
+function sbOneTeam(mce,list,sortFn){
+  const a=sbTeamAgg(list);
+  const ranked=[...list].sort(sortFn);
+  let h='<div class="sb-hero"><div class="sb-spark">🏆</div>'+
+    '<h2>'+escHtml(mce)+"'s Team</h2>"+
+    '<div class="sb-sub">'+a.cgs+' caregivers · '+a.visits+' visits · live from Viv (~6-month window)</div>'+
+    '<div class="sb-heronums">'+
+      sbHeroNum(a.onTimePct==null?'—':a.onTimePct.toFixed(1)+'%','Team On-Time',sbBar(a.onTimePct,92,true))+
+      sbHeroNum(a.taskPct==null?'—':a.taskPct.toFixed(1)+'%','Visit Notes',sbBar(a.taskPct,95,true))+
+      sbHeroNum('⭐ '+a.compliments,'Compliments','')+
+      sbHeroNum(a.avgPts,'Avg Rise Pts','')+
+    '</div></div>';
+  h+='<div class="sb-section-h">🏆 Leaderboard <span class="pill">'+ranked.length+' caregivers · tap for full profile</span></div>';
+  h+=sbLeaderboard(ranked,true);
+  h+=sbCoachSection(list);
+  return h;
+}
+
+function sbHeroNum(n,l,bar){ return '<div class="sb-heronum"><div class="n">'+n+'</div><div class="l">'+l+'</div>'+(bar||'')+'</div>'; }
+
+function sbLeaderboard(list,showRank){
+  if(!list.length)return '<div class="no-data">No active caregivers with visits in this window.</div>';
+  return '<div class="sb-lb">'+list.map((s,i)=>{
+    const badges=sbBadges(s).slice(0,3).map(b=>'<span class="sb-abadge">'+b+'</span>').join('');
+    const otClass=s.onTimePct==null?'':(s.onTimePct>=92?'g':s.onTimePct>=80?'a':'r');
+    return '<div class="sb-lrow" onclick="openCaregiver(\''+s.key+'\')">'+
+      '<div class="rank'+(showRank&&i<3?' medal':'')+'">'+(showRank?sbMedal(i):'')+'</div>'+
+      '<div class="who"><div class="nm">'+escHtml(s.name)+(s.liveIn?' <span class="bdg bg-b" style="font-size:9px;padding:1px 6px">Live-In</span>':'')+'</div>'+
+        '<div class="mk">'+escHtml(s.mce)+' · '+escHtml(s.market)+'</div>'+
+        (badges?'<div class="badges">'+badges+'</div>':'')+'</div>'+
+      '<div class="stat hide-sm"><div class="v" style="color:var(--'+(otClass==='g'?'green':otClass==='a'?'amber':otClass==='r'?'red':'text3')+')">'+(s.onTimePct==null?'—':Math.round(s.onTimePct)+'%')+'</div><div class="l">on-time</div></div>'+
+      '<div class="stat hide-sm"><div class="v" style="color:var(--text)">'+s.visits+'</div><div class="l">visits</div></div>'+
+      '<div class="pts"><div class="v">'+s.points+'</div><div class="l">pts</div></div>'+
+    '</div>';
+  }).join('')+'</div>';
+}
+
+function sbCoachSection(list){
+  const flagged=list.map(s=>({s,f:sbFlags(s)})).filter(x=>x.f.length)
+    .sort((a,b)=>(b.f.some(f=>f.hard)?1:0)-(a.f.some(f=>f.hard)?1:0)||b.f.length-a.f.length);
+  let h='<div class="sb-section-h">🎯 Needs Coaching <span class="pill">'+flagged.length+' flagged · tap to open profile</span></div>';
+  if(!flagged.length)return h+'<div class="sb-allgood">🎉 Everyone on this team is on track — no coaching flags this cycle!</div>';
+  h+=flagged.map(x=>{
+    const hard=x.f.some(f=>f.hard);
+    return '<div class="sb-coach sev-'+(hard?'r':'a')+'" onclick="openCaregiver(\''+x.s.key+'\')">'+
+      '<span class="dot"></span>'+
+      '<div class="nm">'+escHtml(x.s.name)+'</div>'+
+      '<div class="why">'+x.f.map(f=>f.hard?'<b>'+escHtml(f.t)+'</b>':'<span>'+escHtml(f.t)+'</span>').join(' · ')+'</div>'+
+    '</div>';
+  }).join('');
+  return h;
+}
+
+function sbPickTeam(mceEnc){
+  document.getElementById('sbMce').value=decodeURIComponent(mceEnc);
+  renderScoreboard();
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 
 // ── REFERRALS (caregiver referral shout-outs from in-app chat) ──
