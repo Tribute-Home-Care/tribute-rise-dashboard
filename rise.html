@@ -1220,7 +1220,10 @@ function toggleSe(id){ const el=document.getElementById(id); if(el)el.classList.
 // ════════════════════════════════════════════════════════════════════════════
 // TABS / UTILITIES
 // ════════════════════════════════════════════════════════════════════════════
-function switchTab(tab){
+let _navReady=false, _curTab='tracker';
+function switchTab(tab,push){
+  if(push===undefined)push=true;
+  _curTab=tab;
   ['tracker','scoreboard','dashboard','summary','newhires','referrals'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
@@ -1230,7 +1233,14 @@ function switchTab(tab){
   if(tab==='summary')renderSummary();
   if(tab==='newhires')loadNewHires();
   if(tab==='referrals')loadReferrals();
+  // Push a history entry so the browser Back button steps between tabs instead
+  // of leaving the app. popstate handler passes push=false to avoid re-pushing.
+  if(push&&_navReady){ try{ history.pushState({riseTab:tab},''); }catch(e){} }
 }
+window.addEventListener('popstate',function(e){
+  const tab=(e.state&&e.state.riseTab)||'tracker';
+  if(tab!==_curTab)switchTab(tab,false);
+});
 
 // ════════════════════════════════════════════════════════════════════════════
 // PERFORMANCE SCOREBOARD — gamified MCE team view built from the same live
@@ -1740,6 +1750,10 @@ function formatDate(val){
 restoreLocalUploads();   // restore this browser's saved certs/roster before anything else
 restorePipww();          // restore uploaded PIP/WW report for the Program Summary
 renderLiveChips();
+// Seed the initial history entry so tab navigation (pushState) has a base to
+// return to, and Back retraces tabs instead of exiting on the first press.
+try{ history.replaceState({riseTab:'tracker'},''); }catch(e){}
+_navReady=true;
 if(getKey())syncViv(false); else showGate();
 </script>
 </body>
