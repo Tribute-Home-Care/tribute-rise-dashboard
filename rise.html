@@ -1311,10 +1311,13 @@ function renderScoreboard(){
   const rankVal=s=>rankBy==='onTime'?(s.onTimePct==null?-1:s.onTimePct):rankBy==='compliments'?s.compliments:s.points;
   const sortFn=(a,b)=>rankVal(b)-rankVal(a)||b.points-a.points||b.visits-a.visits;
 
-  document.getElementById('sbCount').textContent=(mce?1:new Set(active.map(s=>s.mce)).size+' teams · ')+active.length+' active caregivers';
+  const teamActive=mce?active.filter(s=>s.mce===mce):active;
+  document.getElementById('sbCount').textContent=mce
+    ? teamActive.length+' active caregivers'
+    : new Set(active.map(s=>s.mce)).size+' teams · '+active.length+' active caregivers';
 
   if(!mce){ el.innerHTML=sbAllTeams(active,sortFn); return; }
-  el.innerHTML=sbOneTeam(mce,active.filter(s=>s.mce===mce),sortFn);
+  el.innerHTML=sbOneTeam(mce,teamActive,sortFn);
 }
 
 function sbAllTeams(active,sortFn){
@@ -1349,8 +1352,8 @@ function sbAllTeams(active,sortFn){
   const top=[...active].sort(sortFn).slice(0,10);
   h+='<div class="sb-section-h">🌟 Top Performers <span class="pill">all teams</span></div>';
   h+=sbLeaderboard(top,true);
-  // needs coaching across all teams
-  h+=sbCoachSection(active);
+  // needs coaching across all teams (capped — pick a team to see its full list)
+  h+=sbCoachSection(active,25);
   h+='<div class="sb-note">Metrics reflect the live Rise window (~6 months) from Viv: on-time = check-in ≤1 min late; visit notes = checkout task validation; compliments, call-outs & complaints from service exceptions. Rise points = compliments×40 + on-time bonus + notes bonus + last-minute pickups + no-call-out months.</div>';
   return h;
 }
@@ -1392,12 +1395,14 @@ function sbLeaderboard(list,showRank){
   }).join('')+'</div>';
 }
 
-function sbCoachSection(list){
+function sbCoachSection(list,limit){
   const flagged=list.map(s=>({s,f:sbFlags(s)})).filter(x=>x.f.length)
     .sort((a,b)=>(b.f.some(f=>f.hard)?1:0)-(a.f.some(f=>f.hard)?1:0)||b.f.length-a.f.length);
-  let h='<div class="sb-section-h">🎯 Needs Coaching <span class="pill">'+flagged.length+' flagged · tap to open profile</span></div>';
+  const shown=limit?flagged.slice(0,limit):flagged;
+  const capped=limit&&flagged.length>limit;
+  let h='<div class="sb-section-h">🎯 Needs Coaching <span class="pill">'+(capped?'worst '+limit+' of '+flagged.length+' · pick a team for its full list':flagged.length+' flagged · tap to open profile')+'</span></div>';
   if(!flagged.length)return h+'<div class="sb-allgood">🎉 Everyone on this team is on track — no coaching flags this cycle!</div>';
-  h+=flagged.map(x=>{
+  h+=shown.map(x=>{
     const hard=x.f.some(f=>f.hard);
     return '<div class="sb-coach sev-'+(hard?'r':'a')+'" onclick="openCaregiver(\''+x.s.key+'\')">'+
       '<span class="dot"></span>'+
