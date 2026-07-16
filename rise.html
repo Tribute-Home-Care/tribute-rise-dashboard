@@ -482,7 +482,7 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
 <div class="rm-overlay" id="rmOverlay" onclick="if(event.target===this)closeRiseMeeting()">
   <div class="rm-modal">
     <div class="rm-head">
-      <div><h3 id="rmName">Rise Meeting Prep</h3><div class="sub">Prefilled from live metrics · parse your meeting notes with Claude · copy for Viv AI</div></div>
+      <div><h3 id="rmName">Rise Meeting Prep</h3><div class="sub">Prefilled from live metrics · draft the Connect section with Tribute Intelligence · copy for Viv AI</div></div>
       <button class="rm-x" onclick="closeRiseMeeting()">✕</button>
     </div>
     <div class="rm-body" id="rmBody"></div>
@@ -1196,7 +1196,7 @@ function renderCaregiver(){
     '</div></div>'+
     '<div class="points-box"><div class="points-num">'+risePoints.total+'</div><div class="points-label">Rise Above points<br>past 6 months</div></div>'+
   '</div>';
-  if(v)html+='<div style="margin:-4px 0 12px"><button onclick="openRiseMeeting(\''+p.key+'\')" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-radius:20px;background:linear-gradient(135deg,var(--orange),var(--purple));color:#fff;cursor:pointer">📋 Rise Meeting Prep — prefill &amp; Claude</button></div>';
+  if(v)html+='<div style="margin:-4px 0 12px"><button onclick="openRiseMeeting(\''+p.key+'\')" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-radius:20px;background:linear-gradient(135deg,var(--orange),var(--purple));color:#fff;cursor:pointer">📋 Rise Meeting Prep — Prefill with Tribute Intelligence</button></div>';
   if(win.isCustom)html+='<div class="fc" style="border-left:3px solid var(--orange);margin-bottom:12px;padding:9px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="bdg" style="background:var(--orange-bg);color:var(--orange-text)">📅 '+escHtml(win.label)+'</span><span style="font-size:12px;color:var(--text2)">On-time, visit-note & manual %s are computed for this range (snapped to whole weeks); compliments, service exceptions & last-minute bookings are filtered to the exact dates. <strong>Rise Above points remain the fixed 6-month program score.</strong></span></div>';
   if(isLiveIn)html+='<div class="fc" style="border-left:3px solid var(--blue);margin-bottom:12px;padding:10px 16px"><span class="bdg bg-b">Live-In caregiver</span> <span style="font-size:12px;color:var(--text2)">'+liveIn+' live-in visit'+(liveIn!==1?'s':'')+' in the window. On-time check-in, manual-check-in and visit-note metrics below cover this caregiver\'s <strong>hourly</strong> visits only — live-in visits don\'t generate hourly EVV check-ins, so they aren\'t reflected in those percentages.</span></div>';
 
@@ -1994,10 +1994,10 @@ function openRiseMeeting(key){
     _rmField('rm_met','Met Tribute’s expectations?','','select',['','Yes - moving into Professional Development','No - moving into Performance Support','Yes - they are PRN'])+
     _rmField('rm_points','Tribute Rise points',d.points,'text')+
   '</div>';
-  b+='<div class="rm-sec">✨ Meeting Notes → Claude</div>'+
-    '<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Paste your meeting notes or a transcript, then let Claude write the "Connect" section in your voice. Review &amp; edit before copying.</div>'+
+  b+='<div class="rm-sec">✨ Meeting Notes → Tribute Intelligence</div>'+
+    '<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Paste your meeting notes or a transcript, then let Tribute Intelligence write the "Connect" section in your voice. Review &amp; edit before copying.</div>'+
     '<textarea class="rm-notes" id="rm_rawnotes" placeholder="Paste raw meeting notes / transcript here…"></textarea>'+
-    '<div style="margin:8px 0"><button class="rm-btn p" id="rmParseBtn" onclick="parseRiseMeeting()">✨ Parse with Claude</button> <span id="rmParseMsg" style="font-size:12px;color:var(--text3)"></span></div>';
+    '<div style="margin:8px 0"><button class="rm-btn p" id="rmParseBtn" onclick="parseRiseMeeting()">✨ Prefill with Tribute Intelligence</button> <span id="rmParseMsg" style="font-size:12px;color:var(--text3)"></span></div>';
   b+='<div class="rm-sec">Connect · Happiness &amp; Performance</div><div class="rm-grid">'+
     _rmField('rm_feedback','How are things going? Feedback/concerns','','textarea')+
     _rmField('rm_prepdisc','Discuss anything from your prep','','textarea')+
@@ -2015,7 +2015,7 @@ async function parseRiseMeeting(){
   const msg=document.getElementById('rmParseMsg'), btn=document.getElementById('rmParseBtn');
   if(notes.length<5){ msg.textContent='Add some notes first.'; return; }
   const key=getKey(); const p=spine.find(x=>x.key===rmKey);
-  btn.disabled=true; msg.textContent='Claude is reading your notes…';
+  btn.disabled=true; msg.textContent='Tribute Intelligence is reading your notes…';
   try{
     const r=await fetch(PROXY+'?endpoint=rise_meeting_parse',{method:'POST',
       headers:{'Content-Type':'application/json','X-Retention-Key':key},
