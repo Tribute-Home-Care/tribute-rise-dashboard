@@ -1563,7 +1563,14 @@ function sbPickTeam(mceEnc){
 // ════════════════════════════════════════════════════════════════════════════
 // CERTIFICATIONS TAB — live iSolved certifications, who's expiring soonest.
 // Filterable by MCE / Market / horizon. Uses each caregiver's isoCerts.
+// Columns are click-to-sort; default (col:null) = expiring-soonest.
 // ════════════════════════════════════════════════════════════════════════════
+let certSort={col:null,dir:1};
+function certSortBy(col){
+  if(certSort.col===col)certSort.dir*=-1;   // same column → toggle direction
+  else { certSort.col=col; certSort.dir=1; }  // new column → ascending
+  renderCerts();
+}
 function renderCerts(){
   const el=document.getElementById('certs');
   if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading certifications live from iSolved…</div>'; return; }
@@ -1603,14 +1610,18 @@ function renderCerts(){
   // horizon filter: keep expired (days<0) always + upcoming within horizon
   if(horizonDays!=null)rows=rows.filter(r=>r.days<=horizonDays);
   if(q)rows=rows.filter(r=>(r.name+' '+r.cert+' '+r.authority).toLowerCase().includes(q));
-  // "Expiring soonest": upcoming first (soonest at top), then expired (most-recent
-  // lapse first) so long-ago-expired records sink to the bottom instead of burying
-  // the actionable ones.
-  rows.sort((a,b)=>{
-    const ae=a.days<0, be=b.days<0;
-    if(ae!==be)return ae?1:-1;
-    return ae ? (b.days-a.days) : (a.days-b.days);
-  });
+  // Default "Expiring soonest": upcoming first (soonest at top), then expired
+  // (most-recent lapse first) so long-ago-expired records sink to the bottom.
+  // Clicking a column header overrides this with an explicit sort.
+  if(!certSort.col){
+    rows.sort((a,b)=>{ const ae=a.days<0,be=b.days<0; if(ae!==be)return ae?1:-1; return ae?(b.days-a.days):(a.days-b.days); });
+  } else {
+    const cmp={ exp:(a,b)=>a.exp-b.exp, status:(a,b)=>a.days-b.days,
+      name:(a,b)=>a.name.localeCompare(b.name), cert:(a,b)=>a.cert.localeCompare(b.cert),
+      authority:(a,b)=>(a.authority||'').localeCompare(b.authority||''),
+      mce:(a,b)=>a.mce.localeCompare(b.mce), market:(a,b)=>a.market.localeCompare(b.market) }[certSort.col];
+    rows.sort((a,b)=>cmp(a,b)*certSort.dir || (a.exp-b.exp));
+  }
   const expired=rows.filter(r=>r.days<0).length;
   const in30=rows.filter(r=>r.days>=0&&r.days<=30).length;
   const in90=rows.filter(r=>r.days>=0&&r.days<=90).length;
@@ -1623,7 +1634,12 @@ function renderCerts(){
     '<div class="fc"><div class="ct">Documents shown</div><div class="big-stat"><span class="v b">'+rows.length+'</span></div><div class="stat-foot">'+cgs+' caregivers</div></div>'+
   '</div>';
   if(!rows.length){ el.innerHTML=h+'<div class="no-data">No certifications match the current filters. 🎉</div>'; return; }
-  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Expires</th><th>Status</th><th>Caregiver</th><th>Certification</th><th>Issuer</th><th>MCE</th><th>Market</th></tr></thead><tbody>';
+  const arrow=c=>certSort.col===c?(certSort.dir>0?' ▲':' ▼'):(!certSort.col&&c==='exp'?' ▲':'');
+  const th=(c,label)=>'<th onclick="certSortBy(\''+c+'\')" style="cursor:pointer;user-select:none" title="Sort by '+label+'">'+label+'<span style="color:var(--orange)">'+arrow(c)+'</span></th>';
+  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr>'+
+    th('exp','Expires')+th('status','Status')+th('name','Caregiver')+th('cert','Certification')+
+    th('authority','Issuer')+th('mce','MCE')+th('market','Market')+
+  '</tr></thead><tbody>';
   rows.forEach(r=>{
     const badge=r.days<0?'<span class="bdg bg-r">Expired '+(-r.days)+'d ago</span>'
       :r.days<=30?'<span class="bdg bg-r">'+r.days+'d left</span>'
