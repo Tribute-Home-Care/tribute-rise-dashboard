@@ -1612,7 +1612,14 @@ function renderCerts(){
   // horizon filter: keep expired (days<0) always + upcoming within horizon
   if(horizonDays!=null)rows=rows.filter(r=>r.days<=horizonDays);
   if(q)rows=rows.filter(r=>(r.name+' '+r.cert+' '+r.authority).toLowerCase().includes(q));
-  rows.sort((a,b)=>a.exp-b.exp);
+  // "Expiring soonest": upcoming first (soonest at top), then expired (most-recent
+  // lapse first) so long-ago-expired records sink to the bottom instead of burying
+  // the actionable ones.
+  rows.sort((a,b)=>{
+    const ae=a.days<0, be=b.days<0;
+    if(ae!==be)return ae?1:-1;
+    return ae ? (b.days-a.days) : (a.days-b.days);
+  });
   const expired=rows.filter(r=>r.days<0).length;
   const in30=rows.filter(r=>r.days>=0&&r.days<=30).length;
   const in90=rows.filter(r=>r.days>=0&&r.days<=90).length;
