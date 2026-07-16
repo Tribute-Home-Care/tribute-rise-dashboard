@@ -421,7 +421,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
     <input type="text" id="certSearch" placeholder="Search caregiver or document…" oninput="renderCerts()" style="padding:7px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);min-width:220px">
     <span class="count" id="certCount"></span>
   </div>
-  <div id="certs"><div class="empty-state"><div class="big">🎓</div><div>Sync Viv data to load live certifications.</div></div></div>
+  <div id="certs"><div class="empty-state"><div class="spin"></div>Loading certifications live from iSolved…</div></div></div>
 </div>
 
 <!-- PAGE: REFERRALS -->
@@ -637,7 +637,9 @@ async function restoreUploads(){
     const r=await fetch(PROXY+'?endpoint=rise_uploads',{headers});
     if(!r.ok)return;
     const j=await r.json();
-    for(const kind of ['roster','certs']){
+    // Roster & certifications now come live from iSolved — do NOT restore any
+    // legacy uploaded file for them. (Left empty; no upload kinds are restored.)
+    for(const kind of []){
       const u=j.uploads&&j.uploads[kind];
       if(u&&u.rows&&u.rows.length&&!store[kind]){
         const when=u.savedAt?new Date(u.savedAt).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'';
@@ -986,31 +988,15 @@ function getPast6Months(){
 }
 
 function getCertAlerts(p,isBab){
+  // Certifications come EXCLUSIVELY from iSolved (live /certifications feed).
+  // No Viv/uploaded-report fallback — iSolved is the system of record.
+  if(!p.isoCerts)return null;   // null = iSolved not yet synced for this caregiver
   const alerts=[];
-  // Prefer live iSolved certifications; fall back to an uploaded certs report.
-  if(p.isoCerts){
-    p.isoCerts.forEach(c=>{
-      const cert=(c.name||'').trim(); const cl=cert.toLowerCase();
-      if(CERT_EXCLUDE.some(ex=>cl.includes(ex)))return;
-      const endDate=parseDate(c.expiration);
-      if(!endDate)return;   // no-expiration certs (e.g. COVID) don't alert
-      if(endDate<=in6m)alerts.push({cert,date:endDate});
-    });
-    alerts.sort((a,b)=>a.date-b.date);
-    return alerts;
-  }
-  if(!store.certs)return null;   // null = neither iSolved nor upload available
-  store.certs.filter(r=>{
-    const en=(r['Employee Number']||'').toString().trim();
-    const rn=(r['Employee Name']||'').trim();
-    return (p.empNum&&en===p.empNum)||namesMatch(rn,p.name);
-  }).forEach(r=>{
-    const cert=(r['Certification']||'').trim();
-    const cl=cert.toLowerCase();
+  p.isoCerts.forEach(c=>{
+    const cert=(c.name||'').trim(); const cl=cert.toLowerCase();
     if(CERT_EXCLUDE.some(ex=>cl.includes(ex)))return;
-    const endDate=parseDate(r['End Date']);
-    if(!endDate)return;
-    // Flag ANY non-excluded certification expiring within the next 6 months (per Charlotte).
+    const endDate=parseDate(c.expiration);
+    if(!endDate)return;   // no-expiration certs (e.g. COVID) don't alert
     if(endDate<=in6m)alerts.push({cert,date:endDate});
   });
   alerts.sort((a,b)=>a.date-b.date);
@@ -1580,7 +1566,12 @@ function sbPickTeam(mceEnc){
 // ════════════════════════════════════════════════════════════════════════════
 function renderCerts(){
   const el=document.getElementById('certs');
-  if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="big">🎓</div><div>Sync Viv data to load live certifications.</div></div>'; return; }
+  if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading certifications live from iSolved…</div>'; return; }
+  // Certifications are sourced from iSolved (each caregiver's isoCerts). If none
+  // of the in-scope caregivers have iSolved certs yet, the iSolved feed hasn't
+  // synced — say so rather than falsely implying everyone is compliant.
+  const anyIso=spine.some(p=>p.isoCerts&&p.isoCerts.length);
+  if(!anyIso){ el.innerHTML='<div class="empty-state"><div class="big">🎓</div><div>Certifications are still syncing from iSolved — they refresh automatically every few hours. Check back shortly.</div></div>'; return; }
   const mceSel=document.getElementById('certMce'), mktSel=document.getElementById('certMarket');
   if(mceSel.options.length<=1){
     const mces=[...new Set(spine.map(p=>p.manager).filter(Boolean))].sort();
