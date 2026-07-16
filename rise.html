@@ -319,13 +319,26 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 
 <!-- PAGE: CAREGIVER DASHBOARD -->
 <div id="page-dashboard" style="display:none">
-  <div class="bar">
+  <div class="bar" style="flex-wrap:wrap">
     <div class="search-wrapper" id="searchWrapper">
       <input type="text" id="cgSearch" placeholder="Search caregivers…"
              oninput="filterCaregivers(this.value)" onfocus="openDropdown()"
              onkeydown="handleSearchKey(event)" autocomplete="off">
       <div class="search-dropdown" id="searchDropdown"></div>
     </div>
+    <label for="cgWin">Window</label>
+    <select id="cgWin" onchange="onCgWinChange()">
+      <option value="full">Full Rise window (6 mo)</option>
+      <option value="30">Last 30 days</option>
+      <option value="90">Last 90 days</option>
+      <option value="month">This month</option>
+      <option value="custom">Custom…</option>
+    </select>
+    <span id="cgWinCustom" style="display:none;align-items:center;gap:6px">
+      <input type="date" id="cgFrom" onchange="renderCaregiver()" style="padding:6px 8px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
+      <span style="font-size:12px;color:var(--text3)">to</span>
+      <input type="date" id="cgTo" onchange="renderCaregiver()" style="padding:6px 8px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
+    </span>
   </div>
   <div id="emptyState" class="empty-state">
     <div class="big">🔍</div>
@@ -939,6 +952,55 @@ function getCertAlerts(p,isBab){
   return alerts;
 }
 
+// ── Caregiver dashboard date window ──
+// riseWin.mode: 'full' | '30' | '90' | 'month' | 'custom'. The % metrics
+// (on-time, notes, manual) are recomputed from WEEKLY buckets so a custom range
+// snaps to Sunday-week boundaries; the dated lists filter to the exact day.
+let riseWin={mode:'full'};
+function _todayLocal(){ return new Date().toLocaleDateString('en-CA'); }   // YYYY-MM-DD, local
+function _weekSun(ds){ const d=new Date(ds+'T12:00:00'); d.setDate(d.getDate()-d.getDay()); return d.toLocaleDateString('en-CA'); }
+function riseWindow(){
+  const mode=riseWin.mode||'full';
+  const full=(viv&&viv.windowStart)||'2000-01-01', today=_todayLocal();
+  if(mode==='full') return {isCustom:false,start:full,end:today,label:'6-month'};
+  if(mode==='custom'){
+    const f=(document.getElementById('cgFrom')||{}).value||full;
+    const t=(document.getElementById('cgTo')||{}).value||today;
+    const s=f<=t?f:t, e=f<=t?t:f;
+    return {isCustom:true,start:s,end:e,label:formatDate(s)+' – '+formatDate(e)};
+  }
+  let start;
+  if(mode==='month'){ const d=new Date(); start=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01'; }
+  else { const n=parseInt(mode,10); const d=new Date(); d.setDate(d.getDate()-n); start=d.toLocaleDateString('en-CA'); }
+  return {isCustom:true,start,end:today,label:(mode==='month'?'this month':'last '+mode+' days')};
+}
+function onCgWinChange(){
+  riseWin.mode=document.getElementById('cgWin').value;
+  document.getElementById('cgWinCustom').style.display=riseWin.mode==='custom'?'inline-flex':'none';
+  renderCaregiver();
+}
+// Windowed view of a caregiver's metrics. Full window → raw values unchanged.
+// Custom → %s from weekly buckets (week-snapped), lists filtered to exact dates.
+function riseWindowMetrics(v,win){
+  if(!v) return {exceptions:[],compliments:[],lastMinute:[],checkin:null,tasks:null,months:[]};
+  if(!win.isCustom) return {exceptions:v.exceptions||[],compliments:v.compliments||[],lastMinute:v.lastMinute||[],checkin:v.checkin,tasks:v.tasks,months:v.monthsWithVisit||[]};
+  const wStart=_weekSun(win.start), end=win.end, wkIn=k=>k>=wStart&&k<=end;
+  let checked=0,onTime1=0,onTime7=0,manual=0,manualDen=0;
+  const cw=(v.checkin&&v.checkin.wk)||{};
+  for(const k in cw){ if(wkIn(k)){const W=cw[k]; checked+=W.c;onTime1+=W.o1;onTime7+=W.o7;manual+=W.m;manualDen+=W.md;} }
+  let nS=0,nE=0; const tw=(v.tasks&&v.tasks.wk)||{};
+  for(const k in tw){ if(wkIn(k)){nS+=tw[k].s;nE+=tw[k].e;} }
+  const inR=d=>d&&d>=win.start&&d<=win.end;
+  return {
+    exceptions:(v.exceptions||[]).filter(e=>inR(e.date)),
+    compliments:(v.compliments||[]).filter(c=>inR(c.date)),
+    lastMinute:(v.lastMinute||[]).filter(b=>inR(b.start)),
+    checkin:{checked,onTime1,onTime7,manual,manualDen},
+    tasks:{total:nS+nE,completed:nS,noteSuccess:nS,noteError:nE},
+    months:(v.monthsWithVisit||[]).filter(m=>m>=win.start.slice(0,7)&&m<=win.end.slice(0,7))
+  };
+}
+
 function calcRisePoints(compliments,taskPct,onTimePct,lastMinute,calloutMonths){
   const past6=getPast6Months();
   const noCalloutMonths=past6.filter(m=>!calloutMonths.has(m.key)).length;
@@ -980,11 +1042,16 @@ function renderCaregiver(){
   const v=p.viv;
   const isBab=BAB_KEYWORDS.some(k=>(p.market||'').toLowerCase().includes(k));
 
-  // ── Live metrics ──
-  const exc=categorizeExceptions(v?v.exceptions:[]);
-  const compliments=v?v.compliments.length:null;
-  const lastMin=v?v.lastMinute.filter(b=>b.leadHrs>=0&&b.leadHrs<=LM_THRESHOLD_HRS):null;
-  const ck=v&&v.checkin;
+  // ── Date window (Full Rise window by default; custom snaps %s to weeks) ──
+  const win=riseWindow();
+  const MW=riseWindowMetrics(v,win);
+  const winTxt=win.isCustom?win.label:'6-month';
+
+  // ── Live metrics (all read from the windowed view MW) ──
+  const exc=categorizeExceptions(v?MW.exceptions:[]);
+  const compliments=v?MW.compliments.length:null;
+  const lastMin=v?MW.lastMinute.filter(b=>b.leadHrs>=0&&b.leadHrs<=LM_THRESHOLD_HRS):null;
+  const ck=v&&MW.checkin;
   const onTimePct=(ck&&ck.checked>0)?(ck[ONTIME_RULE]/ck.checked*100):null;
   // On-time "verify in Viv" flag. Viv applies a small per-visit check-in grace
   // window that this dashboard can't reproduce exactly (see Belinda Clark: her
@@ -999,10 +1066,19 @@ function renderCaregiver(){
   const otMarginalLate=ck?(ck.onTime7-ck.onTime1):0;   // check-ins 1–7 min late
   const otVerify=onTimePct!==null&&onTimePct<92&&onTime7Pct>=92&&otMarginalLate>=2;
   const manualPct=(ck&&ck.manualDen>0)?(ck.manual/ck.manualDen*100):null;
-  const taskPct=(v&&v.tasks&&v.tasks.total>0)?(v.tasks.completed/v.tasks.total*100):null;
-  const monthsWithVisit=new Set(v?v.monthsWithVisit:[]);
+  const tk=v&&MW.tasks;
+  const taskPct=(tk&&tk.total>0)?(tk.completed/tk.total*100):null;
+  const monthsWithVisit=new Set(v?MW.months:[]);
   const weekendWorked=new Set(v?v.weekendMonthsWorked:[]);
-  const risePoints=calcRisePoints(compliments||0,taskPct,onTimePct,lastMin?lastMin.length:0,exc.calloutMonths);
+  // Rise Above points stay the official FULL 6-month program score, independent
+  // of the date-window filter (which drives the operational metrics/lists).
+  const fCk=v&&v.checkin;
+  const fOnTime=(fCk&&fCk.checked>0)?(fCk[ONTIME_RULE]/fCk.checked*100):null;
+  const fTask=(v&&v.tasks&&v.tasks.total>0)?(v.tasks.completed/v.tasks.total*100):null;
+  const fComp=v?v.compliments.length:0;
+  const fLm=v?v.lastMinute.filter(b=>b.leadHrs>=0&&b.leadHrs<=LM_THRESHOLD_HRS).length:0;
+  const fExc=categorizeExceptions(v?v.exceptions:[]);
+  const risePoints=calcRisePoints(fComp,fTask,fOnTime,fLm,fExc.calloutMonths);
   const certAlerts=getCertAlerts(p,isBab);
   const riseRows=riseFormsFor(p);
   const lastMeeting=getMostRecentForm(riseRows);
@@ -1026,6 +1102,7 @@ function renderCaregiver(){
     '</div></div>'+
     '<div class="points-box"><div class="points-num">'+risePoints.total+'</div><div class="points-label">Rise Above points<br>past 6 months</div></div>'+
   '</div>';
+  if(win.isCustom)html+='<div class="fc" style="border-left:3px solid var(--orange);margin-bottom:12px;padding:9px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="bdg" style="background:var(--orange-bg);color:var(--orange-text)">📅 '+escHtml(win.label)+'</span><span style="font-size:12px;color:var(--text2)">On-time, visit-note & manual %s are computed for this range (snapped to whole weeks); compliments, service exceptions & last-minute bookings are filtered to the exact dates. <strong>Rise Above points remain the fixed 6-month program score.</strong></span></div>';
   if(isLiveIn)html+='<div class="fc" style="border-left:3px solid var(--blue);margin-bottom:12px;padding:10px 16px"><span class="bdg bg-b">Live-In caregiver</span> <span style="font-size:12px;color:var(--text2)">'+liveIn+' live-in visit'+(liveIn!==1?'s':'')+' in the window. On-time check-in, manual-check-in and visit-note metrics below cover this caregiver\'s <strong>hourly</strong> visits only — live-in visits don\'t generate hourly EVV check-ins, so they aren\'t reflected in those percentages.</span></div>';
 
   // ── Row 1: Balances | On-time | Visit notes | Manual check-ins ──
@@ -1058,7 +1135,7 @@ function renderCaregiver(){
     '</div><div class="big-stat">'+
     '<span class="v '+otColor+'">'+(onTimePct!==null?onTimePct.toFixed(1)+'%':'—')+'</span>'+
     (onTimePct!==null?'<span class="bdg '+(otColor==='g'?'bg-g">✓ ≥92%':'bg-r">✗ <92%')+'</span>':'<span class="bdg bg-n">No data</span>')+
-    '</div><div class="stat-foot">6-month · threshold 92% · '+(ck?ck.checked+' checked-in visits':'')+'</div>'+
+    '</div><div class="stat-foot">'+winTxt+' · threshold 92% · '+(ck?ck.checked+' checked-in visits':'')+'</div>'+
     (otVerify?'<div class="stat-foot" style="color:var(--amber-text);margin-top:5px;border-top:.5px solid var(--border);padding-top:5px">⚑ '+otMarginalLate+(otMarginalLate!==1?' check-ins were':' check-in was')+' 1–7 min late — Viv’s grace window may score some on-time (up to '+onTime7Pct.toFixed(1)+'%). Cross-check in Viv before counting this as a miss.</div>':'')+
     '</div>';
 
@@ -1066,7 +1143,7 @@ function renderCaregiver(){
   html+='<div class="fc"><div class="ct">Visit Note Completion</div><div class="big-stat">'+
     '<span class="v '+vnColor+'">'+(taskPct!==null?taskPct.toFixed(1)+'%':'—')+'</span>'+
     (taskPct!==null?'<span class="bdg '+(vnColor==='g'?'bg-g">✓ ≥95%':'bg-r">✗ <95%')+'</span>':'<span class="bdg bg-n">No data</span>')+
-    '</div><div class="stat-foot">6-month · threshold 95%'+(v&&v.tasks&&v.tasks.total>0?' · '+v.tasks.completed+' of '+v.tasks.total+' checked-out visits passed':'')+'</div></div>';
+    '</div><div class="stat-foot">'+winTxt+' · threshold 95%'+(tk&&tk.total>0?' · '+tk.completed+' of '+tk.total+' checked-out visits passed':'')+'</div></div>';
 
   const mColor=manualPct===null?'n':manualPct<=15?'g':manualPct<=35?'a':'r';
   html+='<div class="fc"><div class="ct">Manual Check-Ins</div><div class="big-stat">'+
@@ -1128,11 +1205,12 @@ function renderCaregiver(){
 
   // ── Row 3: Performance metrics | Points breakdown ──
   html+='<div class="grid">';
-  html+='<div class="fc"><div class="ct">Performance Metrics</div>'+
-    '<div class="metric-row"><span>Total Compliments (6 months)</span><span class="metric-value">'+(compliments!==null?compliments:'—')+'</span></div>'+
-    '<div class="metric-row"><span>Last-Minute Bookings (6 months, ≤'+LM_THRESHOLD_HRS+'h)</span><span class="metric-value">'+(lastMin?lastMin.length:'—')+'</span></div>'+
-    '<div class="metric-row"><span>Months with No Call-Outs</span><span class="metric-value">'+risePoints.noCalloutMonths+' / 6</span></div>'+
-    '<div class="metric-row"><span>Care visits in window (Viv)</span><span class="metric-value">'+(v?v.careVisits:'—')+'</span></div>'+
+  const excCount=exc.connection.length+exc.communication.length+exc.reliability.length+exc.flexibility.length+exc.callout.length;
+  html+='<div class="fc"><div class="ct">Performance Metrics <span style="font-weight:600;color:var(--text3);text-transform:none;letter-spacing:0">· '+winTxt+'</span></div>'+
+    '<div class="metric-row"><span>On-Time Check-Ins</span><span class="metric-value">'+(ck?ck.onTime1+' / '+ck.checked:'—')+'</span></div>'+
+    '<div class="metric-row"><span>Total Compliments</span><span class="metric-value">'+(compliments!==null?compliments:'—')+'</span></div>'+
+    '<div class="metric-row"><span>Last-Minute Bookings (≤'+LM_THRESHOLD_HRS+'h)</span><span class="metric-value">'+(lastMin?lastMin.length:'—')+'</span></div>'+
+    '<div class="metric-row"><span>Service Exceptions</span><span class="metric-value">'+excCount+'</span></div>'+
   '</div>';
   const lmCount=lastMin?lastMin.length:0;
   html+='<div class="fc"><div class="ct">Rise Above Points Breakdown (past 6 months)</div>'+
@@ -1147,11 +1225,11 @@ function renderCaregiver(){
   // ── Row 4: Compliment detail | Documents ──
   html+='<div class="grid">';
   html+='<div class="fc"><div class="ct">Compliments — what people said</div>';
-  if(v&&v.compliments.length){
-    v.compliments.slice().sort((a,b)=>b.date<a.date?-1:1).forEach(c=>{
+  if(v&&MW.compliments.length){
+    MW.compliments.slice().sort((a,b)=>b.date<a.date?-1:1).forEach(c=>{
       html+='<div class="comp-item"><div class="comp-meta">'+escHtml(c.date)+' · '+escHtml(c.reason)+(c.from?' · logged by '+escHtml(c.from):'')+'</div>'+escHtml(c.desc||'')+'</div>';
     });
-  } else html+='<div class="no-data">No compliments recorded in the past 6 months</div>';
+  } else html+='<div class="no-data">No compliments recorded in '+(win.isCustom?winTxt:'the past 6 months')+'</div>';
   html+='</div>';
 
   html+='<div class="fc"><div class="ct">Documents Expiring / Expired (iSolved · live)</div>';
