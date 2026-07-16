@@ -230,6 +230,34 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
 .sb-allgood{padding:20px;text-align:center;color:var(--green-text);background:var(--green-bg);border-radius:var(--r);font-size:13px;font-weight:600}
 .sb-note{font-size:11px;color:var(--text3);margin:4px 0 14px}
 @media(max-width:640px){.sb-lrow .stat{width:56px}.sb-lrow .stat.hide-sm{display:none}}
+
+/* ── RISE MEETING PREP modal ── */
+.rm-overlay{position:fixed;inset:0;background:rgba(15,30,53,.5);display:none;align-items:flex-start;justify-content:center;z-index:500;padding:24px;overflow-y:auto}
+.rm-overlay.open{display:flex}
+.rm-modal{background:var(--bg);border-radius:var(--rl);max-width:820px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);margin:auto}
+.rm-head{position:sticky;top:0;background:linear-gradient(135deg,var(--orange),var(--purple));color:#fff;padding:16px 22px;border-radius:var(--rl) var(--rl) 0 0;display:flex;justify-content:space-between;align-items:center;z-index:2}
+.rm-head h3{font-size:17px;font-weight:700}
+.rm-head .sub{font-size:12px;opacity:.9}
+.rm-x{background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;flex:none}
+.rm-body{padding:18px 22px}
+.rm-sec{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin:16px 0 8px;padding-bottom:5px;border-bottom:.5px solid var(--border)}
+.rm-sec:first-child{margin-top:0}
+.rm-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+@media(max-width:640px){.rm-grid{grid-template-columns:1fr}}
+.rm-f{display:flex;flex-direction:column;gap:3px}
+.rm-f.full{grid-column:1/-1}
+.rm-f label{font-size:11px;font-weight:600;color:var(--text3)}
+.rm-f input,.rm-f select,.rm-f textarea{padding:7px 9px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg2);color:var(--text);font-family:inherit;width:100%}
+.rm-f textarea{resize:vertical;min-height:52px}
+.rm-f .pf{border-left:2px solid var(--green)}
+.rm-notes{width:100%;min-height:120px;padding:10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg2);color:var(--text);font-family:inherit;resize:vertical}
+.rm-btn{padding:9px 16px;font-size:13px;font-weight:600;border:none;border-radius:20px;cursor:pointer}
+.rm-btn.p{background:linear-gradient(135deg,var(--orange),var(--purple));color:#fff}
+.rm-btn.g{background:var(--green);color:#fff}
+.rm-btn.o{background:var(--bg3);color:var(--text)}
+.rm-btn:disabled{opacity:.5;cursor:default}
+.rm-foot{position:sticky;bottom:0;background:var(--bg);border-top:.5px solid var(--border);padding:12px 22px;display:flex;gap:10px;align-items:center;border-radius:0 0 var(--rl) var(--rl);flex-wrap:wrap}
+.rm-parsed{border-left:2px solid var(--purple)}
 </style>
 </head>
 <body>
@@ -268,6 +296,7 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
   <div class="ntab" id="tab-dashboard" onclick="switchTab('dashboard')">Caregiver Dashboard</div>
   <div class="ntab" id="tab-summary" onclick="switchTab('summary')">Program Summary</div>
   <div class="ntab" id="tab-newhires" onclick="switchTab('newhires')">New Hires</div>
+  <div class="ntab" id="tab-certs" onclick="switchTab('certs')">Certifications</div>
   <div class="ntab" id="tab-referrals" onclick="switchTab('referrals')">Referrals</div>
 </div>
 
@@ -375,6 +404,26 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
   <div id="newhires"><div class="empty-state"><div class="big">🧭</div><div>Loading new-hire visit tracking…</div></div></div>
 </div>
 
+<!-- PAGE: CERTIFICATIONS -->
+<div id="page-certs" style="display:none">
+  <div class="bar" style="flex-wrap:wrap">
+    <label>MCE</label>
+    <select id="certMce" onchange="renderCerts()"><option value="">All MCEs</option></select>
+    <label>Market</label>
+    <select id="certMarket" onchange="renderCerts()"><option value="">All markets</option></select>
+    <label>Horizon</label>
+    <select id="certHorizon" onchange="renderCerts()">
+      <option value="all">All (incl. expired)</option>
+      <option value="90">Next 90 days + expired</option>
+      <option value="180" selected>Next 6 months + expired</option>
+      <option value="365">Next 12 months + expired</option>
+    </select>
+    <input type="text" id="certSearch" placeholder="Search caregiver or document…" oninput="renderCerts()" style="padding:7px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);min-width:220px">
+    <span class="count" id="certCount"></span>
+  </div>
+  <div id="certs"><div class="empty-state"><div class="big">🎓</div><div>Sync Viv data to load live certifications.</div></div></div>
+</div>
+
 <!-- PAGE: REFERRALS -->
 <div id="page-referrals" style="display:none">
   <div class="bar" style="flex-wrap:wrap">
@@ -384,6 +433,22 @@ body::before{content:"";position:fixed;top:0;left:0;right:0;height:3px;backgroun
     <span class="count" id="refCount"></span>
   </div>
   <div id="referrals"><div class="empty-state"><div class="big">🤝</div><div>Loading caregiver referrals…</div></div></div>
+</div>
+
+<!-- RISE MEETING PREP MODAL -->
+<div class="rm-overlay" id="rmOverlay" onclick="if(event.target===this)closeRiseMeeting()">
+  <div class="rm-modal">
+    <div class="rm-head">
+      <div><h3 id="rmName">Rise Meeting Prep</h3><div class="sub">Prefilled from live metrics · parse your meeting notes with Claude · copy for Viv AI</div></div>
+      <button class="rm-x" onclick="closeRiseMeeting()">✕</button>
+    </div>
+    <div class="rm-body" id="rmBody"></div>
+    <div class="rm-foot">
+      <button class="rm-btn g" id="rmCopy" onclick="copyRiseMeetingForViv()">📋 Copy everything for Viv AI</button>
+      <span id="rmCopyMsg" style="font-size:12px;color:var(--green-text)"></span>
+      <button class="rm-btn o" style="margin-left:auto" onclick="closeRiseMeeting()">Close</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1102,6 +1167,7 @@ function renderCaregiver(){
     '</div></div>'+
     '<div class="points-box"><div class="points-num">'+risePoints.total+'</div><div class="points-label">Rise Above points<br>past 6 months</div></div>'+
   '</div>';
+  if(v)html+='<div style="margin:-4px 0 12px"><button onclick="openRiseMeeting(\''+p.key+'\')" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-radius:20px;background:linear-gradient(135deg,var(--orange),var(--purple));color:#fff;cursor:pointer">📋 Rise Meeting Prep — prefill &amp; Claude</button></div>';
   if(win.isCustom)html+='<div class="fc" style="border-left:3px solid var(--orange);margin-bottom:12px;padding:9px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="bdg" style="background:var(--orange-bg);color:var(--orange-text)">📅 '+escHtml(win.label)+'</span><span style="font-size:12px;color:var(--text2)">On-time, visit-note & manual %s are computed for this range (snapped to whole weeks); compliments, service exceptions & last-minute bookings are filtered to the exact dates. <strong>Rise Above points remain the fixed 6-month program score.</strong></span></div>';
   if(isLiveIn)html+='<div class="fc" style="border-left:3px solid var(--blue);margin-bottom:12px;padding:10px 16px"><span class="bdg bg-b">Live-In caregiver</span> <span style="font-size:12px;color:var(--text2)">'+liveIn+' live-in visit'+(liveIn!==1?'s':'')+' in the window. On-time check-in, manual-check-in and visit-note metrics below cover this caregiver\'s <strong>hourly</strong> visits only — live-in visits don\'t generate hourly EVV check-ins, so they aren\'t reflected in those percentages.</span></div>';
 
@@ -1302,7 +1368,7 @@ let _navReady=false, _curTab='tracker';
 function switchTab(tab,push){
   if(push===undefined)push=true;
   _curTab=tab;
-  ['tracker','scoreboard','dashboard','summary','newhires','referrals'].forEach(t=>{
+  ['tracker','scoreboard','dashboard','summary','newhires','certs','referrals'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
   });
@@ -1310,6 +1376,7 @@ function switchTab(tab,push){
   if(tab==='scoreboard')renderScoreboard();
   if(tab==='summary')renderSummary();
   if(tab==='newhires')loadNewHires();
+  if(tab==='certs')renderCerts();
   if(tab==='referrals')loadReferrals();
   // Push a history entry so the browser Back button steps between tabs instead
   // of leaving the app. popstate handler passes push=false to avoid re-pushing.
@@ -1506,6 +1573,246 @@ function sbPickTeam(mceEnc){
   renderScoreboard();
   window.scrollTo({top:0,behavior:'smooth'});
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// CERTIFICATIONS TAB — live iSolved certifications, who's expiring soonest.
+// Filterable by MCE / Market / horizon. Uses each caregiver's isoCerts.
+// ════════════════════════════════════════════════════════════════════════════
+function renderCerts(){
+  const el=document.getElementById('certs');
+  if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="big">🎓</div><div>Sync Viv data to load live certifications.</div></div>'; return; }
+  const mceSel=document.getElementById('certMce'), mktSel=document.getElementById('certMarket');
+  if(mceSel.options.length<=1){
+    const mces=[...new Set(spine.map(p=>p.manager).filter(Boolean))].sort();
+    mceSel.innerHTML='<option value="">All MCEs</option>'+mces.map(m=>'<option value="'+escHtml(m)+'">'+escHtml(m)+'</option>').join('');
+  }
+  if(mktSel.options.length<=1){
+    const mkts=[...new Set(spine.map(p=>p.market).filter(Boolean))].sort();
+    mktSel.innerHTML='<option value="">All markets</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+  }
+  const mce=mceSel.value, market=mktSel.value, horizon=document.getElementById('certHorizon').value;
+  const q=(document.getElementById('certSearch').value||'').toLowerCase().trim();
+  const horizonDays=horizon==='all'?null:parseInt(horizon,10);
+  // Flatten to one row per (caregiver, certification-with-expiration).
+  let rows=[];
+  spine.forEach(p=>{
+    if((p.market||'').toLowerCase().includes('virginia'))return;
+    if(mce&&p.manager!==mce)return;
+    if(market&&p.market!==market)return;
+    const certs=p.isoCerts||[];
+    certs.forEach(c=>{
+      const nm=(c.name||'').trim(); if(!nm)return;
+      const cl=nm.toLowerCase();
+      if(CERT_EXCLUDE.some(ex=>cl.includes(ex)))return;   // COVID etc. — not renewal-tracked
+      const exp=parseDate(c.expiration); if(!exp)return;   // only certs with an expiration date
+      const days=Math.round((exp-TODAY)/86400000);
+      rows.push({name:p.name, key:p.key, mce:p.manager||'—', market:p.market||'—', cert:nm, authority:c.authority||'', exp, days});
+    });
+  });
+  // horizon filter: keep expired (days<0) always + upcoming within horizon
+  if(horizonDays!=null)rows=rows.filter(r=>r.days<=horizonDays);
+  if(q)rows=rows.filter(r=>(r.name+' '+r.cert+' '+r.authority).toLowerCase().includes(q));
+  rows.sort((a,b)=>a.exp-b.exp);
+  const expired=rows.filter(r=>r.days<0).length;
+  const in30=rows.filter(r=>r.days>=0&&r.days<=30).length;
+  const in90=rows.filter(r=>r.days>=0&&r.days<=90).length;
+  const cgs=new Set(rows.map(r=>r.key)).size;
+  document.getElementById('certCount').textContent=rows.length+' documents · '+cgs+' caregivers';
+  let h='<div class="grid four" style="margin-bottom:14px">'+
+    '<div class="fc"><div class="ct">Expired</div><div class="big-stat"><span class="v '+(expired?'r':'g')+'">'+expired+'</span></div><div class="stat-foot">need renewal now</div></div>'+
+    '<div class="fc"><div class="ct">Expiring ≤ 30 days</div><div class="big-stat"><span class="v '+(in30?'r':'g')+'">'+in30+'</span></div><div class="stat-foot">urgent</div></div>'+
+    '<div class="fc"><div class="ct">Expiring ≤ 90 days</div><div class="big-stat"><span class="v '+(in90?'a':'g')+'">'+in90+'</span></div><div class="stat-foot">plan ahead</div></div>'+
+    '<div class="fc"><div class="ct">Documents shown</div><div class="big-stat"><span class="v b">'+rows.length+'</span></div><div class="stat-foot">'+cgs+' caregivers</div></div>'+
+  '</div>';
+  if(!rows.length){ el.innerHTML=h+'<div class="no-data">No certifications match the current filters. 🎉</div>'; return; }
+  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Expires</th><th>Status</th><th>Caregiver</th><th>Certification</th><th>Issuer</th><th>MCE</th><th>Market</th></tr></thead><tbody>';
+  rows.forEach(r=>{
+    const badge=r.days<0?'<span class="bdg bg-r">Expired '+(-r.days)+'d ago</span>'
+      :r.days<=30?'<span class="bdg bg-r">'+r.days+'d left</span>'
+      :r.days<=90?'<span class="bdg bg-a">'+r.days+'d left</span>'
+      :'<span class="bdg bg-g">'+r.days+'d</span>';
+    h+='<tr style="cursor:pointer" onclick="openCaregiver(\''+r.key+'\')">'+
+      '<td class="td-date" style="font-weight:600">'+formatDate(r.exp)+'</td>'+
+      '<td>'+badge+'</td>'+
+      '<td class="td-name">'+escHtml(r.name)+'</td>'+
+      '<td>'+escHtml(r.cert)+'</td>'+
+      '<td style="font-size:12px;color:var(--text2)">'+escHtml(r.authority||'—')+'</td>'+
+      '<td style="font-size:12px">'+escHtml(r.mce)+'</td>'+
+      '<td class="td-date">'+escHtml(r.market)+'</td></tr>';
+  });
+  el.innerHTML=h+'</tbody></table></div>';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// RISE MEETING PREP — prefill the form's prep/performance fields from live
+// metrics, parse the meeting notes with Claude for the "Connect" section, and
+// copy one complete notes document to paste into Viv's "Viv AI pre-fill" box.
+// ════════════════════════════════════════════════════════════════════════════
+let rmKey=null;
+function riseMeetingData(p){
+  const v=p.viv;
+  const exc=categorizeExceptions(v.exceptions||[]);
+  const ck=v.checkin;
+  const onTime=(ck&&ck.checked>0)?Math.round(ck.onTime1/ck.checked*100):null;
+  const manual=(ck&&ck.manualDen>0)?Math.round(ck.manual/ck.manualDen*100):null;
+  const task=(v.tasks&&v.tasks.total>0)?Math.round(v.tasks.completed/v.tasks.total*100):null;
+  const comp=(v.compliments||[]).length;
+  const lm=(v.lastMinute||[]).filter(b=>b.leadHrs>=0&&b.leadHrs<=LM_THRESHOLD_HRS).length;
+  const rp=calcRisePoints(comp,task,onTime,lm,exc.calloutMonths);
+  const isBab=BAB_KEYWORDS.some(k=>(p.market||'').toLowerCase().includes(k));
+  const ca=getCertAlerts(p,isBab);
+  const expDocs=(ca&&ca.length)?ca.map(a=>a.cert+' (exp '+formatDate(a.date)+')').join('; '):'None';
+  const ptoExp=ptoExpiration(p.hireDate,p.manager);
+  const ptoParts=[];
+  if(v.ptoHrs!=null)ptoParts.push(v.ptoHrs+' hrs PTO'+(ptoExp?' — expires '+formatDate(ptoExp):''));
+  if(v.sickHrs!=null)ptoParts.push(v.sickHrs+' hrs Sick');
+  let anniv='No';
+  if(p.hireDate){ const a=new Date(TODAY.getFullYear(),p.hireDate.getMonth(),p.hireDate.getDate()); if(Math.abs((a-TODAY)/86400000)<=25)anniv='Yes'; }
+  const actMonths=(v.monthsWithVisit||[]).length, wkMonths=(v.weekendMonthsWorked||[]).length;
+  const weekend=actMonths===0?'It is not required for their position (PRN or short hours)':(wkMonths>=Math.ceil(actMonths*0.5)?'Yes':'No');
+  return {
+    name:p.name,
+    title:v.tsEnrolled?('Tribute Secure'+(v.tsLevel?' (TS'+v.tsLevel+')':'')):'Caregiver',
+    hire:p.hireDate?formatDate(p.hireDate):'', anniv, expDocs,
+    pto:ptoParts.join('; ')||'—',
+    se:'Connection: '+exc.connection.length+', Communication: '+exc.communication.length+', Reliability: '+exc.reliability.length+', Flexibility: '+exc.flexibility.length,
+    onTime:onTime==null?'':onTime, task:task==null?'':task, manual:manual==null?'':manual,
+    waived:exc.callout.length, weekend, weeks75:v.weeksEligible?(v.weeksAt75+' of '+v.weeksEligible):'—',
+    desired:v.desiredHours||0, points:rp.total
+  };
+}
+function _rmField(id,label,val,type,opts){
+  const pf=(val!==''&&val!=null)?' pf':'';
+  if(type==='select'){
+    return '<div class="rm-f"><label>'+label+'</label><select id="'+id+'" class="pf">'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+escHtml(o)+'</option>').join('')+'</select></div>';
+  }
+  if(type==='textarea'){
+    return '<div class="rm-f full"><label>'+label+'</label><textarea id="'+id+'" class="'+(pf?'pf':'')+'">'+escHtml(String(val||''))+'</textarea></div>';
+  }
+  const cls=(opts&&opts.full)?'rm-f full':'rm-f';
+  return '<div class="'+cls+'"><label>'+label+'</label><input id="'+id+'" class="'+(pf?'pf':'')+'" value="'+escHtml(String(val==null?'':val))+'"></div>';
+}
+function openRiseMeeting(key){
+  rmKey=key;
+  const p=spine.find(x=>x.key===key); if(!p||!p.viv)return;
+  const d=riseMeetingData(p);
+  document.getElementById('rmName').textContent='Rise Meeting Prep — '+p.name;
+  const today=_todayLocal();
+  let b='';
+  b+='<div class="rm-sec">Prep · Meeting Information</div><div class="rm-grid">'+
+    _rmField('rm_name','Caregiver Name',d.name,'text')+
+    _rmField('rm_title','Caregiver Title',d.title,'text')+
+    _rmField('rm_hire','Hired Date',d.hire,'text')+
+    _rmField('rm_mdate','Meeting Date',today,'text')+
+    _rmField('rm_anniv','Anniversary?',d.anniv,'select',['No','Yes'])+
+    _rmField('rm_bonus','Anniversary bonus (amount + paycheck date)','','text')+
+  '</div>';
+  b+='<div class="rm-sec">Prep · Compliance &amp; Referrals</div><div class="rm-grid">'+
+    _rmField('rm_reg','Nursing Registry','Clear','select',['Clear','Not clear — partner with Dir. of CE/P&C'])+
+    _rmField('rm_pto','PTO &amp; Sick time',d.pto,'text')+
+    _rmField('rm_docs','Expiring documents (next 6 months)',d.expDocs,'textarea')+
+    _rmField('rm_app','App up-to-date plan','','text')+
+    _rmField('rm_photo','Photo-in-VIV plan','','text')+
+    _rmField('rm_ref','Referral info','','textarea')+
+  '</div>';
+  b+='<div class="rm-sec">Prep · Performance Data <span style="font-weight:600;text-transform:none;color:var(--text3)">· last 6 months, from live metrics</span></div><div class="rm-grid">'+
+    _rmField('rm_level','Level of support','','select',['','Professional Development','Performance Support','PRN','First 90 Days/Onboarding'])+
+    _rmField('rm_se','Service Exceptions by category',d.se,'text',{full:true})+
+    _rmField('rm_ontime','On-time check-in % (≥92)',d.onTime,'text')+
+    _rmField('rm_notes','Visit note completion % (≥95)',d.task,'text')+
+    _rmField('rm_waived','Waived (not preventable) call-outs',d.waived,'text')+
+    _rmField('rm_manual','Manual login %',d.manual,'text')+
+    _rmField('rm_weekend','Weekend commitment met?',d.weekend,'select',['Yes','No','It is not required for their position (PRN or short hours)'])+
+    _rmField('rm_weeks','Weeks (of 12) ≥75% desired hrs',d.weeks75,'text')+
+    _rmField('rm_desired','Desired hours in VIV',d.desired,'text')+
+    _rmField('rm_met','Met Tribute’s expectations?','','select',['','Yes - moving into Professional Development','No - moving into Performance Support','Yes - they are PRN'])+
+    _rmField('rm_points','Tribute Rise points',d.points,'text')+
+  '</div>';
+  b+='<div class="rm-sec">✨ Meeting Notes → Claude</div>'+
+    '<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Paste your meeting notes or a transcript, then let Claude write the "Connect" section in your voice. Review &amp; edit before copying.</div>'+
+    '<textarea class="rm-notes" id="rm_rawnotes" placeholder="Paste raw meeting notes / transcript here…"></textarea>'+
+    '<div style="margin:8px 0"><button class="rm-btn p" id="rmParseBtn" onclick="parseRiseMeeting()">✨ Parse with Claude</button> <span id="rmParseMsg" style="font-size:12px;color:var(--text3)"></span></div>';
+  b+='<div class="rm-sec">Connect · Happiness &amp; Performance</div><div class="rm-grid">'+
+    _rmField('rm_feedback','How are things going? Feedback/concerns','','textarea')+
+    _rmField('rm_prepdisc','Discuss anything from your prep','','textarea')+
+    _rmField('rm_goalref','Reflect on goal since last quarter','','textarea')+
+    _rmField('rm_nextgoal','Goal for next 6 months + your plan','','textarea')+
+    _rmField('rm_sched','Between meetings: scheduling notes','','textarea')+
+  '</div>';
+  document.getElementById('rmBody').innerHTML=b;
+  document.getElementById('rmCopyMsg').textContent='';
+  document.getElementById('rmOverlay').classList.add('open');
+}
+function closeRiseMeeting(){ document.getElementById('rmOverlay').classList.remove('open'); }
+async function parseRiseMeeting(){
+  const notes=(document.getElementById('rm_rawnotes').value||'').trim();
+  const msg=document.getElementById('rmParseMsg'), btn=document.getElementById('rmParseBtn');
+  if(notes.length<5){ msg.textContent='Add some notes first.'; return; }
+  const key=getKey(); const p=spine.find(x=>x.key===rmKey);
+  btn.disabled=true; msg.textContent='Claude is reading your notes…';
+  try{
+    const r=await fetch(PROXY+'?endpoint=rise_meeting_parse',{method:'POST',
+      headers:{'Content-Type':'application/json','X-Retention-Key':key},
+      body:JSON.stringify({caregiverName:p?p.name:'', notes})});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json(); const f=j.fields||{};
+    const set=(id,val)=>{ const el=document.getElementById(id); if(el&&val&&val!=='N/A'){ el.value=val; el.classList.add('rm-parsed'); } };
+    set('rm_feedback',f.feedback); set('rm_prepdisc',f.prepDiscussion); set('rm_goalref',f.goalReflection);
+    set('rm_nextgoal',f.nextGoal); set('rm_sched',f.schedulingNotes);
+    if(f.anniversaryBonus&&f.anniversaryBonus!=='N/A')set('rm_bonus',f.anniversaryBonus);
+    if(f.referralNotes&&f.referralNotes!=='N/A')set('rm_ref',f.referralNotes);
+    let extra='';
+    if(Array.isArray(f.followUps)&&f.followUps.length)extra=' · Suggested follow-ups: '+f.followUps.join('; ');
+    msg.textContent='✓ Filled the Connect section — review & edit.'+extra;
+  }catch(e){ msg.textContent='Parse failed: '+e.message; }
+  btn.disabled=false;
+}
+function _rmVal(id){ const el=document.getElementById(id); return el?(el.value||'').trim():''; }
+function copyRiseMeetingForViv(){
+  const L=[];
+  L.push('RISE MEETING (every 6 months) — '+_rmVal('rm_name'));
+  L.push('');
+  L.push('PREP: MEETING INFORMATION');
+  L.push('Caregiver Name: '+_rmVal('rm_name'));
+  L.push('Caregiver Title: '+_rmVal('rm_title'));
+  L.push('Hired Date: '+_rmVal('rm_hire'));
+  L.push('Meeting Date: '+_rmVal('rm_mdate'));
+  L.push('Is this meeting for an anniversary?: '+_rmVal('rm_anniv'));
+  if(_rmVal('rm_bonus'))L.push('Anniversary bonus (amount + paycheck date): '+_rmVal('rm_bonus'));
+  L.push('');
+  L.push('PREP: COMPLIANCE AND REFERRALS');
+  L.push('Nursing Registry: '+_rmVal('rm_reg'));
+  L.push('Expired/expiring documents (next 6 months): '+_rmVal('rm_docs'));
+  if(_rmVal('rm_app'))L.push('App update plan: '+_rmVal('rm_app'));
+  if(_rmVal('rm_photo'))L.push('Photo-in-VIV plan: '+_rmVal('rm_photo'));
+  L.push('Referral info: '+(_rmVal('rm_ref')||'N/A'));
+  L.push('PTO and sick time (with expiration): '+_rmVal('rm_pto'));
+  L.push('');
+  L.push('PREP: PERFORMANCE DATA');
+  L.push('Level of support (last 6 months): '+_rmVal('rm_level'));
+  L.push('Service Exceptions by category: '+_rmVal('rm_se'));
+  L.push('On-time check-in %: '+_rmVal('rm_ontime'));
+  L.push('Visit note completion %: '+_rmVal('rm_notes'));
+  L.push('Waived (not preventable) call-outs: '+_rmVal('rm_waived'));
+  L.push('Manual login %: '+_rmVal('rm_manual'));
+  L.push('Weekend commitment met?: '+_rmVal('rm_weekend'));
+  L.push('Weeks (of last 12) with ≥75% desired hours: '+_rmVal('rm_weeks'));
+  L.push('Desired hours in VIV: '+_rmVal('rm_desired'));
+  if(_rmVal('rm_met'))L.push('Met Tribute’s expectations?: '+_rmVal('rm_met'));
+  L.push('Tribute Rise points: '+_rmVal('rm_points'));
+  L.push('');
+  L.push('CONNECT: HAPPINESS AND PERFORMANCE');
+  L.push('How are things going? Feedback/concerns: '+(_rmVal('rm_feedback')||'N/A'));
+  L.push('Discuss anything from prep (compliance/referrals/performance): '+(_rmVal('rm_prepdisc')||'N/A'));
+  L.push('Reflect on goal since last quarter: '+(_rmVal('rm_goalref')||'N/A'));
+  L.push('Goal for next 6 months + plan to support: '+(_rmVal('rm_nextgoal')||'No goal.'));
+  if(_rmVal('rm_sched')){ L.push(''); L.push('BETWEEN MEETINGS'); L.push('Scheduling notes: '+_rmVal('rm_sched')); }
+  const text=L.join('\n');
+  const done=()=>{ const m=document.getElementById('rmCopyMsg'); m.textContent='✓ Copied — paste into Viv’s "Add notes for Viv AI to pre-fill" box.'; setTimeout(()=>{m.textContent='';},6000); };
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done).catch(()=>{ _rmFallbackCopy(text); done(); }); }
+  else { _rmFallbackCopy(text); done(); }
+}
+function _rmFallbackCopy(text){ const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e){} document.body.removeChild(ta); }
 
 // ── REFERRALS (caregiver referral shout-outs from in-app chat) ──
 let refData=null, refLoading=false;
