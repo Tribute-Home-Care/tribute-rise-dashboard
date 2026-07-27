@@ -1031,7 +1031,7 @@ document.addEventListener('click',e=>{
 
 // ── Service-exception categorization (Charlotte's rules, on live data) ──
 function categorizeExceptions(items){
-  const result={connection:[],communication:[],reliability:[],flexibility:[],callout:[],calloutMonths:new Set()};
+  const result={connection:[],communication:[],reliability:[],flexibility:[],callout:[],nonComplaint:[],calloutMonths:new Set()};
   for(const inc of items){
     const tl=(inc.type||'').toLowerCase();
     const item={type:inc.type,date:inc.date,desc:inc.desc};
@@ -1040,6 +1040,10 @@ function categorizeExceptions(items){
     else if(tl.includes('no complaint: call out'))result.callout.push(item);
     else if(tl.includes('reliability complaint:'))result.reliability.push(item);
     else if(tl.includes('flexibility complaint:'))result.flexibility.push(item);
+    // Non-complaint SEs (informational) — Internal Communication / Availability
+    // Change / Desired Hours (Charlotte). Independent bucket: a row can carry
+    // several comma-joined types, so this is checked separately, not else-if.
+    if(/no complaint: internal communication|no complaint: availability change|desired hours/.test(tl))result.nonComplaint.push(item);
     const isCallout=tl.includes('no complaint: call out')||tl.includes('reliability complaint: preventable call out')||tl.includes('reliability complaint: ncns');
     if(isCallout){
       const d=parseDate(inc.date);
@@ -1357,6 +1361,19 @@ function renderCaregiver(){
   } else html+='<div class="no-data">No compliments recorded in '+(win.isCustom?winTxt:'the past 6 months')+'</div>';
   html+='</div>';
 
+  // Referral messages this caregiver sent in the Viv in-app chat (the separate
+  // Referrals tab is unchanged; this box quotes just this caregiver's — Charlotte).
+  html+='<div class="fc"><div class="ct">Referrals made (Viv in-app chat)</div>';
+  if(v&&refData){
+    const myRefs=(refData.referrals||[]).filter(r=>namesMatch(r.caregiver,p.name)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    if(myRefs.length)myRefs.forEach(r=>{
+      html+='<div class="comp-item" style="border-left-color:var(--blue)"><div class="comp-meta">'+(r.date?escHtml(formatDate(r.date)):'')+(r.referred?' · referred <strong>'+escHtml(r.referred)+'</strong>':'')+(r.from?' · from '+escHtml(r.from):'')+'</div>"'+escHtml(r.message||'')+'"</div>';
+    });
+    else html+='<div class="no-data">No referral messages found for this caregiver.</div>';
+  } else if(v){ html+='<div class="no-data">Loading referrals…</div>'; loadReferrals(); }
+  else html+='<div class="no-data">—</div>';
+  html+='</div>';
+
   html+='<div class="fc"><div class="ct">Documents Expiring / Expired (iSolved · live)</div>';
   if(certAlerts===null)html+='<div class="no-data">Certifications sync from iSolved automatically.</div>';
   else if(!certAlerts.length)html+='<div class="no-data">No documents requiring attention (next 6 months)</div>';
@@ -1403,7 +1420,7 @@ function renderCaregiver(){
 
   // ── Service exceptions ──
   html+='<div class="grid full"><div class="fc"><div class="ct">Service Exceptions (click to expand)</div>';
-  [['connection','Connection'],['communication','Communication'],['reliability','Reliability'],['flexibility','Flexibility'],['callout','Waived Call-Outs']].forEach(cat=>{
+  [['connection','Connection'],['communication','Communication'],['reliability','Reliability'],['flexibility','Flexibility'],['callout','Waived Call-Outs'],['nonComplaint','Non-Complaints · Internal Comm / Availability / Desired Hours']].forEach(cat=>{
     const items=exc[cat[0]]||[];
     html+='<div class="se-cat"><div class="se-head" onclick="toggleSe(\'se-'+cat[0]+'\')">'+
       '<span style="font-weight:600">'+cat[1]+'</span><span class="se-count '+(items.length===0?'zero':'')+'">'+items.length+'</span></div>'+
@@ -2141,6 +2158,8 @@ async function loadReferrals(){
     refLoading=false; return;
   }
   refLoading=false; renderReferrals();
+  // If a caregiver profile is open, re-render it so its referrals box fills in.
+  if(selectedKey && document.getElementById('page-dashboard') && document.getElementById('page-dashboard').style.display!=='none') renderCaregiver();
 }
 function renderReferrals(){
   const el=document.getElementById('referrals');
