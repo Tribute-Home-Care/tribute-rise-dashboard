@@ -1883,7 +1883,14 @@ function renderCerts(){
   spine.forEach(p=>{
     if((p.market||'').toLowerCase().includes('virginia'))return;
     if(mceNames.has((p.name||'').toLowerCase().trim()))return;                       // OA / MCE own profile
-    if(p.viv&&(p.viv.termDate||(p.viv.status&&!/hired|active/i.test(p.viv.status))))return; // inactive/terminated
+    if(p.viv&&(p.viv.termDate||(p.viv.status&&!/hired|active/i.test(p.viv.status))))return; // terminated/non-hired
+    // Inactive-in-practice: Viv still marks them "hired" but zero visits & zero
+    // visit-months (e.g. Angela Gilbert) — exclude, unless PRN or a very recent
+    // hire (<60d) who simply hasn't started visiting yet.
+    if(p.viv&&!p.viv.prn&&(p.viv.careVisits||0)===0&&((p.viv.monthsWithVisit||[]).length)===0){
+      const hd=p.hireDate, recentHire=hd&&((TODAY-hd)/86400000)<60;
+      if(!recentHire)return;
+    }
     if(mce&&p.manager!==mce)return;
     if(market&&p.market!==market)return;
     const certs=p.isoCerts||[];
