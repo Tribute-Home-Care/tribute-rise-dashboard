@@ -324,9 +324,9 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
 <!-- TABS -->
 <div class="nav-tabs">
   <div class="ntab on" id="tab-tracker" onclick="switchTab('tracker')">Rise Meeting Tracker</div>
-  <div class="ntab" id="tab-scoreboard" onclick="switchTab('scoreboard')">🏆 Performance</div>
+  <div class="ntab" id="tab-scoreboard" onclick="switchTab('scoreboard')">Performance</div>
   <div class="ntab" id="tab-dashboard" onclick="switchTab('dashboard')">Caregiver Dashboard</div>
-  <div class="ntab" id="tab-summary" onclick="switchTab('summary')">Program Summary</div>
+  <div class="ntab" id="tab-summary" onclick="switchTab('summary')">Rise Summary</div>
   <div class="ntab" id="tab-newhires" onclick="switchTab('newhires')">New Hires</div>
   <div class="ntab" id="tab-certs" onclick="switchTab('certs')">Certifications</div>
   <div class="ntab" id="tab-referrals" onclick="switchTab('referrals')">Referrals</div>
@@ -352,8 +352,14 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
   <div class="tbl-wrap" id="trackerWrap" style="display:none">
     <table class="tbl">
       <thead><tr>
-        <th>Caregiver</th><th>Market</th><th>Hire Date</th><th>Due Date</th><th>Days Until Due</th>
-        <th>Next Meeting Scheduled</th><th>Segment of Support</th><th>Notes</th>
+        <th onclick="trackerSortBy('name')" style="cursor:pointer;user-select:none">Caregiver<span class="tsort" data-c="name"></span></th>
+        <th onclick="trackerSortBy('market')" style="cursor:pointer;user-select:none">Market<span class="tsort" data-c="market"></span></th>
+        <th onclick="trackerSortBy('hire')" style="cursor:pointer;user-select:none">Hire Date<span class="tsort" data-c="hire"></span></th>
+        <th onclick="trackerSortBy('due')" style="cursor:pointer;user-select:none">Due Date<span class="tsort" data-c="due"></span></th>
+        <th onclick="trackerSortBy('days')" style="cursor:pointer;user-select:none">Days Until Due<span class="tsort" data-c="days"></span></th>
+        <th onclick="trackerSortBy('next')" style="cursor:pointer;user-select:none">Next Meeting Scheduled<span class="tsort" data-c="next"></span></th>
+        <th onclick="trackerSortBy('segment')" style="cursor:pointer;user-select:none">Segment of Support<span class="tsort" data-c="segment"></span></th>
+        <th>Notes</th>
       </tr></thead>
       <tbody id="trackerBody"></tbody>
     </table>
@@ -365,7 +371,7 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
   <div class="perf-seg" id="perfSeg">
     <button data-v="compliance" class="on" onclick="setPerfView('compliance')">Visit Compliance</button>
     <button data-v="shortlist" onclick="setPerfView('shortlist')">Short List</button>
-    <button data-v="scoreboard" onclick="setPerfView('scoreboard')">🏆 Team Scoreboard</button>
+    <button data-v="scoreboard" onclick="setPerfView('scoreboard')">Team Scoreboard</button>
   </div>
   <div class="bar" style="flex-wrap:wrap">
     <label>Team (MCE)</label>
@@ -868,6 +874,12 @@ function buildManagerFilter(){
   if([...managers].includes(cur))sel.value=cur;
 }
 
+let trackerSort={col:null,dir:1};
+function trackerSortBy(col){
+  if(trackerSort.col===col)trackerSort.dir*=-1;   // same column → toggle direction
+  else { trackerSort.col=col; trackerSort.dir=1; }  // new column → ascending
+  renderTracker();
+}
 function renderTracker(){
   if(!spine.length){
     document.getElementById('trackerEmpty').style.display='';
@@ -918,12 +930,23 @@ function renderTracker(){
 
     rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting});
   });
-  rows.sort((a,b)=>{
-    if(a.daysUntil===null&&b.daysUntil===null)return 0;
-    if(a.daysUntil===null)return 1;
-    if(b.daysUntil===null)return -1;
-    return a.daysUntil-b.daysUntil;
-  });
+  // Default sort = soonest-due first. Clicking a header overrides with an
+  // explicit alphabetical/chronological sort (Charlotte). Notes isn't sortable.
+  const daysCmp=(a,b)=>{ if(a.daysUntil===null&&b.daysUntil===null)return 0; if(a.daysUntil===null)return 1; if(b.daysUntil===null)return -1; return a.daysUntil-b.daysUntil; };
+  if(!trackerSort.col){ rows.sort(daysCmp); }
+  else {
+    const s=(x)=>(x||'').toString().toLowerCase();
+    const cmp={
+      name:(a,b)=>s(a.p.name).localeCompare(s(b.p.name)),
+      market:(a,b)=>s(a.p.market).localeCompare(s(b.p.market)),
+      hire:(a,b)=>(a.hireDate||0)-(b.hireDate||0),
+      due:(a,b)=>((a.activeDueDate||0)-(b.activeDueDate||0)),
+      days:daysCmp,
+      next:(a,b)=>{const da=parseDate(a.nextMeeting),db=parseDate(b.nextMeeting);if(da&&db)return da-db;return s(a.nextMeeting).localeCompare(s(b.nextMeeting));},
+      segment:(a,b)=>s(a.segment).localeCompare(s(b.segment))
+    }[trackerSort.col]||daysCmp;
+    rows.sort((a,b)=>cmp(a,b)*trackerSort.dir);
+  }
   document.getElementById('trackerEmpty').style.display='none';
   document.getElementById('trackerWrap').style.display='';
   document.getElementById('trackerCount').textContent=rows.length+' caregiver'+(rows.length!==1?'s':'');
@@ -949,6 +972,11 @@ function renderTracker(){
       '<td>'+segPill(row.segment)+'</td>'+
       '<td class="td-notes">'+(row.notes?escHtml(row.notes):'')+'</td></tr>';
   }).join('');
+  // sort-direction arrows on the active column header
+  document.querySelectorAll('#trackerWrap .tsort').forEach(el=>{
+    el.textContent = (trackerSort.col===el.dataset.c) ? (trackerSort.dir>0?' ▲':' ▼') : '';
+    el.style.color='var(--orange)';
+  });
 }
 function firstFormHireDate(riseRows,ninetyRows){
   for(const r of riseRows){ const d=parseDate(r.hiredDate); if(d)return d; }
@@ -1186,7 +1214,9 @@ function renderCaregiver(){
   const tsBadge=(v&&v.tsEnrolled)?' <span class="bdg bg-p" style="vertical-align:middle">Tribute Secure'+(v.tsLevel?' · TS'+v.tsLevel:'')+'</span>':'';
   const liBadge=isLiveIn?' <span class="bdg bg-b" style="vertical-align:middle">Live-In</span>':'';
   html+='<div class="cg-header"><div>'+
-    '<div class="cg-name">'+escHtml(p.name)+tsBadge+liBadge+'</div>'+
+    '<div class="cg-name">'+escHtml(p.name)+tsBadge+liBadge+
+      (v&&v.id?' <a href="https://tribute.mavencare.com/caregivers/'+encodeURIComponent(v.id)+'" target="_blank" rel="noopener" style="font-size:12px;font-weight:600;color:var(--blue-text);text-decoration:none;vertical-align:middle;margin-left:6px">View in Viv ↗</a>':'')+
+      '</div>'+
     '<div class="cg-meta">'+
       (p.title?'<span><strong>Title:</strong> '+escHtml(p.title)+'</span>':'')+
       '<span><strong>Market:</strong> '+escHtml(p.market||'—')+'</span>'+
@@ -1843,10 +1873,17 @@ function renderCerts(){
   const mce=mceSel.value, market=mktSel.value, horizon=document.getElementById('certHorizon').value;
   const q=(document.getElementById('certSearch').value||'').toLowerCase().trim();
   const horizonDays=horizon==='all'?null:parseInt(horizon,10);
+  // Exclude Office Associates / MCEs (their own profile shows up because they
+  // hold iSolved certs) and inactive/terminated caregivers — the cert roster
+  // should be active FIELD caregivers only (Charlotte). MCE = any name that also
+  // appears as a manager in the roster (e.g. Shanaye Stone).
+  const mceNames=new Set(spine.map(p=>(p.manager||'').toLowerCase().trim()).filter(Boolean));
   // Flatten to one row per (caregiver, certification-with-expiration).
   let rows=[];
   spine.forEach(p=>{
     if((p.market||'').toLowerCase().includes('virginia'))return;
+    if(mceNames.has((p.name||'').toLowerCase().trim()))return;                       // OA / MCE own profile
+    if(p.viv&&(p.viv.termDate||(p.viv.status&&!/hired|active/i.test(p.viv.status))))return; // inactive/terminated
     if(mce&&p.manager!==mce)return;
     if(market&&p.market!==market)return;
     const certs=p.isoCerts||[];
