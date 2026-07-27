@@ -2025,12 +2025,16 @@ function openRiseMeeting(key){
   const d=riseMeetingData(p);
   document.getElementById('rmName').textContent='Rise Meeting Prep — '+p.name;
   const today=_todayLocal();
+  // Viv's Rise form Meeting Date field expects MM/DD/YYYY — format it that way so
+  // the pasted prefill actually lands in the form (Charlotte: "not transferring").
+  const todayMDY=(()=>{const p=today.split('-');return p[1]+'/'+p[2]+'/'+p[0];})();
   let b='';
   b+='<div class="rm-sec">Prep · Meeting Information</div><div class="rm-grid">'+
     _rmField('rm_name','Caregiver Name',d.name,'text')+
     _rmField('rm_title','Caregiver Title',d.title,'text')+
     _rmField('rm_hire','Hired Date',d.hire,'text')+
-    _rmField('rm_mdate','Meeting Date',today,'text')+
+    _rmField('rm_mdate','Meeting Date',todayMDY,'text')+
+    _rmField('rm_mtime','Meeting Time','','text')+
     _rmField('rm_anniv','Anniversary?',d.anniv,'select',['No','Yes'])+
     _rmField('rm_bonus','Anniversary bonus (amount + paycheck date)','','text')+
   '</div>';
@@ -2104,6 +2108,7 @@ function copyRiseMeetingForViv(){
   L.push('Caregiver Title: '+_rmVal('rm_title'));
   L.push('Hired Date: '+_rmVal('rm_hire'));
   L.push('Meeting Date: '+_rmVal('rm_mdate'));
+  if(_rmVal('rm_mtime'))L.push('Meeting Time: '+_rmVal('rm_mtime'));
   L.push('Is this meeting for an anniversary?: '+_rmVal('rm_anniv'));
   if(_rmVal('rm_bonus'))L.push('Anniversary bonus (amount + paycheck date): '+_rmVal('rm_bonus'));
   L.push('');
