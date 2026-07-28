@@ -386,8 +386,8 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
   <div class="bar" style="flex-wrap:wrap">
     <label>Team (MCE)</label>
     <select id="sbMce" onchange="renderPerf()"><option value="">All MCEs</option></select>
-    <label>Market</label>
-    <select id="sbMarket" onchange="renderPerf()"><option value="">All markets</option></select>
+    <label>State</label>
+    <select id="sbMarket" onchange="renderPerf()"><option value="">All states</option></select>
     <span id="sbCaregiverWrap" style="display:none;align-items:center;gap:6px">
       <label>Caregiver</label>
       <select id="sbCaregiver" onchange="renderPerf()" style="min-width:200px"><option value="">All caregivers (team view)</option></select>
@@ -1098,11 +1098,18 @@ function categorizeExceptions(items){
   for(const inc of items){
     const tl=(inc.type||'').toLowerCase();
     const item={type:inc.type,date:inc.date,desc:inc.desc};
-    if(tl.includes('connection complaint:'))result.connection.push(item);
-    else if(tl.includes('communication complaint:'))result.communication.push(item);
+    // Viv writes complaints two ways: "Connection Complaint: …" AND
+    // "Client Complaint: Connection: First Match Failure" (words reversed). Match
+    // both, plus the "…match failure" phrasing for connection (Khadijah 7/28).
+    const isConn=tl.includes('connection complaint:')||/client complaint:\s*connection/.test(tl)||tl.includes('match fail');
+    const isComm=tl.includes('communication complaint:')||/client complaint:\s*communication/.test(tl);
+    const isRel=tl.includes('reliability complaint:')||/client complaint:\s*reliability/.test(tl);
+    const isFlex=tl.includes('flexibility complaint:')||/client complaint:\s*flexibility/.test(tl);
+    if(isConn)result.connection.push(item);
+    else if(isComm)result.communication.push(item);
     else if(tl.includes('no complaint: call out'))result.callout.push(item);
-    else if(tl.includes('reliability complaint:'))result.reliability.push(item);
-    else if(tl.includes('flexibility complaint:'))result.flexibility.push(item);
+    else if(isRel)result.reliability.push(item);
+    else if(isFlex)result.flexibility.push(item);
     // Non-complaint SEs (informational) — Internal Communication / Availability
     // Change / Desired Hours (Charlotte). Independent bucket: a row can carry
     // several comma-joined types, so this is checked separately, not else-if.
@@ -1143,8 +1150,8 @@ function getCertAlerts(p,isBab){
 
 // ── Caregiver dashboard date window ──
 // riseWin.mode: 'full' | '30' | '90' | 'month' | 'custom'. The % metrics
-// (on-time, notes, manual) are recomputed from WEEKLY buckets so a custom range
-// snaps to Sunday-week boundaries; the dated lists filter to the exact day.
+// (on-time, notes, manual) are recomputed from EXACT-DAY buckets so a custom
+// range is precise to the day; the dated lists also filter to the exact day.
 let riseWin={mode:'full'};
 function _todayLocal(){ return new Date().toLocaleDateString('en-CA'); }   // YYYY-MM-DD, local
 function _weekSun(ds){ const d=new Date(ds+'T12:00:00'); d.setDate(d.getDate()-d.getDay()); return d.toLocaleDateString('en-CA'); }
@@ -1169,16 +1176,23 @@ function onCgWinChange(){
   renderCaregiver();
 }
 // Windowed view of a caregiver's metrics. Full window → raw values unchanged.
-// Custom → %s from weekly buckets (week-snapped), lists filtered to exact dates.
+// Custom → %s from exact-day buckets, lists filtered to exact dates.
 function riseWindowMetrics(v,win){
   if(!v) return {exceptions:[],compliments:[],lastMinute:[],checkin:null,tasks:null,months:[]};
   if(!win.isCustom) return {exceptions:v.exceptions||[],compliments:v.compliments||[],lastMinute:v.lastMinute||[],checkin:v.checkin,tasks:v.tasks,months:v.monthsWithVisit||[]};
-  const wStart=_weekSun(win.start), end=win.end, wkIn=k=>k>=wStart&&k<=end;
+  const end=win.end;
+  // Prefer EXACT-DAY buckets (dy) so a custom range is precise to the day
+  // (Khadijah 7/28); fall back to weekly buckets (week-snapped) only if the
+  // payload predates daily buckets.
+  const dayIn=k=>k>=win.start&&k<=end;
+  const wStart=_weekSun(win.start), wkIn=k=>k>=wStart&&k<=end;
   let checked=0,onTime1=0,onTime7=0,manual=0,manualDen=0;
-  const cw=(v.checkin&&v.checkin.wk)||{};
-  for(const k in cw){ if(wkIn(k)){const W=cw[k]; checked+=W.c;onTime1+=W.o1;onTime7+=W.o7;manual+=W.m;manualDen+=W.md;} }
-  let nS=0,nE=0; const tw=(v.tasks&&v.tasks.wk)||{};
-  for(const k in tw){ if(wkIn(k)){nS+=tw[k].s;nE+=tw[k].e;} }
+  const cd=(v.checkin&&v.checkin.dy)||null, cw=(v.checkin&&v.checkin.wk)||{};
+  if(cd&&Object.keys(cd).length){ for(const k in cd){ if(dayIn(k)){const D=cd[k]; checked+=D.c;onTime1+=D.o1;onTime7+=D.o7;manual+=D.m;manualDen+=D.md;} } }
+  else { for(const k in cw){ if(wkIn(k)){const W=cw[k]; checked+=W.c;onTime1+=W.o1;onTime7+=W.o7;manual+=W.m;manualDen+=W.md;} } }
+  let nS=0,nE=0; const nd=(v.tasks&&v.tasks.dy)||null, tw=(v.tasks&&v.tasks.wk)||{};
+  if(nd&&Object.keys(nd).length){ for(const k in nd){ if(dayIn(k)){nS+=nd[k].s;nE+=nd[k].e;} } }
+  else { for(const k in tw){ if(wkIn(k)){nS+=tw[k].s;nE+=tw[k].e;} } }
   const inR=d=>d&&d>=win.start&&d<=win.end;
   return {
     exceptions:(v.exceptions||[]).filter(e=>inR(e.date)),
@@ -1294,7 +1308,7 @@ function renderCaregiver(){
     '<div class="points-box"><div class="points-num">'+risePoints.total+'</div><div class="points-label">Rise Above points<br>past 6 months</div></div>'+
   '</div>';
   if(v)html+='<div style="margin:-4px 0 12px"><button onclick="openRiseMeeting(\''+p.key+'\')" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-radius:20px;background:linear-gradient(135deg,var(--orange),var(--purple));color:#fff;cursor:pointer">📋 Rise Meeting Prep — Prefill with Tribute Intelligence</button></div>';
-  if(win.isCustom)html+='<div class="fc" style="border-left:3px solid var(--orange);margin-bottom:12px;padding:9px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="bdg" style="background:var(--orange-bg);color:var(--orange-text)">📅 '+escHtml(win.label)+'</span><span style="font-size:12px;color:var(--text2)">On-time, visit-note & manual %s are computed for this range (snapped to whole weeks); compliments, service exceptions & last-minute bookings are filtered to the exact dates. <strong>Rise Above points remain the fixed 6-month program score.</strong></span></div>';
+  if(win.isCustom)html+='<div class="fc" style="border-left:3px solid var(--orange);margin-bottom:12px;padding:9px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="bdg" style="background:var(--orange-bg);color:var(--orange-text)">📅 '+escHtml(win.label)+'</span><span style="font-size:12px;color:var(--text2)">On-time, visit-note & manual %s are computed for the exact dates in this range; compliments, service exceptions & last-minute bookings are filtered to the exact dates too. <strong>Rise Above points remain the fixed 6-month program score.</strong></span></div>';
   if(isLiveIn)html+='<div class="fc" style="border-left:3px solid var(--blue);margin-bottom:12px;padding:10px 16px"><span class="bdg bg-b">Live-In caregiver</span> <span style="font-size:12px;color:var(--text2)">'+liveIn+' live-in visit'+(liveIn!==1?'s':'')+' in the window. On-time check-in, manual-check-in and visit-note metrics below cover this caregiver\'s <strong>hourly</strong> visits only — live-in visits don\'t generate hourly EVV check-ins, so they aren\'t reflected in those percentages.</span></div>';
 
   // ── Row 1: Balances | On-time | Visit notes | Manual check-ins ──
@@ -1554,7 +1568,7 @@ function perfPopulateFilters(){
   }
   if(mktSel.options.length<=1){
     const mkts=[...new Set(spine.map(p=>p.market).filter(Boolean))].sort();
-    mktSel.innerHTML='<option value="">All markets</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+    mktSel.innerHTML='<option value="">All states</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
   }
   // caregiver list depends on MCE/market filter
   const mce=mceSel.value, market=mktSel.value;
