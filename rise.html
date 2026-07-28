@@ -880,6 +880,33 @@ function trackerSortBy(col){
   else { trackerSort.col=col; trackerSort.dir=1; }  // new column → ascending
   renderTracker();
 }
+// ── Editable tracker Notes + Next-Meeting date, persisted server-side so they
+//    survive sessions and are shared across MCEs (Charlotte). Kept until cleared.
+let trackerNotes=null, trackerNotesLoading=false;
+async function loadTrackerNotes(){
+  if(trackerNotes||trackerNotesLoading)return;
+  trackerNotesLoading=true;
+  try{
+    const key=getKey();
+    const r=await fetch(PROXY+'?endpoint=rise_tracker_notes',{headers:{'X-Retention-Key':key}});
+    trackerNotes=r.ok?((await r.json()).notes||{}):{};
+  }catch(e){ trackerNotes={}; }
+  trackerNotesLoading=false;
+  renderTracker();
+}
+async function saveTrackerNote(el){
+  const tr=el.closest('tr'); if(!tr)return;
+  const nk=tr.dataset.nk; if(!nk)return;
+  const dEl=tr.querySelector('.trk-next'), nEl=tr.querySelector('.trk-notes');
+  const nextMeeting=dEl?dEl.value:'', notes=nEl?nEl.value:'';
+  if(!trackerNotes)trackerNotes={};
+  if(!notes&&!nextMeeting)delete trackerNotes[nk]; else trackerNotes[nk]={notes,nextMeeting};
+  try{
+    await fetch(PROXY+'?endpoint=rise_tracker_notes',{method:'POST',
+      headers:{'Content-Type':'application/json','X-Retention-Key':getKey()},
+      body:JSON.stringify({cgId:nk,notes,nextMeeting})});
+  }catch(e){/* keep local value even if the save round-trips slowly */}
+}
 function renderTracker(){
   if(!spine.length){
     document.getElementById('trackerEmpty').style.display='';
@@ -928,7 +955,10 @@ function renderTracker(){
     let nextMeeting=latestRise?(latestRise.nextMeeting||''):'';
     if(!nextMeeting&&!riseDone&&latestNinety)nextMeeting=latestNinety.nextMeeting||'';
 
-    rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting});
+    // Completed Rise meeting dates (YYYY-MM-DD) — used to auto-clear a typed
+    // "next meeting" once the form for that date is entered in Viv.
+    const riseMeetingDates=riseRows.map(r=>{const d=parseDate(r.meetingDate);return d&&d<=TODAY?d.toLocaleDateString('en-CA'):null;}).filter(Boolean);
+    rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting,riseMeetingDates});
   });
   // Default sort = soonest-due first. Clicking a header overrides with an
   // explicit alphabetical/chronological sort (Charlotte). Notes isn't sortable.
@@ -955,6 +985,8 @@ function renderTracker(){
     tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:22px;font-style:italic">No caregivers found</td></tr>';
     return;
   }
+  if(trackerNotes===null)loadTrackerNotes();   // durable Notes / Next-Meeting store
+  const autoClear=[];
   tbody.innerHTML=rows.map(row=>{
     let chip='<span class="bdg bg-g">—</span>';
     if(row.daysUntil!==null){
@@ -962,16 +994,28 @@ function renderTracker(){
       else if(row.daysUntil<=14)chip='<span class="bdg bg-a">'+row.daysUntil+' day'+(row.daysUntil!==1?'s':'')+'</span>';
       else chip='<span class="bdg bg-g">'+row.daysUntil+' days</span>';
     }
-    return '<tr class="clickable" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')">'+
+    // Editable Notes + Next-Meeting: stored (typed) value wins; otherwise seed
+    // from the Rise-form value so nothing existing is lost. Both persist server-side.
+    const nk=(row.p.viv&&row.p.viv.id)?row.p.viv.id:row.p.key;
+    const stored=(trackerNotes&&trackerNotes[nk])||null;
+    let nmVal=stored?(stored.nextMeeting||''):'';
+    if(!nmVal&&row.nextMeeting){ const d=parseDate(row.nextMeeting); if(d)nmVal=d.toLocaleDateString('en-CA'); }
+    // Auto-clear: the meeting for that date has been entered in Viv → forget it.
+    if(nmVal&&(row.riseMeetingDates||[]).includes(nmVal)){ autoClear.push(nk); nmVal=''; }
+    const notesVal=stored?(stored.notes||''):(row.notes||'');
+    const nkAttr=escHtml(String(nk).replace(/"/g,'&quot;'));
+    return '<tr class="clickable" data-nk="'+nkAttr+'" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')">'+
       '<td class="td-name">'+escHtml(row.p.name)+'</td>'+
       '<td class="td-date">'+escHtml(row.p.market||'—')+'</td>'+
       '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
       '<td class="td-date" style="font-weight:600">'+(row.activeDueDate?formatDate(row.activeDueDate)+(row.dueKind==='90-day'?' <span class="bdg bg-p">90-day</span>':''):'—')+'</td>'+
       '<td>'+chip+'</td>'+
-      '<td class="td-date">'+(row.nextMeeting?(parseDate(row.nextMeeting)?formatDate(row.nextMeeting):escHtml(row.nextMeeting)):'<span class="muted">—</span>')+'</td>'+
+      '<td onclick="event.stopPropagation()"><input type="date" class="trk-next" value="'+escHtml(nmVal)+'" onchange="saveTrackerNote(this)" style="padding:4px 6px;font-size:12px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)"></td>'+
       '<td>'+segPill(row.segment)+'</td>'+
-      '<td class="td-notes">'+(row.notes?escHtml(row.notes):'')+'</td></tr>';
+      '<td class="td-notes" onclick="event.stopPropagation()"><textarea class="trk-notes" rows="2" onchange="saveTrackerNote(this)" placeholder="Add a note…" style="width:100%;min-width:180px;font-size:12px;font-family:inherit;padding:5px 7px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text);resize:vertical">'+escHtml(notesVal)+'</textarea></td></tr>';
   }).join('');
+  // Persist any auto-cleared next-meeting dates (meeting now recorded in Viv).
+  autoClear.forEach(nk=>{ const el=document.querySelector('tr[data-nk="'+String(nk).replace(/"/g,'\\"')+'"] .trk-next'); if(el)saveTrackerNote(el); });
   // sort-direction arrows on the active column header
   document.querySelectorAll('#trackerWrap .tsort').forEach(el=>{
     el.textContent = (trackerSort.col===el.dataset.c) ? (trackerSort.dir>0?' ▲':' ▼') : '';
