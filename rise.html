@@ -200,6 +200,16 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
 .sb-fill-g{background:var(--green)}.sb-fill-a{background:var(--amber)}.sb-fill-r{background:var(--red)}.sb-fill-w{background:#fff}
 .sb-section-h{font-size:13px;font-weight:700;color:var(--text);margin:18px 0 10px;display:flex;align-items:center;gap:8px}
 .sb-section-h .pill{font-size:11px;font-weight:600;color:var(--text3)}
+/* Celebrations */
+.cel-sub{font-size:12px;font-weight:700;color:var(--text);margin-bottom:7px}
+.cel-leaders{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.cel-lrow{display:flex;align-items:center;gap:9px;padding:5px 2px;border-bottom:1px solid var(--border);font-size:13px}
+.cel-lrow:last-child{border-bottom:none}
+.cel-rk{width:22px;text-align:center;flex:0 0 auto;font-weight:700;color:var(--text2)}
+.cel-lname{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.cel-lval{flex:0 0 auto;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.cel-tag{flex:0 0 auto;font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;cursor:pointer;background:var(--bg2);color:var(--text3);border:1px solid var(--border)}
+.cel-tag.done{background:var(--green-bg);color:var(--green-text);border-color:var(--green)}
 .sb-teams{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 .sb-team{background:var(--bg);border:.5px solid var(--border);border-radius:var(--rl);padding:14px 16px;cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .15s;position:relative}
 .sb-team:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(15,30,53,.10);border-color:var(--border2)}
@@ -371,7 +381,7 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
   <div class="perf-seg" id="perfSeg">
     <button data-v="compliance" class="on" onclick="setPerfView('compliance')">Visit Compliance</button>
     <button data-v="shortlist" onclick="setPerfView('shortlist')">Short List</button>
-    <button data-v="scoreboard" onclick="setPerfView('scoreboard')">Team Scoreboard</button>
+    <button data-v="celebrations" onclick="setPerfView('celebrations')">Celebrations</button>
   </div>
   <div class="bar" style="flex-wrap:wrap">
     <label>Team (MCE)</label>
@@ -381,6 +391,15 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
     <span id="sbCaregiverWrap" style="display:none;align-items:center;gap:6px">
       <label>Caregiver</label>
       <select id="sbCaregiver" onchange="renderPerf()" style="min-width:200px"><option value="">All caregivers (team view)</option></select>
+    </span>
+    <span id="sbPeriodWrap" style="display:none;align-items:center;gap:6px">
+      <label>Period</label>
+      <select id="sbPeriod" onchange="renderPerf()">
+        <option value="4">Last 4 weeks</option>
+        <option value="8">Last 8 weeks</option>
+        <option value="12" selected>Last 12 weeks</option>
+        <option value="26">Last 26 weeks</option>
+      </select>
     </span>
     <span id="sbRankWrap" style="display:none;align-items:center;gap:6px">
       <label>Rank by</label>
@@ -1520,10 +1539,11 @@ function setPerfView(v){
 function renderPerf(){
   // toggle contextual filters
   document.getElementById('sbCaregiverWrap').style.display=perfView==='compliance'?'inline-flex':'none';
-  document.getElementById('sbRankWrap').style.display=perfView==='scoreboard'?'inline-flex':'none';
+  document.getElementById('sbPeriodWrap').style.display=perfView==='compliance'?'inline-flex':'none';
+  document.getElementById('sbRankWrap').style.display='none';
   if(perfView==='compliance')return renderVisitCompliance();
   if(perfView==='shortlist')return renderShortList();
-  return renderScoreboard();
+  return renderCelebrations();
 }
 // shared filter population (MCE / Market / Caregiver)
 function perfPopulateFilters(){
@@ -1638,6 +1658,142 @@ function sbBar(pct,goal,onHero){
   return '<div class="sb-bar'+(onHero?' on-hero':'')+'"><i class="'+fill+'" style="width:'+w.toFixed(0)+'%"></i></div>';
 }
 function sbMedal(i){ return i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1); }
+
+// ════════════════════════════════════════════════════════════════════════════
+// CELEBRATIONS (replaces Team Scoreboard) — Today's Celebrations · Performance
+// Leaders · CE Award Recommendations. "Mark celebrated" persists server-side so
+// items drop off once the MCE has messaged the caregiver (Charlotte).
+// ════════════════════════════════════════════════════════════════════════════
+let celebratedSet=null, celLoading=false, celShowDone=false;
+async function loadCelebrations(){
+  if(celebratedSet||celLoading)return;
+  celLoading=true;
+  try{
+    const r=await fetch(PROXY+'?endpoint=rise_celebrations',{headers:{'X-Retention-Key':getKey()}});
+    const j=r.ok?await r.json():{}; celebratedSet=new Set(Object.keys(j.celebrated||{}));
+  }catch(e){ celebratedSet=new Set(); }
+  celLoading=false; renderCelebrations();
+}
+async function toggleCelebrated(id,el){
+  if(!celebratedSet)celebratedSet=new Set();
+  const now=!celebratedSet.has(id);
+  if(now)celebratedSet.add(id); else celebratedSet.delete(id);
+  try{ await fetch(PROXY+'?endpoint=rise_celebrations',{method:'POST',headers:{'Content-Type':'application/json','X-Retention-Key':getKey()},body:JSON.stringify({id,celebrated:now})}); }catch(e){}
+  renderCelebrations();
+}
+function celBtn(id){
+  const done=celebratedSet&&celebratedSet.has(id);
+  return '<button onclick="event.stopPropagation();toggleCelebrated(\''+id.replace(/'/g,"")+'\',this)" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:14px;cursor:pointer;border:1px solid '+(done?'var(--border2);background:var(--bg2);color:var(--text3)':'var(--green);background:var(--green-bg);color:var(--green-text)')+'">'+(done?'✓ Celebrated · undo':'Mark celebrated')+'</button>';
+}
+function _mmddNext(days){ const set={}; const d=new Date(TODAY); for(let i=0;i<=days;i++){ set[String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')]=i; d.setDate(d.getDate()+1); } return set; }
+function _daysAgoStr(n){ const d=new Date(TODAY); d.setDate(d.getDate()-n); return d.toLocaleDateString('en-CA'); }
+
+function renderCelebrations(){
+  const el=document.getElementById('scoreboard');
+  if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="big">🎉</div><div>Sync Viv data to build Celebrations.</div></div>'; return; }
+  perfPopulateFilters();
+  if(celebratedSet===null){ loadCelebrations(); }
+  const scope=perfScope();
+  const isDone=id=>celebratedSet&&celebratedSet.has(id);
+  const showable=id=>celShowDone||!isDone(id);
+  const upcoming=_mmddNext(5);          // today → +5 days
+  const comp48=_daysAgoStr(7), fill48=_daysAgoStr(7);   // recent = last 7 days; celebrated items drop off via the button, not by aging out
+  let h='';
+
+  // Header + show-celebrated toggle
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">'+
+    '<div style="font-family:\'Space Grotesk\',Inter,sans-serif;font-size:20px;font-weight:700">🎉 Celebrations</div>'+
+    '<label style="font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px"><input type="checkbox" '+(celShowDone?'checked':'')+' onchange="celShowDone=this.checked;renderCelebrations()"> Show already-celebrated</label></div>';
+
+  // ── SECTION 1: TODAY'S CELEBRATIONS ──────────────────────────────────────
+  h+='<div class="sb-section-h">🎂 Today\'s Celebrations <span class="pill">birthdays &amp; anniversaries (next 5 days) · compliments &amp; fill-ins (last 7 days) — mark celebrated to clear</span></div>';
+  // Birthdays
+  const bdays=scope.filter(p=>p.viv&&p.viv.birthMonthDay&&upcoming[p.viv.birthMonthDay]!=null)
+    .map(p=>({p,id:'bday:'+(p.viv.id||p.key)+':'+TODAY.getFullYear(),when:upcoming[p.viv.birthMonthDay],md:p.viv.birthMonthDay}))
+    .filter(x=>showable(x.id)).sort((a,b)=>a.when-b.when);
+  // Anniversaries
+  const annivs=scope.filter(p=>p.hireDate).map(p=>{
+    const md=String(p.hireDate.getMonth()+1).padStart(2,'0')+'-'+String(p.hireDate.getDate()).padStart(2,'0');
+    return {p,md,when:upcoming[md],years:TODAY.getFullYear()-p.hireDate.getFullYear(),id:'anniv:'+(p.viv&&p.viv.id||p.key)+':'+TODAY.getFullYear()};
+  }).filter(x=>x.when!=null&&x.years>=1&&showable(x.id)).sort((a,b)=>a.when-b.when);
+  // Recent compliments (last 48h)
+  const recentComps=[];
+  scope.forEach(p=>(p.viv&&p.viv.compliments||[]).forEach((c,i)=>{ if((c.date||'')>=comp48){ const id='comp:'+(p.viv.id||p.key)+':'+c.date+':'+i; if(showable(id))recentComps.push({p,c,id}); } }));
+  recentComps.sort((a,b)=>(b.c.date||'').localeCompare(a.c.date||''));
+  // Recent last-minute fill-ins (last 48h by fill time)
+  const recentFills=[];
+  scope.forEach(p=>(p.viv&&p.viv.lastMinute||[]).forEach(b=>{ const fd=(b.filledTs||b.filled||'').slice(0,10); if(fd>=fill48&&b.leadHrs>=0&&b.leadHrs<24){ const id='fill:'+(b.bid||((p.viv.id||p.key)+':'+(b.startTs||b.start))); if(showable(id))recentFills.push({p,b,id}); } }));
+  recentFills.sort((a,b)=>String(b.b.filledTs||'').localeCompare(String(a.b.filledTs||'')));
+
+  const celItem=(inner,id)=>'<div class="sl-row'+(isDone(id)?'':' sev-good')+'" style="'+(isDone(id)?'opacity:.55;':'')+'display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:default"><div style="flex:1;min-width:0">'+inner+'</div>'+celBtn(id)+'</div>';
+  const fmtTime=ts=>{ if(!ts)return''; const d=new Date(ts); return isNaN(d)?'':d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
+
+  h+='<div class="grid"><div>';
+  h+='<div class="cel-sub">🎂 Birthdays</div>';
+  h+=bdays.length?bdays.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+escHtml(x.p.market||'')+' · '+(x.when===0?'today!':'in '+x.when+'d')+'</span>',x.id)).join(''):'<div class="no-data">No birthdays in the next 5 days.</div>';
+  h+='<div class="cel-sub" style="margin-top:12px">🎊 Work Anniversaries</div>';
+  h+=annivs.length?annivs.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+x.years+' yr'+(x.years!==1?'s':'')+' · '+(x.when===0?'today!':'in '+x.when+'d')+' · '+escHtml(x.p.market||'')+'</span>',x.id)).join(''):'<div class="no-data">No anniversaries in the next 5 days.</div>';
+  h+='</div><div>';
+  h+='<div class="cel-sub">⭐ Compliments (last 7 days)</div>';
+  h+=recentComps.length?recentComps.map(x=>celItem('<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.c.reason||'')+(x.c.from?' · '+escHtml(x.c.from):'')+'</span></div><div style="font-size:12px;color:var(--text2);margin-top:3px">"'+escHtml(x.c.desc||'')+'"</div>',x.id)).join(''):'<div class="no-data">No compliments in the last 7 days.</div>';
+  h+='<div class="cel-sub" style="margin-top:12px">🙌 Last-Minute Fill-Ins (last 7 days)</div>';
+  h+=recentFills.length?recentFills.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+escHtml(x.b.client||'client')+' · visit '+escHtml(fmtTime(x.b.startTs)||x.b.start)+' · filled '+escHtml(fmtTime(x.b.filledTs)||x.b.filled)+' ('+x.b.leadHrs+'h notice)</span>',x.id)).join(''):'<div class="no-data">No last-minute fill-ins in the last 7 days.</div>';
+  h+='</div></div>';
+
+  // ── SECTION 2: PERFORMANCE LEADERS (default last 3 months) ───────────────
+  const weeks=perfWeeksBack(13);       // ~3 months
+  const perStart=_daysAgoStr(91);
+  const leaderStats=scope.filter(p=>p.viv).map(p=>{
+    const v=p.viv, ck=perfWindowCk(v,weeks), nt=perfWindowNotes(v,weeks);
+    const comps=(v.compliments||[]).filter(c=>(c.date||'')>=perStart).length;
+    const fills=(v.lastMinute||[]).filter(b=>b.leadHrs>=0&&b.leadHrs<24&&(b.start||'')>=perStart).length;
+    return {p,key:p.key,name:p.name,mce:p.manager||'—',market:p.market||'—',
+      visits:ck.checked, onTime:ck.checked>=5?ck.onTime/ck.checked*100:null, note:nt.total>=5?nt.success/nt.total*100:null,
+      clients:v.clientsSeen||0, compliments:comps, fills:fills};
+  });
+  const CATS=[
+    {k:'fills',l:'Most Last-Minute Fill-Ins',fmt:v=>v},
+    {k:'visits',l:'Most Visits',fmt:v=>v},
+    {k:'clients',l:'Most Clients Seen (6 mo)',fmt:v=>v},
+    {k:'onTime',l:'Highest On-Time %',fmt:v=>v==null?'—':v.toFixed(1)+'%'},
+    {k:'note',l:'Highest Visit-Note %',fmt:v=>v==null?'—':v.toFixed(1)+'%'},
+    {k:'compliments',l:'Most Compliments',fmt:v=>v}
+  ];
+  const leaderTop={};
+  h+='<div class="sb-section-h" style="margin-top:20px">🏅 Performance Leaders <span class="pill">top 5 · last 3 months · reflects the MCE / market filter above</span></div>';
+  h+='<div class="cel-leaders">';
+  CATS.forEach(cat=>{
+    const ranked=leaderStats.filter(s=>s[cat.k]!=null&&s[cat.k]>0).sort((a,b)=>b[cat.k]-a[cat.k]).slice(0,5);
+    leaderTop[cat.k]=new Set(ranked.map(s=>s.key));
+    h+='<div class="fc"><div class="ct">'+cat.l+'</div>';
+    if(!ranked.length)h+='<div class="no-data">No data.</div>';
+    else ranked.forEach((s,i)=>{
+      const id='leader:'+(s.p.viv&&s.p.viv.id||s.key)+':'+cat.k;
+      const clickable=cat.k==='compliments';
+      h+='<div class="cel-lrow"'+(clickable?' style="cursor:pointer" onclick="openCaregiver(\''+s.key+'\')"':'')+'>'+
+        '<span class="cel-rk">'+sbMedal(i)+'</span>'+
+        '<span class="cel-lname">'+escHtml(s.name)+(clickable?' <span style="color:var(--blue-text);font-size:10px">↗</span>':'')+'</span>'+
+        '<span class="cel-lval">'+cat.fmt(s[cat.k])+'</span>'+
+        '<span class="cel-tag '+(isDone(id)?'done':'')+'" onclick="event.stopPropagation();toggleCelebrated(\''+id+'\',this)" title="click to toggle">'+(isDone(id)?'✓ celebrated':'not yet')+'</span></div>';
+    });
+    h+='</div>';
+  });
+  h+='</div>';
+
+  // ── SECTION 3: CE AWARD RECOMMENDATIONS ──────────────────────────────────
+  const awardScore={};
+  CATS.forEach(cat=>leaderTop[cat.k].forEach(key=>{ (awardScore[key]=awardScore[key]||{cats:[]}).cats.push(cat.l); }));
+  const recs=Object.keys(awardScore).map(key=>{ const s=leaderStats.find(x=>x.key===key); return {s,cats:awardScore[key].cats}; })
+    .filter(x=>x.s&&x.cats.length>=2).sort((a,b)=>b.cats.length-a.cats.length).slice(0,10);
+  h+='<div class="sb-section-h" style="margin-top:20px">🏆 CE Award Recommendations <span class="pill">caregivers leading in 2+ categories</span></div>';
+  if(!recs.length)h+='<div class="no-data">No multi-category leaders in this period yet.</div>';
+  else h+=recs.map(x=>{
+    const id='award:'+(x.s.p.viv&&x.s.p.viv.id||x.s.key)+':'+TODAY.getFullYear()+'-'+(TODAY.getMonth()+1);
+    return '<div class="sl-row sev-good" style="'+(isDone(id)?'opacity:.55;':'')+'display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer" onclick="openCaregiver(\''+x.s.key+'\')"><div style="flex:1"><span class="sl-name">🏅 '+escHtml(x.s.name)+'</span> <span class="sl-meta">'+escHtml(x.s.mce)+' · '+escHtml(x.s.market)+'</span><div style="font-size:12px;color:var(--text2);margin-top:3px">Leads in: '+x.cats.map(escHtml).join(' · ')+'</div></div>'+celBtn(id)+'</div>';
+  }).join('');
+
+  el.innerHTML=h;
+}
 
 function renderScoreboard(){
   const el=document.getElementById('scoreboard');
@@ -1795,15 +1951,12 @@ function renderShortList(){
   if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading…</div>'; return; }
   perfPopulateFilters();
   const scope=perfScope();
-  const flagged=[], shoutouts=[];
+  const flagged=[];
   scope.forEach(p=>{
     const trig=shortListTriggers(p);
     if(trig.length)flagged.push({p,trig});
-    const pickups=perfLastMinPickups(p.viv,30);
-    if(pickups>0)shoutouts.push({p,pickups});
   });
   flagged.sort((a,b)=>(b.trig.some(t=>t.sev==='r')?1:0)-(a.trig.some(t=>t.sev==='r')?1:0)||b.trig.length-a.trig.length||a.p.name.localeCompare(b.p.name));
-  shoutouts.sort((a,b)=>b.pickups-a.pickups);
   document.getElementById('sbCount').textContent=flagged.length+' on the short list · '+scope.length+' caregivers';
   let h='<div class="sb-note">Short List criteria (past 2 weeks / past month, from live Viv data): OTP &lt;80% (2 wks) · &gt;15 min late more than twice · &gt;1 preventable call-out · &gt;3 emergency call-outs · any missing visit note · &gt;1 connection complaint (incl. match failures) · &gt;1 communication complaint · removed Sunday availability.</div>';
   h+='<div class="sl-gro01">⚠️ Needs attention <span style="color:var(--text3);font-weight:600">· '+flagged.length+' caregiver'+(flagged.length!==1?'s':'')+'</span></div>';
@@ -1815,13 +1968,7 @@ function renderShortList(){
       '<div class="sl-trig">'+x.trig.map(t=>'<span class="sl-chip'+(t.sev==='warn'?' warn':'')+'">'+escHtml(t.t)+'</span>').join('')+'</div>'+
     '</div>';
   }).join('');
-  // Shout-outs (compliment triggers)
-  h+='<div class="sl-gro01" style="margin-top:22px">⭐ Shout-outs to give <span style="color:var(--text3);font-weight:600">· picked up a visit with &lt;12 hrs notice this month</span></div>';
-  if(!shoutouts.length)h+='<div class="no-data">No last-minute pickups in the past month.</div>';
-  else h+=shoutouts.slice(0,40).map(x=>'<div class="sl-row sev-good" onclick="openCaregiver(\''+x.p.key+'\')">'+
-      '<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.p.manager||'—')+' · '+escHtml(x.p.market||'—')+'</span></div>'+
-      '<div class="sl-trig"><span class="sl-chip good">🙌 '+x.pickups+' last-minute pickup'+(x.pickups>1?'s':'')+' (&lt;12 hrs notice)</span></div>'+
-    '</div>').join('');
+  h+='<div class="sb-note" style="margin-top:16px">🙌 Shout-outs &amp; last-minute pickups have moved to the <strong>Celebrations</strong> tab.</div>';
   el.innerHTML=h;
 }
 
@@ -1861,20 +2008,21 @@ function renderVisitCompliance(){
   let list=perfScope();
   let subject='All caregivers';
   if(cgKey){ const one=spine.find(p=>p.key===cgKey); if(one){ list=[one]; subject=one.name; } }
-  const weeks=perfWeeksBack(12);
+  const nWeeks=parseInt((document.getElementById('sbPeriod')||{}).value||'12',10);
+  const weeks=perfWeeksBack(nWeeks);
   const series=perfWeeklySeries(list,weeks);
   // headline numbers over the whole window
   const agg=perfWindowCk_list(list,weeks); const notesAgg=perfNotes_list(list,weeks);
   const onTimePct=agg.checked?agg.onTime/agg.checked*100:null;
   const notePct=notesAgg.total?notesAgg.success/notesAgg.total*100:null;
   const appPct=agg.manualDen?100-agg.manual/agg.manualDen*100:null;
-  document.getElementById('sbCount').textContent=subject+' · '+list.length+' caregiver'+(list.length!==1?'s':'')+' · last 12 weeks';
+  document.getElementById('sbCount').textContent=subject+' · '+list.length+' caregiver'+(list.length!==1?'s':'')+' · last '+nWeeks+' weeks';
   let h='';
   h+='<div class="grid four" style="margin-bottom:12px">'+
     perfStatCard('% On-Time Check-In',onTimePct,92,'≥92%')+
     perfStatCard('% Visit Note Completion',notePct,95,'≥95%')+
     perfStatCard('% Checked in via App',appPct,90,'higher is better')+
-    '<div class="fc"><div class="ct">Checked-In Visits</div><div class="big-stat"><span class="v b">'+agg.checked+'</span></div><div class="stat-foot">last 12 weeks</div></div>'+
+    '<div class="fc"><div class="ct">Checked-In Visits</div><div class="big-stat"><span class="v b">'+agg.checked+'</span></div><div class="stat-foot">last '+nWeeks+' weeks</div></div>'+
   '</div>';
   h+='<div class="vc-chart"><div class="ct">Weekly trend — '+escHtml(subject)+'</div>'+perfTrendSvg(series)+
     '<div class="vc-legend"><span><span class="k" style="background:#FF5A1F"></span>On-time check-in %</span><span><span class="k" style="background:#0F8F6B"></span>Visit note %</span><span style="color:var(--text3)">dashed = goal (92% / 95%)</span></div></div>';
