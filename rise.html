@@ -1722,8 +1722,9 @@ function renderCelebrations(){
   recentComps.sort((a,b)=>(b.c.date||'').localeCompare(a.c.date||''));
   // Recent last-minute fill-ins (last 48h by fill time)
   const recentFills=[];
-  scope.forEach(p=>(p.viv&&p.viv.lastMinute||[]).forEach(b=>{ const fd=(b.filledTs||b.filled||'').slice(0,10); if(fd>=fill48&&b.leadHrs>=0&&b.leadHrs<24){ const id='fill:'+(b.bid||((p.viv.id||p.key)+':'+(b.startTs||b.start))); if(showable(id))recentFills.push({p,b,id}); } }));
-  recentFills.sort((a,b)=>String(b.b.filledTs||'').localeCompare(String(a.b.filledTs||'')));
+  scope.forEach(p=>(p.viv&&p.viv.lastMinute||[]).forEach(b=>{ const fd=(b.filledTs||b.filled||'').slice(0,10); if(fd>=fill48&&b.leadHrs>=0&&b.leadHrs<=LM_THRESHOLD_HRS){ const id='fill:'+(b.bid||((p.viv.id||p.key)+':'+(b.startTs||b.start))); if(showable(id))recentFills.push({p,b,id}); } }));
+  recentFills.sort((a,b)=>(a.b.leadHrs-b.b.leadHrs)||String(b.b.filledTs||'').localeCompare(String(a.b.filledTs||'')));  // shortest notice first = most celebration-worthy
+  const FILL_CAP=15, fillHidden=Math.max(0,recentFills.length-FILL_CAP);
 
   const celItem=(inner,id)=>'<div class="sl-row'+(isDone(id)?'':' sev-good')+'" style="'+(isDone(id)?'opacity:.55;':'')+'display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:default"><div style="flex:1;min-width:0">'+inner+'</div>'+celBtn(id)+'</div>';
   const fmtTime=ts=>{ if(!ts)return''; const d=new Date(ts); return isNaN(d)?'':d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
@@ -1737,7 +1738,7 @@ function renderCelebrations(){
   h+='<div class="cel-sub">⭐ Compliments (last 7 days)</div>';
   h+=recentComps.length?recentComps.map(x=>celItem('<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.c.reason||'')+(x.c.from?' · '+escHtml(x.c.from):'')+'</span></div><div style="font-size:12px;color:var(--text2);margin-top:3px">"'+escHtml(x.c.desc||'')+'"</div>',x.id)).join(''):'<div class="no-data">No compliments in the last 7 days.</div>';
   h+='<div class="cel-sub" style="margin-top:12px">🙌 Last-Minute Fill-Ins (last 7 days)</div>';
-  h+=recentFills.length?recentFills.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+escHtml(x.b.client||'client')+' · visit '+escHtml(fmtTime(x.b.startTs)||x.b.start)+' · filled '+escHtml(fmtTime(x.b.filledTs)||x.b.filled)+' ('+x.b.leadHrs+'h notice)</span>',x.id)).join(''):'<div class="no-data">No last-minute fill-ins in the last 7 days.</div>';
+  h+=recentFills.length?recentFills.slice(0,FILL_CAP).map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+escHtml(x.b.client||'client')+' · visit '+escHtml(fmtTime(x.b.startTs)||x.b.start)+' · filled '+escHtml(fmtTime(x.b.filledTs)||x.b.filled)+' ('+(Math.round(x.b.leadHrs*10)/10)+'h notice)</span>',x.id)).join('')+(fillHidden?'<div class="no-data">+ '+fillHidden+' more this week — see “Most Last-Minute Fill-Ins” below for the leaders.</div>':''):'<div class="no-data">No last-minute fill-ins in the last 7 days.</div>';
   h+='</div></div>';
 
   // ── SECTION 2: PERFORMANCE LEADERS (default last 3 months) ───────────────
@@ -1763,7 +1764,9 @@ function renderCelebrations(){
   h+='<div class="sb-section-h" style="margin-top:20px">🏅 Performance Leaders <span class="pill">top 5 · last 3 months · reflects the MCE / market filter above</span></div>';
   h+='<div class="cel-leaders">';
   CATS.forEach(cat=>{
-    const ranked=leaderStats.filter(s=>s[cat.k]!=null&&s[cat.k]>0).sort((a,b)=>b[cat.k]-a[cat.k]).slice(0,5);
+    // For % categories, tiebreak by visit count so 100% over many visits beats 100% over a handful.
+    const pctCat=cat.k==='onTime'||cat.k==='note';
+    const ranked=leaderStats.filter(s=>s[cat.k]!=null&&s[cat.k]>0).sort((a,b)=>(b[cat.k]-a[cat.k])||(pctCat?b.visits-a.visits:0)).slice(0,5);
     leaderTop[cat.k]=new Set(ranked.map(s=>s.key));
     h+='<div class="fc"><div class="ct">'+cat.l+'</div>';
     if(!ranked.length)h+='<div class="no-data">No data.</div>';
@@ -1773,7 +1776,7 @@ function renderCelebrations(){
       h+='<div class="cel-lrow"'+(clickable?' style="cursor:pointer" onclick="openCaregiver(\''+s.key+'\')"':'')+'>'+
         '<span class="cel-rk">'+sbMedal(i)+'</span>'+
         '<span class="cel-lname">'+escHtml(s.name)+(clickable?' <span style="color:var(--blue-text);font-size:10px">↗</span>':'')+'</span>'+
-        '<span class="cel-lval">'+cat.fmt(s[cat.k])+'</span>'+
+        '<span class="cel-lval">'+cat.fmt(s[cat.k])+(pctCat?' <span style="font-weight:500;color:var(--text3);font-size:11px">('+s.visits+' vis)</span>':'')+'</span>'+
         '<span class="cel-tag '+(isDone(id)?'done':'')+'" onclick="event.stopPropagation();toggleCelebrated(\''+id+'\',this)" title="click to toggle">'+(isDone(id)?'✓ celebrated':'not yet')+'</span></div>';
     });
     h+='</div>';
