@@ -465,11 +465,13 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
   <div class="bar" style="flex-wrap:wrap">
     <label>MCE</label>
     <select id="nhMce" onchange="renderNewHires()"><option value="">All MCEs</option></select>
-    <label>Market</label>
-    <select id="nhMarket" onchange="renderNewHires()"><option value="">All markets</option></select>
+    <label>State</label>
+    <select id="nhMarket" onchange="renderNewHires()"><option value="">All states</option></select>
+    <label>Status</label>
+    <select id="nhStatus" onchange="renderNewHires()"><option value="">All statuses</option><option value="Active">Active</option><option value="Retained">Retained (90+)</option><option value="Termed">Termed</option></select>
     <span class="count" id="nhCount"></span>
   </div>
-  <div id="newhires"><div class="empty-state"><div class="big">🧭</div><div>Loading new-hire visit tracking…</div></div></div>
+  <div id="newhires"><div class="empty-state"><div class="big">🧭</div><div>Loading the 90-day new-hire tracker…</div></div></div>
 </div>
 
 <!-- PAGE: CERTIFICATIONS -->
@@ -2405,61 +2407,106 @@ function renderReferrals(){
   el.innerHTML=h+'</tbody></table></div>';
 }
 
-// ── NEW HIRES (first-visit tracking, lazy-loaded from rise_newhires) ──
+// ── NEW HIRES — 90-Day New-Hire Tracker (Charlotte 7/28) ──
+// Richer replacement for the old first-visit tab: pulls the 90-Day Tracker's
+// data (ninety_day multi-year + ninety_day_ats) and merges/adapts it the same
+// way ninety.html does (adaptRow), rendered in the Rise dashboard's own style.
 let newHiresData=null, newHiresLoading=false;
+const _nhST2AB={'Massachusetts':'MA','Maryland':'MD','Illinois':'IL','Virginia':'VA','New Jersey':'NJ'};
+function _nhSource(s){ s=String(s||'').toLowerCase(); if(!s)return '';
+  if(s.includes('indeed'))return 'Indeed'; if(s.includes('zip'))return 'ZipRecruiter';
+  if(s.includes('refer'))return 'Referral'; if(s.includes('school')||s.includes('community')||s.includes('college'))return 'School/Community';
+  return 'Other'; }
+function _nhAdapt(r,ats){
+  const a=Object.assign({},(r.email&&ats[String(r.email).toLowerCase()])||{},ats[String(r.mnum)]||{});
+  const los=Math.max(0,r.tenureDays||0);
+  const status=r.termDate?'Termed':(los>=90?'Retained':'Active');
+  let exit=r.termType||''; if(r.termType&&r.termDetail)exit=r.termType;
+  const drv=a.driver||(a.commuteMethod?(/driv|own vehicle|car/i.test(a.commuteMethod)?'Yes':'No'):'');
+  return { name:r.name, state:r.state||'', st:_nhST2AB[r.state]||r.state||'?', mce:r.mce||'',
+    hireIso:r.hireDate||'', hireYear:+String(r.hireDate||'').slice(0,4)||0, termDate:r.termDate||null,
+    status, los, visitType:a.visit_type||String(r.jobTitle||'').replace(/caregiver/ig,'').replace(/\s+/g,' ').trim()||'—',
+    driver:drv, source:a.source_cat||_nhSource(a.referralSource)||'—', otherJob:a.other_job||'',
+    pctDesired:r.pctDesired!=null?Math.round(r.pctDesired*100):null,
+    firstVisit:r.firstVisit||null, daysToFirst:r.daysToFirstVisit,
+    exitReason:exit, exitFull:r.termDetail||'', preventable:r.termPreventable||'',
+    prn:!!r.prn, rehire:!!r.rehire, inViv:r.inViv!==false };
+}
 async function loadNewHires(){
   if(newHiresData){ renderNewHires(); return; }
   if(newHiresLoading)return; newHiresLoading=true;
   const key=getKey(); if(!key){ showGate(); newHiresLoading=false; return; }
+  const hd={'X-Retention-Key':key};
   try{
-    const r=await fetch(PROXY+'?endpoint=rise_newhires',{headers:{'X-Retention-Key':key}});
-    if(r.status>=500){ await new Promise(s=>setTimeout(s,1500)); }
-    const r2=r.ok?r:await fetch(PROXY+'?endpoint=rise_newhires',{headers:{'X-Retention-Key':key}});
-    if(!r2.ok)throw new Error('HTTP '+r2.status);
-    newHiresData=await r2.json();
+    const yrs=[]; for(let y=2025;y<=TODAY.getFullYear();y++)yrs.push(y);
+    const reqs=yrs.map(y=>fetch(PROXY+'?endpoint=ninety_day&year='+y,{headers:hd}).then(r=>r.ok?r.json():{rows:[]}));
+    reqs.push(fetch(PROXY+'?endpoint=ninety_day_ats',{headers:hd}).then(r=>r.ok?r.json():{records:{}}).catch(()=>({records:{}})));
+    const res=await Promise.all(reqs);
+    const ats=(res.pop()||{}).records||{};
+    let newest=null; const raw=[];
+    res.forEach(y=>{ (y.rows||[]).forEach(x=>raw.push(x)); if(y.generatedAt&&(!newest||y.generatedAt>newest))newest=y.generatedAt; });
+    newHiresData={ rows:raw.map(r=>_nhAdapt(r,ats)), generatedAt:newest };
   }catch(e){
-    document.getElementById('newhires').innerHTML='<div class="err" style="display:block">Couldn\'t load new-hire data: '+escHtml(e.message)+' — try reopening the tab.</div>';
+    document.getElementById('newhires').innerHTML='<div class="err" style="display:block">Couldn\'t load the 90-day tracker: '+escHtml(e.message)+' — try reopening the tab.</div>';
     newHiresLoading=false; return;
   }
   newHiresLoading=false; renderNewHires();
 }
+function _nhStatusBadge(s){
+  if(s==='Retained')return '<span class="bdg bg-g">✓ Retained</span>';
+  if(s==='Termed')return '<span class="bdg bg-r">Termed</span>';
+  return '<span class="bdg bg-b">Active</span>';
+}
 function renderNewHires(){
   const el=document.getElementById('newhires');
-  if(!newHiresData){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading new-hire visit tracking…</div>'; return; }
-  const mceSel=document.getElementById('nhMce'), mSel=document.getElementById('nhMarket');
-  const rows0=newHiresData.newHires||[];
+  if(!newHiresData){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading the 90-day new-hire tracker…</div>'; return; }
+  const mceSel=document.getElementById('nhMce'), mSel=document.getElementById('nhMarket'), stSel=document.getElementById('nhStatus');
+  const rows0=newHiresData.rows||[];
   if(mceSel.options.length<=1){
     const mces=[...new Set(rows0.map(r=>r.mce).filter(Boolean))].sort();
     mceSel.innerHTML='<option value="">All MCEs</option>'+mces.map(m=>'<option>'+escHtml(m)+'</option>').join('');
-    const mkts=[...new Set(rows0.map(r=>r.market).filter(Boolean))].sort();
-    mSel.innerHTML='<option value="">All markets</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+    const sts=[...new Set(rows0.map(r=>r.state).filter(Boolean))].sort();
+    mSel.innerHTML='<option value="">All states</option>'+sts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
   }
-  const mce=mceSel.value, market=mSel.value;
-  let rows=rows0.filter(r=>(!mce||r.mce===mce)&&(!market||r.market===market));
-  document.getElementById('nhCount').textContent=rows.length+' hires · last '+newHiresData.daysBack+' days';
-  const started=rows.filter(r=>r.firstVisit);
-  const noVisit=rows.filter(r=>!r.firstVisit&&!r.termDate);
-  const avg=started.length?Math.round(started.reduce((a,r)=>a+r.daysToFirstVisit,0)/started.length):null;
-  const within7=started.filter(r=>r.daysToFirstVisit<=7).length;
+  const mce=mceSel.value, state=mSel.value, st=stSel.value;
+  let rows=rows0.filter(r=>(!mce||r.mce===mce)&&(!state||r.state===state)&&(!st||r.status===st));
+  // KPIs
+  const termed=rows.filter(r=>r.status==='Termed');
+  const early=termed.filter(r=>r.los<=90);
+  const achieved=rows.filter(r=>r.los>=90).length;
+  const active=rows.filter(r=>r.status!=='Termed').length;
+  const avgLos=termed.length?Math.round(termed.reduce((a,r)=>a+r.los,0)/termed.length):null;
+  const tPct=rows.length?Math.round(termed.length/rows.length*100):0;
+  document.getElementById('nhCount').textContent=rows.length+' hires · 90-day cohorts 2025–'+TODAY.getFullYear()+(newHiresData.generatedAt?' · as of '+fmtTime(newHiresData.generatedAt):'');
   let h='<div class="grid four" style="margin-bottom:14px">'+
-    '<div class="fc"><div class="ct">New hires (window)</div><div class="big-stat"><span class="v">'+rows.length+'</span></div><div class="stat-foot">last '+newHiresData.daysBack+' days, 7 MCEs</div></div>'+
-    '<div class="fc"><div class="ct">Avg days to 1st visit</div><div class="big-stat"><span class="v '+(avg!=null&&avg<=10?'g':'a')+'">'+(avg!=null?avg:'—')+'</span></div><div class="stat-foot">'+started.length+' have started</div></div>'+
-    '<div class="fc"><div class="ct">Started within 7 days</div><div class="big-stat"><span class="v g">'+within7+'</span></div><div class="stat-foot">of '+started.length+' started</div></div>'+
-    '<div class="fc"><div class="ct">No visit yet</div><div class="big-stat"><span class="v '+(noVisit.length?'r':'g')+'">'+noVisit.length+'</span></div><div class="stat-foot">active, awaiting first visit</div></div>'+
+    '<div class="fc"><div class="ct">Total hires</div><div class="big-stat"><span class="v">'+rows.length+'</span></div><div class="stat-foot">2025–'+TODAY.getFullYear()+' cohorts</div></div>'+
+    '<div class="fc"><div class="ct">Achieved 90 days</div><div class="big-stat"><span class="v g">'+achieved+'</span></div><div class="stat-foot">'+(rows.length?Math.round(achieved/rows.length*100):0)+'% of hires</div></div>'+
+    '<div class="fc"><div class="ct">Active</div><div class="big-stat"><span class="v g">'+active+'</span></div><div class="stat-foot">'+(100-tPct)+'% still with us</div></div>'+
+    '<div class="fc"><div class="ct">Termed</div><div class="big-stat"><span class="v r">'+termed.length+'</span></div><div class="stat-foot">'+tPct+'% · '+early.length+' within 90d</div></div>'+
   '</div>';
-  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Market</th><th>MCE</th><th>Hire Date</th><th>First Client Visit</th><th>Days to Visit</th><th>Status</th></tr></thead><tbody>';
-  rows.sort((a,b)=>{ if(!a.firstVisit&&!a.termDate&&(b.firstVisit||b.termDate))return -1; if(!b.firstVisit&&!b.termDate&&(a.firstVisit||a.termDate))return 1; return (b.daysToFirstVisit||999)-(a.daysToFirstVisit||999); });
+  h+='<div class="grid four" style="margin-bottom:14px">'+
+    '<div class="fc"><div class="ct">0–30 day exits</div><div class="big-stat"><span class="v r">'+early.filter(r=>r.los<=30).length+'</span></div><div class="stat-foot">heaviest drop-off window</div></div>'+
+    '<div class="fc"><div class="ct">31–60 day exits</div><div class="big-stat"><span class="v a">'+early.filter(r=>r.los>30&&r.los<=60).length+'</span></div><div class="stat-foot"></div></div>'+
+    '<div class="fc"><div class="ct">61–90 day exits</div><div class="big-stat"><span class="v a">'+early.filter(r=>r.los>60&&r.los<=90).length+'</span></div><div class="stat-foot"></div></div>'+
+    '<div class="fc"><div class="ct">Avg LOS (termed)</div><div class="big-stat"><span class="v">'+(avgLos!=null?avgLos+'d':'—')+'</span></div><div class="stat-foot">days before exit</div></div>'+
+  '</div>';
+  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>St</th><th>MCE</th><th>Hire</th><th>Status</th><th>LOS</th><th>Visit type</th><th>Driver</th><th>Source</th><th>2nd job</th><th>% hrs</th><th>Exit reason</th></tr></thead><tbody>';
+  // active (recent hire) first, then termed by shortest LOS
+  rows.sort((a,b)=>{ if(a.status!=='Termed'&&b.status==='Termed')return -1; if(b.status!=='Termed'&&a.status==='Termed')return 1;
+    if(a.status==='Termed')return a.los-b.los; return (b.hireIso||'').localeCompare(a.hireIso||''); });
   rows.forEach(r=>{
-    let chip;
-    if(r.termDate)chip='<span class="bdg bg-n">Termed</span>';
-    else if(!r.firstVisit)chip='<span class="bdg bg-r">No visit yet</span>';
-    else if(r.daysToFirstVisit<=7)chip='<span class="bdg bg-g">Fast start</span>';
-    else if(r.daysToFirstVisit<=21)chip='<span class="bdg bg-a">On track</span>';
-    else chip='<span class="bdg bg-r">Slow ('+r.daysToFirstVisit+'d)</span>';
-    h+='<tr><td class="td-name">'+escHtml(r.name)+'</td><td class="td-date">'+escHtml(r.market||'—')+'</td><td class="td-date">'+escHtml(r.mce||'—')+'</td>'+
-      '<td class="td-date">'+(r.hireDate?formatDate(r.hireDate):'—')+'</td>'+
-      '<td class="td-date">'+(r.firstVisit?formatDate(r.firstVisit):'<span class="muted">—</span>')+'</td>'+
-      '<td style="font-weight:600">'+(r.daysToFirstVisit!=null?r.daysToFirstVisit+'d':'—')+'</td><td>'+chip+'</td></tr>';
+    const drvChip=r.driver==='Yes'?'<span class="bdg bg-g">Yes</span>':r.driver==='No'?'<span class="bdg bg-r">No</span>':'—';
+    const jobChip=r.otherJob==='Yes'?'<span class="bdg bg-a">Yes</span>':r.otherJob==='No'?'<span class="bdg bg-n">No</span>':'—';
+    const pc=r.pctDesired!=null?(r.pctDesired>=80?'g':r.pctDesired>=50?'a':'r'):'';
+    h+='<tr><td class="td-name">'+escHtml(r.name)+(r.rehire?' <span class="bdg bg-n" title="rehire">↩</span>':'')+(r.inViv===false?' <span class="bdg bg-a" title="in iSolved but not activated in Viv">⚠</span>':'')+'</td>'+
+      '<td class="td-date">'+escHtml(r.st)+'</td><td class="td-date">'+escHtml(r.mce||'—')+'</td>'+
+      '<td class="td-date">'+(r.hireIso?formatDate(parseDate(r.hireIso)):'—')+'</td>'+
+      '<td>'+_nhStatusBadge(r.status)+'</td>'+
+      '<td style="font-weight:600">'+r.los+'d</td>'+
+      '<td style="font-size:12px">'+escHtml(r.visitType||'—')+'</td>'+
+      '<td>'+drvChip+'</td><td style="font-size:12px">'+escHtml(r.source||'—')+'</td><td>'+jobChip+'</td>'+
+      '<td'+(pc?' style="font-weight:600;color:var(--'+(pc==='g'?'green':pc==='a'?'amber':'red')+')"':'')+'>'+(r.pctDesired!=null?r.pctDesired+'%':'—')+'</td>'+
+      '<td style="font-size:11px;max-width:220px;white-space:normal;color:var(--text2)">'+escHtml(r.exitReason||'—')+'</td></tr>';
   });
   el.innerHTML=h+'</tbody></table></div>';
 }
