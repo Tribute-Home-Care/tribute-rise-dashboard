@@ -477,6 +477,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <select id="nhMarket" onchange="renderNewHires()"><option value="">All states</option></select>
     <label>Status</label>
     <select id="nhStatus" onchange="renderNewHires()"><option value="">All statuses</option><option value="Active">Active</option><option value="Retained">Retained (90+)</option><option value="Termed">Termed</option></select>
+    <button onclick="printNewHireSchedules()" title="Open a printable sheet of this week's client-visit schedules for all first-90-day caregivers in the current MCE/state filter" style="border:1px solid var(--orange);background:var(--orange-bg);color:var(--orange-text);border-radius:9px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">📅 This Week's Schedules</button>
     <span class="count" id="nhCount"></span>
   </div>
   <div id="newhires"><div class="empty-state"><div class="big">🧭</div><div>Loading the 90-day new-hire tracker…</div></div></div>
@@ -1576,8 +1577,52 @@ async function renderCgSchedule(cgid){
   }
   h+='</tbody></table>';
   const total=visits.length;
-  h+='<div class="sb-note" style="margin-top:8px">'+total+' visit'+(total!==1?'s':'')+' this week · pulled live from Viv by caregiver ID (includes nicknames &amp; all locations)'+(data.generatedAt?' · as of '+fmtTime(data.generatedAt):'')+'</div>';
+  h+='<div class="sb-note" style="margin-top:8px">'+total+' client visit'+(total!==1?'s':'')+' this week · pulled live from Viv by caregiver ID (includes nicknames &amp; all locations)'+(data.generatedAt?' · as of '+fmtTime(data.generatedAt):'')+'</div>';
   el.innerHTML=h;
+}
+
+// One-click pull: printable sheet of this week's CLIENT-visit schedules for every
+// first-90-day caregiver in the current New Hires MCE/state filter (Jillian 7/30 —
+// for sending to Chantal & the CSMs). Joined by cgid so nicknames/Geos all appear.
+async function printNewHireSchedules(){
+  const key=getKey(); if(!key){ showGate(); return; }
+  const mce=(document.getElementById('nhMce')||{}).value||'', state=(document.getElementById('nhMarket')||{}).value||'';
+  const wk=_sundayStr(TODAY), wkEnd=_addDaysStr(wk,6);
+  const nh=spine.filter(p=>p.viv&&p.viv.id&&p.hireDate&&((TODAY-p.hireDate)/86400000)<=90&&(!mce||p.manager===mce)&&(!state||p.market===state))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+  if(!nh.length){ alert('No new hires in their first 90 days match the current MCE/state filter.'); return; }
+  let data=schedCache[wk];
+  if(!data){ try{ const r=await fetch(PROXY+'?endpoint=rise_week_schedule&week='+wk,{headers:{'X-Retention-Key':key}}); if(!r.ok)throw new Error('HTTP '+r.status); data=await r.json(); schedCache[wk]=data; }catch(e){ alert('Could not load schedules: '+e.message); return; } }
+  const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const fmtT=ts=>{ if(!ts)return''; const d=new Date(ts); return isNaN(d)?'':d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); };
+  const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const usd=ds=>{ const p=ds.split('-'); return (+p[1])+'/'+(+p[2]); };
+  let body='';
+  nh.forEach(p=>{
+    const vis=(data.byCg&&data.byCg[p.viv.id])||[];
+    body+='<div class="cg"><div class="nm">'+esc(p.name)+' <span class="mkt">'+esc(p.market||'')+(p.manager?' · '+esc(p.manager):'')+'</span></div>';
+    let rows='';
+    for(let i=0;i<7;i++){ const day=_addDaysStr(wk,i); const dv=vis.filter(x=>x.day===day).sort((a,b)=>String(a.start||'').localeCompare(String(b.start||''))); if(!dv.length)continue;
+      rows+='<tr><td class="d">'+DOW[i]+' '+usd(day)+'</td><td>'+dv.map(x=>{ const isLI=/live[- ]?in/i.test(x.type); const t=isLI?'Live-In':((fmtT(x.start)&&fmtT(x.end))?fmtT(x.start)+'–'+fmtT(x.end):fmtT(x.start)); return '<b>'+esc(t||'—')+'</b> '+esc(x.client||''); }).join('<br>')+'</td></tr>';
+    }
+    body+=rows?('<table>'+rows+'</table>'):'<div class="none">No client visits scheduled this week</div>';
+    body+='</div>';
+  });
+  const doc='<!doctype html><html><head><meta charset="utf-8"><title>New Hire Schedules — week of '+wk+'</title><style>'+
+    'body{font-family:-apple-system,Segoe UI,Arial,sans-serif;color:#1C1A17;margin:28px;font-size:13px}'+
+    'h1{font-size:19px;margin:0 0 2px}.sub{color:#6b6b6b;font-size:12.5px;margin-bottom:16px}'+
+    '.cg{border:1px solid #e5e1d8;border-radius:8px;padding:10px 14px;margin-bottom:10px;page-break-inside:avoid}'+
+    '.nm{font-weight:700;font-size:14px;margin-bottom:5px}.mkt{font-weight:400;color:#8c857b;font-size:11.5px}'+
+    'table{width:100%;border-collapse:collapse}td{padding:3px 6px;border-bottom:1px solid #f0ede7;vertical-align:top}'+
+    'td.d{width:70px;font-weight:600;white-space:nowrap;color:#4a4a4a}.none{color:#a00;font-size:12px}'+
+    '@media print{.cg{border-color:#ccc}}'+
+    '</style></head><body>'+
+    '<h1>New Hire Schedules — Client Visits</h1>'+
+    '<div class="sub">Week of '+usd(wk)+' – '+usd(wkEnd)+(mce?' · '+esc(mce):'')+(state?' · '+esc(state):'')+' · '+nh.length+' caregivers (first 90 days)</div>'+
+    body+'</body></html>';
+  const w=window.open('','_blank');
+  if(!w){ alert('Please allow pop-ups for this site to open the printable schedule.'); return; }
+  w.document.write(doc); w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 500);
 }
 function toggleSe(id){ const el=document.getElementById(id); if(el)el.classList.toggle('open'); }
 
