@@ -210,6 +210,14 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
 .cel-lval{flex:0 0 auto;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
 .cel-tag{flex:0 0 auto;font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;cursor:pointer;background:var(--bg2);color:var(--text3);border:1px solid var(--border)}
 .cel-tag.done{background:var(--green-bg);color:var(--green-text);border-color:var(--green)}
+/* Weekly schedule (caregiver page) */
+.wk-btn{border:1px solid var(--border2);background:var(--bg);color:var(--text2);border-radius:8px;width:26px;height:26px;line-height:1;cursor:pointer;font-size:15px;font-weight:700}
+.wk-btn:hover{border-color:var(--orange);color:var(--orange)}
+table.sched-tbl td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+table.sched-tbl tr:last-child td{border-bottom:none}
+.sched-visit{padding:2px 0;font-size:13px}
+.sched-time{font-weight:600;font-variant-numeric:tabular-nums;color:var(--text)}
+.sched-client{color:var(--text2)}
 .sb-teams{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 .sb-team{background:var(--bg);border:.5px solid var(--border);border-radius:var(--rl);padding:14px 16px;cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .15s;position:relative}
 .sb-team:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(15,30,53,.10);border-color:var(--border2)}
@@ -1497,6 +1505,10 @@ function renderCaregiver(){
   }
   html+='</div></div>';
 
+  // ── This Week's Schedule (Jillian 7/30) — pulled by cgid so nicknames/Geos
+  //    never drop, unlike the Viv AI report. Loaded on-demand into #cgSchedule. ──
+  html+='<div class="grid full"><div class="fc"><div class="ct" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>📅 Schedule</span><span id="cgSchedNav"></span></div><div id="cgSchedule"><div class="no-data">Loading schedule…</div></div></div></div>';
+
   // ── Service exceptions ──
   html+='<div class="grid full"><div class="fc"><div class="ct">Service Exceptions (click to expand)</div>';
   [['connection','Connection'],['communication','Communication'],['reliability','Reliability'],['flexibility','Flexibility'],['callout','Waived Call-Outs'],['nonComplaint','Non-Complaints · Internal Comm / Availability / Desired Hours']].forEach(cat=>{
@@ -1513,6 +1525,59 @@ function renderCaregiver(){
   html+='</div></div>';
 
   document.getElementById('dashboard').innerHTML=html;
+  renderCgSchedule(v?v.id:null);
+}
+
+// ── Weekly schedule quick-view on the caregiver page ──
+// Pulls rise_week_schedule (all caregivers' visits for a week, keyed by cgid),
+// cached client-side per week, and shows just this caregiver's slice as a Sun→Sat
+// glance with prev/next week nav. cgid join = nickname/Geo caregivers never drop.
+let schedCache={}, schedWeek=null;   // schedWeek = Sunday YYYY-MM-DD of the viewed week
+function _sundayStr(d){ const x=new Date(d); x.setDate(x.getDate()-x.getDay()); return x.toLocaleDateString('en-CA'); }
+function _addDaysStr(ds,n){ const x=new Date(ds+'T12:00:00'); x.setDate(x.getDate()+n); return x.toLocaleDateString('en-CA'); }
+function schedShiftWeek(delta){ schedWeek=_addDaysStr(schedWeek||_sundayStr(TODAY),delta*7); const p=spine.find(x=>x.key===selectedKey); renderCgSchedule(p&&p.viv?p.viv.id:null); }
+async function renderCgSchedule(cgid){
+  if(!schedWeek)schedWeek=_sundayStr(TODAY);
+  const el=document.getElementById('cgSchedule'), nav=document.getElementById('cgSchedNav');
+  if(!el)return;
+  const wkStart=schedWeek, wkEnd=_addDaysStr(schedWeek,6);
+  const curWk=_sundayStr(TODAY);
+  const label=(wkStart===curWk?'This week':(wkStart===_addDaysStr(curWk,7)?'Next week':(wkStart===_addDaysStr(curWk,-7)?'Last week':'')));
+  if(nav)nav.innerHTML='<button class="wk-btn" onclick="schedShiftWeek(-1)">‹</button>'+
+    '<span style="font-size:12px;color:var(--text2);min-width:150px;text-align:center;display:inline-block">'+formatDate(parseDate(wkStart))+' – '+formatDate(parseDate(wkEnd))+(label?' · '+label:'')+'</span>'+
+    '<button class="wk-btn" onclick="schedShiftWeek(1)">›</button>';
+  if(!cgid){ el.innerHTML='<div class="no-data">No Viv record for this caregiver.</div>'; return; }
+  // load week (cached client-side)
+  if(!schedCache[wkStart]){
+    el.innerHTML='<div class="no-data"><span class="spin" style="display:inline-block;vertical-align:middle"></span> Loading schedule…</div>';
+    const key=getKey(); if(!key){ showGate(); return; }
+    try{
+      const r=await fetch(PROXY+'?endpoint=rise_week_schedule&week='+wkStart,{headers:{'X-Retention-Key':key}});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      schedCache[wkStart]=await r.json();
+    }catch(e){ el.innerHTML='<div class="err" style="display:block">Couldn\'t load schedule: '+escHtml(e.message)+'</div>'; return; }
+  }
+  // caregiver may have changed while awaiting; only paint if still the same one
+  const cur=spine.find(x=>x.key===selectedKey);
+  if(!cur||!cur.viv||cur.viv.id!==cgid)return;
+  const data=schedCache[wkStart]||{};
+  const visits=(data.byCg&&data.byCg[cgid])||[];
+  const fmtT=ts=>{ if(!ts)return''; const d=new Date(ts); return isNaN(d)?'':d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); };
+  const DOW=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  let h='<table class="tbl sched-tbl"><tbody>';
+  for(let i=0;i<7;i++){
+    const day=_addDaysStr(wkStart,i);
+    const dv=visits.filter(x=>x.day===day).sort((a,b)=>String(a.start||'').localeCompare(String(b.start||'')));
+    const isToday=day===TODAY.toLocaleDateString('en-CA');
+    h+='<tr'+(isToday?' style="background:var(--orange-bg)"':'')+'><td style="width:120px;vertical-align:top;font-weight:600;white-space:nowrap">'+DOW[i]+'<div style="font-size:11px;color:var(--text3);font-weight:400">'+formatDate(parseDate(day))+'</div></td><td>';
+    if(!dv.length)h+='<span class="no-data">—</span>';
+    else h+=dv.map(x=>{ const isLI=/live[- ]?in/i.test(x.type); const t=isLI?'Live-In':((fmtT(x.start)&&fmtT(x.end))?fmtT(x.start)+'–'+fmtT(x.end):(fmtT(x.start)||'')); return '<div class="sched-visit"><span class="sched-time">'+escHtml(t||'—')+'</span> <span class="sched-client">'+escHtml(x.client||'—')+'</span>'+(x.type&&!isLI?' <span class="bdg bg-n" style="font-size:9px">'+escHtml(x.type)+'</span>':'')+'</div>'; }).join('');
+    h+='</td></tr>';
+  }
+  h+='</tbody></table>';
+  const total=visits.length;
+  h+='<div class="sb-note" style="margin-top:8px">'+total+' visit'+(total!==1?'s':'')+' this week · pulled live from Viv by caregiver ID (includes nicknames &amp; all locations)'+(data.generatedAt?' · as of '+fmtTime(data.generatedAt):'')+'</div>';
+  el.innerHTML=h;
 }
 function toggleSe(id){ const el=document.getElementById(id); if(el)el.classList.toggle('open'); }
 
