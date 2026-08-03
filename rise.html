@@ -403,11 +403,18 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <span id="sbPeriodWrap" style="display:none;align-items:center;gap:6px">
       <label>Period</label>
       <select id="sbPeriod" onchange="renderPerf()">
+        <option value="lw">Last week</option>
         <option value="4">Last 4 weeks</option>
         <option value="8">Last 8 weeks</option>
         <option value="12" selected>Last 12 weeks</option>
         <option value="26">Last 26 weeks</option>
+        <option value="custom">Custom…</option>
       </select>
+      <span id="sbPeriodCustom" style="display:none;align-items:center;gap:5px">
+        <input type="date" id="sbPeriodFrom" onchange="renderPerf()" style="padding:5px 7px;font-size:12.5px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
+        <span style="font-size:12px;color:var(--text2)">to</span>
+        <input type="date" id="sbPeriodTo" onchange="renderPerf()" style="padding:5px 7px;font-size:12.5px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
+      </span>
     </span>
     <span id="sbRankWrap" style="display:none;align-items:center;gap:6px">
       <label>Rank by</label>
@@ -1714,6 +1721,7 @@ function renderPerf(){
   // toggle contextual filters
   document.getElementById('sbCaregiverWrap').style.display=perfView==='compliance'?'inline-flex':'none';
   document.getElementById('sbPeriodWrap').style.display=perfView==='compliance'?'inline-flex':'none';
+  document.getElementById('sbPeriodCustom').style.display=(perfView==='compliance'&&(document.getElementById('sbPeriod')||{}).value==='custom')?'inline-flex':'none';
   document.getElementById('sbRankWrap').style.display='none';
   if(perfView==='compliance')return renderVisitCompliance();
   if(perfView==='shortlist')return renderShortList();
@@ -1747,6 +1755,23 @@ function perfWeeksBack(n){
   const out=[]; const d=new Date(TODAY); d.setDate(d.getDate()-d.getDay());  // this week's Sunday
   for(let i=0;i<n;i++){ out.push(d.toLocaleDateString('en-CA')); d.setDate(d.getDate()-7); }
   return out;  // most-recent first
+}
+// Resolve the Visit Compliance Period dropdown → {weeks, label}. "lw" = the most
+// recent COMPLETE Sunday-week (last week, for Jillian's Monday cadence); "custom"
+// = every Sunday-week between the two date pickers; otherwise last N weeks.
+function perfPeriodWeeks(){
+  const pv=(document.getElementById('sbPeriod')||{}).value||'12';
+  if(pv==='lw'){ const d=new Date(TODAY); d.setDate(d.getDate()-d.getDay()-7); const w=d.toLocaleDateString('en-CA'); return {weeks:[w], label:'last week ('+formatDate(parseDate(w))+')'}; }
+  if(pv==='custom'){
+    const f=(document.getElementById('sbPeriodFrom')||{}).value, t=(document.getElementById('sbPeriodTo')||{}).value;
+    if(!f||!t)return {weeks:perfWeeksBack(12), label:'pick a start & end date'};
+    const s=new Date(f+'T12:00:00'); s.setDate(s.getDate()-s.getDay());  // snap start to its Sunday
+    const end=new Date((t<f?f:t)+'T12:00:00'); const ws=[];
+    for(let d=new Date(s); d<=end; d.setDate(d.getDate()+7)) ws.push(d.toLocaleDateString('en-CA'));
+    ws.reverse();  // most-recent first
+    return {weeks:ws.length?ws:perfWeeksBack(1), label:formatDate(parseDate(f))+' – '+formatDate(parseDate(t))};
+  }
+  const n=parseInt(pv,10)||12; return {weeks:perfWeeksBack(n), label:'last '+n+' weeks'};
 }
 function perfWindowCk(v,weeks){
   const wk=(v.checkin&&v.checkin.wk)||{}; let c=0,o1=0,vl=0,m=0,md=0;
@@ -2185,21 +2210,20 @@ function renderVisitCompliance(){
   let list=perfScope();
   let subject='All caregivers';
   if(cgKey){ const one=spine.find(p=>p.key===cgKey); if(one){ list=[one]; subject=one.name; } }
-  const nWeeks=parseInt((document.getElementById('sbPeriod')||{}).value||'12',10);
-  const weeks=perfWeeksBack(nWeeks);
+  const pw=perfPeriodWeeks(); const weeks=pw.weeks; const periodLbl=pw.label;
   const series=perfWeeklySeries(list,weeks);
   // headline numbers over the whole window
   const agg=perfWindowCk_list(list,weeks); const notesAgg=perfNotes_list(list,weeks);
   const onTimePct=agg.checked?agg.onTime/agg.checked*100:null;
   const notePct=notesAgg.total?notesAgg.success/notesAgg.total*100:null;
   const appPct=agg.manualDen?100-agg.manual/agg.manualDen*100:null;
-  document.getElementById('sbCount').textContent=subject+' · '+list.length+' caregiver'+(list.length!==1?'s':'')+' · last '+nWeeks+' weeks';
+  document.getElementById('sbCount').textContent=subject+' · '+list.length+' caregiver'+(list.length!==1?'s':'')+' · '+periodLbl;
   let h='';
   h+='<div class="grid four" style="margin-bottom:12px">'+
     perfStatCard('% On-Time Check-In',onTimePct,92,'≥92%')+
     perfStatCard('% Visit Note Completion',notePct,95,'≥95%')+
     perfStatCard('% Checked in via App',appPct,90,'higher is better')+
-    '<div class="fc"><div class="ct">Checked-In Visits</div><div class="big-stat"><span class="v b">'+agg.checked+'</span></div><div class="stat-foot">last '+nWeeks+' weeks</div></div>'+
+    '<div class="fc"><div class="ct">Checked-In Visits</div><div class="big-stat"><span class="v b">'+agg.checked+'</span></div><div class="stat-foot">'+periodLbl+'</div></div>'+
   '</div>';
   h+='<div class="vc-chart"><div class="ct">Weekly trend — '+escHtml(subject)+'</div>'+perfTrendSvg(series)+
     '<div class="vc-legend"><span><span class="k" style="background:#FF5A1F"></span>On-time check-in %</span><span><span class="k" style="background:#0F8F6B"></span>Visit note %</span><span style="color:var(--text3)">dashed = goal (92% / 95%)</span></div></div>';
