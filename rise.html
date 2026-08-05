@@ -335,6 +335,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
 <div class="page-intro">
   <h1 class="title">Rise Dashboard</h1>
   <div class="sub">6-month performance reviews &amp; Rise meeting tracking · MCE workspace</div>
+  <div id="myTeamBanner" style="display:none;margin-top:6px;font-size:12px;color:var(--text2)"></div>
 </div>
 
 <div class="err" id="errBox"></div>
@@ -609,6 +610,71 @@ let spine=[];                    // unified caregiver list
 let selectedKey='';
 
 // ════════════════════════════════════════════════════════════════════════════
+// SIGNED-IN IDENTITY (purely additive; stays null in password-only sessions so
+// nothing changes vs. the legacy path). When a Microsoft user is signed in we
+// decode their token once, then default every tab's Manager/MCE filter to THEIR
+// team and attribute their actions. There is no getUser() on this build, so we
+// decode the JWT ourselves.
+// ════════════════════════════════════════════════════════════════════════════
+let CURRENT_USER=null;            // {name,email} for the signed-in MS user, else null
+let _userResolving=null;          // in-flight promise guard (retries until resolved)
+function _decodeJwt(t){
+  try{ return JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); }catch(e){ return null; }
+}
+async function ensureCurrentUser(){
+  if(CURRENT_USER)return CURRENT_USER;
+  if(_userResolving)return _userResolving;
+  _userResolving=(async()=>{
+    try{
+      const token=window.tributeKsfGate&&window.tributeKsfGate.getToken?await window.tributeKsfGate.getToken():null;
+      if(token){
+        const p=_decodeJwt(token);
+        if(p&&(p.name||p.preferred_username))CURRENT_USER={name:p.name||'',email:p.preferred_username||''};
+      }
+    }catch(e){}
+    _userResolving=null;   // clear so a later call can retry if the token wasn't ready yet
+    return CURRENT_USER;
+  })();
+  return _userResolving;
+}
+function _normNm(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
+// The signed-in user's own MCE name IF it matches a manager present in `spine`
+// (case-insensitive, whitespace-normalized); otherwise null. Admins who don't
+// manage a team (Andrew, Charlotte) → null → they keep seeing everything.
+function currentUserMce(){
+  if(!CURRENT_USER||!CURRENT_USER.name||!spine.length)return null;
+  const me=_normNm(CURRENT_USER.name);
+  if(!me)return null;
+  for(const p of spine){ if(p.manager&&_normNm(p.manager)===me)return p.manager; }
+  return null;
+}
+// Default a Manager/MCE <select> to the signed-in user's own team — but ONLY on
+// first population and only if we haven't already defaulted that dropdown, so a
+// user who switches to "All" or another MCE (covering another team) is never
+// overridden on a later re-render.
+const _myTeamDefaulted=new Set();
+function defaultToMyTeam(sel){
+  if(!sel||_myTeamDefaulted.has(sel.id))return;
+  const mine=currentUserMce();
+  if(!mine)return;                          // not scoped (admin / password-only / not resolved yet)
+  const target=_normNm(mine);
+  const opt=[...sel.options].find(o=>_normNm(o.value||o.textContent)===target);
+  if(!opt)return;
+  sel.value=opt.value;
+  _myTeamDefaulted.add(sel.id);
+  updateMyTeamBanner();
+}
+// One shared, unobtrusive indicator shown only for a team-scoped signed-in user.
+function updateMyTeamBanner(){
+  const el=document.getElementById('myTeamBanner'); if(!el)return;
+  const mine=currentUserMce();
+  if(mine){
+    el.textContent='Viewing your team ('+mine+') — use the Manager/MCE filter to cover another team.';
+    el.style.display='';
+  }else{ el.style.display='none'; }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // GATE + SYNC
 // ════════════════════════════════════════════════════════════════════════════
 function getKey(){ return localStorage.getItem(KEY_LS)||''; }
@@ -650,7 +716,7 @@ async function syncViv(manual){
     if(!r.ok) throw new Error('Viv proxy returned HTTP '+r.status);
     viv=await r.json();
     setSyncLine('<span class="dot"></span>Live · '+viv.counts.caregivers+' caregivers · '+viv.counts.riseForms+' Rise forms · data as of '+fmtTime(viv.generatedAt),'');
-    buildSpine(); buildManagerFilter(); buildSearchIndex(); renderTracker(); renderLiveChips();
+    buildSpine(); await ensureCurrentUser(); updateMyTeamBanner(); buildManagerFilter(); buildSearchIndex(); renderTracker(); renderLiveChips();
     if(selectedKey)renderCaregiver();
     restoreUploads();   // shared iSolved files (roster/certs) saved by whoever uploaded last
   }catch(e){
@@ -986,6 +1052,7 @@ function buildManagerFilter(){
   const cur=sel.value;
   sel.innerHTML='<option value="">All Managers</option>'+[...managers].sort().map(s=>'<option value="'+escHtml(s)+'">'+escHtml(s)+'</option>').join('');
   if([...managers].includes(cur))sel.value=cur;
+  defaultToMyTeam(sel);   // first-population default to the signed-in user's own team
 }
 
 let trackerSort={col:null,dir:1};
@@ -1018,7 +1085,7 @@ async function saveTrackerNote(el){
   try{
     await fetch(PROXY+'?endpoint=rise_tracker_notes',{method:'POST',
       headers:{'Content-Type':'application/json','X-Retention-Key':getKey()},
-      body:JSON.stringify({cgId:nk,notes,nextMeeting})});
+      body:JSON.stringify({cgId:nk,notes,nextMeeting,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
   }catch(e){/* keep local value even if the save round-trips slowly */}
 }
 function renderTracker(){
@@ -1831,6 +1898,7 @@ function perfPopulateFilters(){
   if(mceSel.options.length<=1){
     const mces=[...new Set(spine.map(p=>p.manager).filter(Boolean))].sort();
     mceSel.innerHTML='<option value="">All MCEs</option>'+mces.map(m=>'<option value="'+escHtml(m)+'">'+escHtml(m)+'</option>').join('');
+    defaultToMyTeam(mceSel);   // first-population default to the signed-in user's own team
   }
   if(mktSel.options.length<=1){
     const mkts=[...new Set(spine.map(p=>p.market).filter(Boolean))].sort();
@@ -1975,7 +2043,7 @@ async function toggleCelebrated(id,el){
   if(!celebratedSet)celebratedSet=new Set();
   const now=!celebratedSet.has(id);
   if(now)celebratedSet.add(id); else celebratedSet.delete(id);
-  try{ await fetch(PROXY+'?endpoint=rise_celebrations',{method:'POST',headers:{'Content-Type':'application/json','X-Retention-Key':getKey()},body:JSON.stringify({id,celebrated:now})}); }catch(e){}
+  try{ await fetch(PROXY+'?endpoint=rise_celebrations',{method:'POST',headers:{'Content-Type':'application/json','X-Retention-Key':getKey()},body:JSON.stringify({id,celebrated:now,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})}); }catch(e){}
   renderCelebrations();
 }
 function celBtn(id){
@@ -2373,6 +2441,7 @@ function renderCerts(){
   if(mceSel.options.length<=1){
     const mces=[...new Set(spine.map(p=>p.manager).filter(Boolean))].sort();
     mceSel.innerHTML='<option value="">All MCEs</option>'+mces.map(m=>'<option value="'+escHtml(m)+'">'+escHtml(m)+'</option>').join('');
+    defaultToMyTeam(mceSel);   // first-population default to the signed-in user's own team
   }
   if(mktSel.options.length<=1){
     const mkts=[...new Set(spine.map(p=>p.market).filter(Boolean))].sort();
@@ -2767,6 +2836,7 @@ function renderNewHires(){
   if(mceSel.options.length<=1){
     const mces=[...new Set(rows0.map(r=>r.mce).filter(Boolean))].sort();
     mceSel.innerHTML='<option value="">All MCEs</option>'+mces.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+    defaultToMyTeam(mceSel);   // first-population default to the signed-in user's own team
     const sts=[...new Set(rows0.map(r=>r.state).filter(Boolean))].sort();
     mSel.innerHTML='<option value="">All states</option>'+sts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
   }
@@ -2848,7 +2918,7 @@ async function toggleLeaveStatus(id,ev){
   try{
     await fetch(PROXY+'?endpoint=cas_leave_status',{method:'POST',
       headers:{'Content-Type':'application/json','X-Retention-Key':getKey()},
-      body:JSON.stringify({id,status:next})});
+      body:JSON.stringify({id,status:next,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
   }catch(e){/* local state already updated; server catches up */}
 }
 function _leaveDateRange(lv){
@@ -2893,6 +2963,7 @@ function renderLeave(){
   if(mceSel.options.length<=1){
     const mces=[...new Set(rows0.map(r=>r.manager).filter(Boolean))].sort();
     mceSel.innerHTML='<option value="">All Managers</option>'+mces.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+    defaultToMyTeam(mceSel);   // first-population default to the signed-in user's own team
     const mkts=[...new Set(rows0.map(r=>r.market).filter(Boolean))].sort();
     mSel.innerHTML='<option value="">All markets</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
   }
@@ -3003,6 +3074,7 @@ function fillSummaryFilters(){
   if(mceSel.options.length<=1){
     const mces=[...new Set(spine.map(p=>p.manager).filter(Boolean))].sort();
     mceSel.innerHTML='<option value="">All MCEs</option>'+mces.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+    defaultToMyTeam(mceSel);   // first-population default to the signed-in user's own team
   }
   if(mSel.options.length<=1){
     const mkts=[...new Set(spine.map(p=>p.market).filter(Boolean))].sort();
@@ -3237,6 +3309,7 @@ renderLiveChips();
 // return to, and Back retraces tabs instead of exiting on the first press.
 try{ history.replaceState({riseTab:'tracker'},''); }catch(e){}
 _navReady=true;
+ensureCurrentUser();   // start decoding the signed-in identity early (no-op in password-only sessions)
 if(getKey())syncViv(false); else showGate();
 </script>
 </body>
