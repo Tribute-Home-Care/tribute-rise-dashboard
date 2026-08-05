@@ -769,6 +769,10 @@ function setupPreviewMce(){
 // GATE + SYNC
 // ════════════════════════════════════════════════════════════════════════════
 function getKey(){ return localStorage.getItem(KEY_LS)||''; }
+// Authenticated if signed in with Microsoft OR holding a legacy key. Tab loaders
+// that predate the Microsoft cutover used to gate on getKey() alone, which wrongly
+// walls token-only (Microsoft) sessions — they call this instead.
+function _hasAuth(){ try{ return !!getKey() || !!(window.tributeKsfGate&&window.tributeKsfGate.isSignedIn&&window.tributeKsfGate.isSignedIn()); }catch(e){ return !!getKey(); } }
 // Prefer the signed-in Microsoft account; fall back to the manually-entered
 // team password only if that's unavailable (e.g. this page reached via an
 // older embed that hands off a key rather than a token).
@@ -1977,7 +1981,7 @@ async function loadLiveInNotes(cgid){
     }
   };
   if(liveInNoteCache[cgid]){ paint(liveInNoteCache[cgid]); return; }
-  const key=getKey(); if(!key){ showGate(); return; }
+  const key=getKey(); if(!_hasAuth()){ showGate(); return; }
   try{
     const r=await fetch(PROXY+'?endpoint=rise_livein_notes&cgid='+cgid,{headers:await authHeaders()});
     if(!r.ok)throw new Error('HTTP '+r.status);
@@ -2010,7 +2014,7 @@ async function renderCgSchedule(cgid){
   // load week (cached client-side)
   if(!schedCache[wkStart]){
     el.innerHTML='<div class="no-data"><span class="spin" style="display:inline-block;vertical-align:middle"></span> Loading schedule…</div>';
-    const key=getKey(); if(!key){ showGate(); return; }
+    const key=getKey(); if(!_hasAuth()){ showGate(); return; }
     try{
       const r=await fetch(PROXY+'?endpoint=rise_week_schedule&week='+wkStart,{headers:await authHeaders()});
       if(!r.ok)throw new Error('HTTP '+r.status);
@@ -2044,7 +2048,7 @@ async function renderCgSchedule(cgid){
 // first-90-day caregiver in the current New Hires MCE/state filter (Jillian 7/30 —
 // for sending to Chantal & the CSMs). Joined by cgid so nicknames/Geos all appear.
 async function printNewHireSchedules(){
-  const key=getKey(); if(!key){ showGate(); return; }
+  const key=getKey(); if(!_hasAuth()){ showGate(); return; }
   const mce=(document.getElementById('nhMce')||{}).value||'', state=(document.getElementById('nhMarket')||{}).value||'';
   const wk=_sundayStr(TODAY), wkEnd=_addDaysStr(wk,6);
   const nh=spine.filter(p=>p.viv&&p.viv.id&&p.hireDate&&((TODAY-p.hireDate)/86400000)<=90&&(!mce||p.manager===mce)&&(!state||p.market===state))
@@ -2987,7 +2991,7 @@ let refData=null, refLoading=false;
 async function loadReferrals(){
   if(refData){ renderReferrals(); return; }
   if(refLoading)return; refLoading=true;
-  const key=getKey(); if(!key){ showGate(); refLoading=false; return; }
+  const key=getKey(); if(!_hasAuth()){ showGate(); refLoading=false; return; }
   document.getElementById('referrals').innerHTML='<div class="empty-state"><div class="spin"></div>Scanning caregiver chats for referrals… first load can take ~1 minute.</div>';
   try{
     let r=await fetch(PROXY+'?endpoint=rise_referrals',{headers:await authHeaders()});
@@ -3243,7 +3247,7 @@ function _nhAdapt(r,ats){
 async function loadNewHires(){
   if(newHiresData){ renderNewHires(); return; }
   if(newHiresLoading)return; newHiresLoading=true;
-  const key=getKey(); if(!key){ showGate(); newHiresLoading=false; return; }
+  const key=getKey(); if(!_hasAuth()){ showGate(); newHiresLoading=false; return; }
   const hd=await authHeaders();
   try{
     const yrs=[]; for(let y=2025;y<=TODAY.getFullYear();y++)yrs.push(y);
@@ -3330,7 +3334,7 @@ async function loadLeave(force){
   if(force){ leaveData=null; leaveStatusStore=null; }
   if(leaveData){ renderLeave(); return; }
   if(leaveLoading)return; leaveLoading=true;
-  const key=getKey(); if(!key){ showGate(); leaveLoading=false; return; }
+  const key=getKey(); if(!_hasAuth()){ showGate(); leaveLoading=false; return; }
   const hd=await authHeaders();
   document.getElementById('leave').innerHTML='<div class="empty-state"><div class="spin"></div>Loading caregivers on leave…</div>';
   try{
