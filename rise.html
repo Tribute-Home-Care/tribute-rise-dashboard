@@ -591,6 +591,7 @@ const ONTIME_RULE='onTime1';     // 'onTime1' = Viv "CheckIn On Time" (≤1 min 
 const BAB_KEYWORDS=['baltimore','annapolis','bethesda'];
 const CERT_EXCLUDE=['car insurance','covid vaccination',"driver's license",'drivers license','hha','pca','pto expiration reminder','tb test results','hire: travel limitations','cannot drive clients'];
 const NINETY_DAY_FORMS=new Set([10137,10139,10142]);   // MA / MD / CHI 90-day meetings
+const FORTY_FIVE_DAY_FORMS=new Set([10136,10138,10140]); // MA / MD / CHI 45-day meetings
 // The 90-day meeting program started Oct 2025 — only hires from this date on
 // get a 90-day due date (earlier caregivers never had one to complete).
 const NINETY_RULE_HIRE_CUTOFF=new Date('2025-07-01T12:00:00');
@@ -896,6 +897,16 @@ function formsFor(person,list){
 }
 function riseFormsFor(person){ return viv?formsFor(person,viv.forms.rise):[]; }
 function ninetyFormsFor(person){ return viv?formsFor(person,viv.forms.early.filter(f=>NINETY_DAY_FORMS.has(f.formNum))):[]; }
+function fortyFiveFormsFor(person){ return viv?formsFor(person,viv.forms.early.filter(f=>FORTY_FIVE_DAY_FORMS.has(f.formNum))):[]; }
+// Active WW/PIP for a caregiver (Charlotte): match by empNum first, then name.
+// "Active" = open-ended (no end date) or an end date that hasn't passed yet.
+function activePipwwFor(p){
+  if(!pipww)return[];
+  return pipww.filter(r=>{
+    const match=(p.empNum&&r.empNum&&p.empNum===r.empNum)||(r.name&&namesMatch(p.name,r.name));
+    return match&&(!r.endDate||r.endDate>=TODAY);
+  });
+}
 function getMostRecentForm(rows){
   if(!rows.length)return null;
   return rows.reduce((best,row)=>{
@@ -1024,6 +1035,7 @@ function renderTracker(){
     if(managerFilter&&p.manager!==managerFilter)return;
     const riseRows=riseFormsFor(p);
     const ninetyRows=ninetyFormsFor(p);
+    const fortyFiveRows=fortyFiveFormsFor(p);
     const hireDate=p.hireDate||firstFormHireDate(riseRows,ninetyRows);
     if(!hireDate)return;
     // First meeting for recent hires is the 90-day: due at hire+90 (overdue
@@ -1061,7 +1073,15 @@ function renderTracker(){
     // Completed Rise meeting dates (YYYY-MM-DD) — used to auto-clear a typed
     // "next meeting" once the form for that date is entered in Viv.
     const riseMeetingDates=riseRows.map(r=>{const d=parseDate(r.meetingDate);return d&&d<=TODAY?d.toLocaleDateString('en-CA'):null;}).filter(Boolean);
-    rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting,riseMeetingDates});
+    // Full Rise-cycle tag (Charlotte): where the caregiver sits in the cycle,
+    // derived from tenure + which early-cycle forms have been submitted.
+    const fortyFiveDone=fortyFiveRows.some(r=>{const d=parseDate(r.meetingDate||r.submittedAt);return d&&d<=TODAY;});
+    const tenure=Math.round((TODAY-hireDate)/86400000);
+    let cycleTag,cycleCls;
+    if(ninetyDone||riseDone||tenure>90){ cycleTag='Rise'; cycleCls='bg-n'; }        // past 90-day → ongoing 6-month cycle
+    else if(fortyFiveDone||tenure>45){ cycleTag='90 Day'; cycleCls='bg-p'; }         // between 45-day and 90-day meeting
+    else { cycleTag='45 Day'; cycleCls='bg-b'; }                                      // first ~45 days
+    rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting,riseMeetingDates,cycleTag,cycleCls});
   });
   // Default sort = soonest-due first. Clicking a header overrides with an
   // explicit alphabetical/chronological sort (Charlotte). Notes isn't sortable.
@@ -1107,11 +1127,22 @@ function renderTracker(){
     if(nmVal&&(row.riseMeetingDates||[]).includes(nmVal)){ autoClear.push(nk); nmVal=''; }
     const notesVal=stored?(stored.notes||''):(row.notes||'');
     const nkAttr=escHtml(String(nk).replace(/"/g,'&quot;'));
+    // Full Rise-cycle tag on every row.
+    const cycleBadge=' <span class="bdg '+row.cycleCls+'" style="font-size:9px" title="Rise cycle stage">'+row.cycleTag+'</span>';
+    // Active WW/PIP badge(s): type + performance standard + end date (Charlotte).
+    const pipwwBadge=activePipwwFor(row.p).map(w=>{
+      const cls=w.isPip?'bg-r':'bg-a';
+      const lbl=w.isPip?'PIP':(w.isWW?'WW':'Corrective');
+      const std=(w.type&&!/pip|written warning|ww/i.test(w.type))?': '+w.type:'';
+      const ends=w.endDate?' · ends '+formatDate(w.endDate):'';
+      const tip=[w.action,w.type,(w.endDate?'ends '+formatDate(w.endDate):'')].filter(Boolean).join(' · ');
+      return ' <span class="bdg '+cls+'" style="font-size:9px" title="'+escHtml(tip)+'">'+lbl+escHtml(std+ends)+'</span>';
+    }).join('');
     return '<tr class="clickable" data-nk="'+nkAttr+'" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')">'+
-      '<td class="td-name">'+escHtml(row.p.name)+'</td>'+
+      '<td class="td-name">'+escHtml(row.p.name)+cycleBadge+pipwwBadge+'</td>'+
       '<td class="td-date">'+escHtml(row.p.market||'—')+'</td>'+
       '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
-      '<td class="td-date" style="font-weight:600">'+(row.activeDueDate?formatDate(row.activeDueDate)+(row.dueKind==='90-day'?' <span class="bdg bg-p">90-day</span>':''):'—')+'</td>'+
+      '<td class="td-date" style="font-weight:600">'+(row.activeDueDate?formatDate(row.activeDueDate):'—')+'</td>'+
       '<td>'+chip+'</td>'+
       '<td onclick="event.stopPropagation()"><input type="date" class="trk-next" value="'+escHtml(nmVal)+'" onchange="saveTrackerNote(this)" style="padding:4px 6px;font-size:12px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)"></td>'+
       '<td>'+segPill(row.segment)+'</td>'+
