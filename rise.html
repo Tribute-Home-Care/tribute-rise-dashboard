@@ -1630,7 +1630,13 @@ function renderCaregiver(){
   const phoneFmt=rawPhone.length===10?'('+rawPhone.slice(0,3)+') '+rawPhone.slice(3,6)+'-'+rawPhone.slice(6):(rawPhone||'');
   const cgEmail=(v&&v.email)?String(v.email).trim():'';
   const contactBits=[];
-  if(phoneFmt)contactBits.push('📞 '+escHtml(phoneFmt));
+  if(phoneFmt){
+    // Click-to-call in Microsoft Teams (Direct Routing). The 4: prefix marks a
+    // PSTN number; the +E.164 value is URL-encoded so the leading + survives.
+    const tel=(rawPhone.length===10?'+1':'+')+rawPhone;
+    const callHref='https://teams.microsoft.com/l/call/0/0?users=4:'+encodeURIComponent(tel);
+    contactBits.push('📞 <a href="'+callHref+'" title="Call in Microsoft Teams" style="color:var(--blue-text);text-decoration:none">'+escHtml(phoneFmt)+'</a>');
+  }
   if(cgEmail)contactBits.push('✉ <a href="mailto:'+escHtml(cgEmail)+'" style="color:var(--blue-text);text-decoration:none">'+escHtml(cgEmail)+'</a>');
   const contactLine=contactBits.length?'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+contactBits.join(' &nbsp;·&nbsp; ')+'</div>':'';
   const liveIn=v?(v.liveInVisits||0):0;
