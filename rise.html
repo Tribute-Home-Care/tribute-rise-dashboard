@@ -1794,7 +1794,7 @@ function renderPerf(){
   if(perfView==='shortlist')return renderShortList();
   return renderCelebrations();
 }
-// shared filter population (MCE / Market / Caregiver)
+// shared filter population (MCE / State / Caregiver)
 function perfPopulateFilters(){
   const mceSel=document.getElementById('sbMce'), mktSel=document.getElementById('sbMarket'), cgSel=document.getElementById('sbCaregiver');
   if(mceSel.options.length<=1){
@@ -1805,7 +1805,7 @@ function perfPopulateFilters(){
     const mkts=[...new Set(spine.map(p=>p.market).filter(Boolean))].sort();
     mktSel.innerHTML='<option value="">All states</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
   }
-  // caregiver list depends on MCE/market filter
+  // caregiver list depends on MCE/state filter
   const mce=mceSel.value, market=mktSel.value;
   const cur=cgSel.value;
   const cgs=spine.filter(p=>p.viv&&!(p.market||'').toLowerCase().includes('virginia')&&(!mce||p.manager===mce)&&(!market||p.market===market))
@@ -2355,8 +2355,15 @@ function renderCerts(){
   // should be active FIELD caregivers only (Charlotte). MCE = any name that also
   // appears as a manager in the roster (e.g. Shanaye Stone).
   const mceNames=new Set(spine.map(p=>(p.manager||'').toLowerCase().trim()).filter(Boolean));
+  // Cross-manager compliance rollups: some owners track a cert type across the
+  // whole state, not just their own team. When their MCE is selected we UNION in
+  // the matching (state, cert-type) rows from other managers' caregivers too —
+  // additive, the certs still show on their real managers' views.
+  //   Brianna → every Massachusetts caregiver's Abuse/Neglect cert
+  //   Alisha  → every Maryland caregiver's CPR cert
+  const mceIsBrianna=/brianna/i.test(mce), mceIsAlisha=/alisha/i.test(mce);
   // Flatten to one row per (caregiver, certification-with-expiration).
-  let rows=[];
+  let rows=[]; const seen=new Set();
   spine.forEach(p=>{
     if((p.market||'').toLowerCase().includes('virginia'))return;
     if(mceNames.has((p.name||'').toLowerCase().trim()))return;                       // OA / MCE own profile
@@ -2368,14 +2375,29 @@ function renderCerts(){
       const hd=p.hireDate, recentHire=hd&&((TODAY-hd)/86400000)<60;
       if(!recentHire)return;
     }
-    if(mce&&p.manager!==mce)return;
     if(market&&p.market!==market)return;
+    const st=(p.viv&&p.viv.state)||p.market||'';           // full state name
+    const isMA=/massachusetts/i.test(st), isMD=/maryland/i.test(st);
+    const inManagerScope=!mce||p.manager===mce;
+    // cross-manager rollup eligibility (see note above the loop)
+    const briannaExtra=mceIsBrianna&&isMA, alishaExtra=mceIsAlisha&&isMD;
+    if(!inManagerScope&&!briannaExtra&&!alishaExtra)return;
     const certs=p.isoCerts||[];
     certs.forEach(c=>{
       const nm=(c.name||'').trim(); if(!nm)return;
       const cl=nm.toLowerCase();
       if(CERT_EXCLUDE.some(ex=>cl.includes(ex)))return;   // COVID etc. — not renewal-tracked
+      // Massachusetts doesn't track CPR/CNA expirations (only MD does) — drop them for MA.
+      if(isMA&&(/\bCPR\b/i.test(nm)||/\bCNA\b/i.test(nm)))return;
+      // If a caregiver is here only via a cross-manager rollup (not their own MCE),
+      // surface just the specific cert type that owner rolls up.
+      if(!inManagerScope){
+        const okBrianna=briannaExtra&&/abuse|neglect/i.test(nm);
+        const okAlisha=alishaExtra&&/\bCPR\b/i.test(nm);
+        if(!okBrianna&&!okAlisha)return;
+      }
       const exp=parseDate(c.expiration); if(!exp)return;   // only certs with an expiration date
+      const sig=p.key+'|'+nm+'|'+c.expiration; if(seen.has(sig))return; seen.add(sig);  // de-dupe unioned rows
       const days=Math.round((exp-TODAY)/86400000);
       rows.push({name:p.name, key:p.key, mce:p.manager||'—', market:p.market||'—', cert:nm, authority:c.authority||'', exp, days});
     });
