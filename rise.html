@@ -36,6 +36,7 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
 .sync-btn{padding:7px 16px;font-size:11px;font-weight:600;border:none;border-radius:999px;cursor:pointer;background:var(--orange);color:#fff;box-shadow:0 6px 24px -8px rgba(255,90,31,.45);transition:transform .15s,background .15s}
 .sync-btn:hover{background:var(--orange-dark);transform:translateY(-1px)}
 .sync-btn[disabled]{opacity:.5;cursor:default;box-shadow:none}
+.preview-mce{font-size:11px;color:var(--text2);background:var(--bg2);border:.5px solid var(--border2);border-radius:999px;padding:5px 10px;cursor:pointer;max-width:220px}
 
 /* TABS */
 .nav-tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:16px;overflow-x:auto;align-items:center;gap:2px}
@@ -333,6 +334,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   </a>
   <div class="hdr-right">
     <div class="sync-line" id="syncLine"><span class="dot r"></span>Not connected to Viv</div>
+    <select id="previewMce" class="preview-mce" style="display:none" onchange="setPreviewMce(this.value)"></select>
     <button class="sync-btn" id="syncBtn" onclick="syncViv(true)">Sync Viv data</button>
   </div>
 </header>
@@ -645,12 +647,26 @@ function _normNm(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim
 // The signed-in user's own MCE name IF it matches a manager present in `spine`
 // (case-insensitive, whitespace-normalized); otherwise null. Admins who don't
 // manage a team (Andrew, Charlotte) → null → they keep seeing everything.
+// Admin-only "Preview as MCE": when set to an MCE name, the whole UI behaves as
+// if that MCE were the signed-in user (scoping + banner). null = normal view.
+let PREVIEW_MCE=null;
 function currentUserMce(){
+  if(PREVIEW_MCE)return PREVIEW_MCE;
   if(!CURRENT_USER||!CURRENT_USER.name||!spine.length)return null;
   const me=_normNm(CURRENT_USER.name);
   if(!me)return null;
   for(const p of spine){ if(p.manager&&_normNm(p.manager)===me)return p.manager; }
   return null;
+}
+// True iff the REAL signed-in user is themselves an MCE (matches a spine manager).
+// Used only to decide who is an "admin" (signed in AND not an MCE) — admins alone
+// get the Preview selector; a real MCE is already scoped to their own team.
+function _realUserIsMce(){
+  if(!CURRENT_USER||!CURRENT_USER.name||!spine.length)return false;
+  const me=_normNm(CURRENT_USER.name);
+  if(!me)return false;
+  for(const p of spine){ if(p.manager&&_normNm(p.manager)===me)return true; }
+  return false;
 }
 // Default a Manager/MCE <select> to the signed-in user's own team — but ONLY on
 // first population and only if we haven't already defaulted that dropdown, so a
@@ -672,10 +688,47 @@ function defaultToMyTeam(sel){
 function updateMyTeamBanner(){
   const el=document.getElementById('myTeamBanner'); if(!el)return;
   const mine=currentUserMce();
-  if(mine){
+  if(PREVIEW_MCE){
+    el.textContent='Previewing as '+PREVIEW_MCE+' — use the Preview selector to reset to the full report.';
+    el.style.display='';
+  }else if(mine){
     el.textContent='Viewing your team ('+mine+') — use the Manager/MCE filter to cover another team.';
     el.style.display='';
   }else{ el.style.display='none'; }
+}
+
+// ── Admin-only "Preview as MCE" ────────────────────────────────────────────
+const PREVIEW_MCE_IDS=['managerFilter','sbMce','certMce','nhMce','leaveMce','sumMce'];
+let _previewMceBuilt=false;
+// Switch the whole UI into (or out of) previewing a given MCE's scope.
+function setPreviewMce(name){
+  PREVIEW_MCE=name||null;
+  _myTeamDefaulted.clear();               // let scoping re-apply under the new identity
+  const target=name?_normNm(name):'';
+  PREVIEW_MCE_IDS.forEach(id=>{
+    const sel=document.getElementById(id); if(!sel)return;
+    if(name){
+      const opt=[...sel.options].find(o=>_normNm(o.value||o.textContent)===target);
+      if(opt){ sel.value=opt.value; _myTeamDefaulted.add(id); }
+    }else{ sel.value=''; }               // reset → All
+  });
+  updateMyTeamBanner();
+  switchTab(_curTab,false);              // re-render the current tab under the new scope
+}
+// Populate (once) and show the header selector — admins only. Admin = signed in
+// AND not themselves an MCE. Real MCEs / signed-out users keep it hidden.
+function setupPreviewMce(){
+  const sel=document.getElementById('previewMce'); if(!sel)return;
+  const isAdmin=!!(CURRENT_USER&&CURRENT_USER.name)&&!_realUserIsMce();
+  if(!_previewMceBuilt){
+    const names=[...new Set(spine.map(p=>p.manager).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    if(!names.length)return;             // spine not ready yet — try again next sync
+    let html='<option value="">🔍 Preview as MCE… (full view)</option>';
+    names.forEach(n=>{ html+='<option value="'+n.replace(/"/g,'&quot;')+'">'+n+'</option>'; });
+    sel.innerHTML=html;
+    _previewMceBuilt=true;
+  }
+  sel.style.display=isAdmin?'':'none';
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -720,7 +773,7 @@ async function syncViv(manual){
     if(!r.ok) throw new Error('Viv proxy returned HTTP '+r.status);
     viv=await r.json();
     setSyncLine('<span class="dot"></span>Live · '+viv.counts.caregivers+' caregivers · '+viv.counts.riseForms+' Rise forms · data as of '+fmtTime(viv.generatedAt),'');
-    buildSpine(); await ensureCurrentUser(); updateMyTeamBanner(); buildManagerFilter(); buildSearchIndex(); renderTracker(); renderLiveChips();
+    buildSpine(); await ensureCurrentUser(); updateMyTeamBanner(); setupPreviewMce(); buildManagerFilter(); buildSearchIndex(); renderTracker(); renderLiveChips();
     if(selectedKey)renderCaregiver();
     restoreUploads();   // shared iSolved files (roster/certs) saved by whoever uploaded last
   }catch(e){
