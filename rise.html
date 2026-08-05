@@ -357,6 +357,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div class="ntab" id="tab-certs" onclick="switchTab('certs')">Certifications</div>
   <div class="ntab" id="tab-referrals" onclick="switchTab('referrals')">Referrals</div>
   <div class="ntab" id="tab-todo" onclick="switchTab('todo')">To Do</div>
+  <div class="ntab" id="tab-hours" onclick="switchTab('hours')">Desired Hours</div>
 </div>
 
 <!-- UPLOADS (iSolved only — everything else streams from Viv) -->
@@ -580,6 +581,13 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     A red <b>“Needs HR form”</b> flag means the caregiver is scheduled off 14+ days but has no HR form on file.
     Click a row to expand the full text of every field on their submitted form. Toggle a case <b>Closed</b> once it's resolved (the toggle is shared across the CE team).
   </div>
+</div>
+
+<!-- PAGE: DESIRED HOURS (embeds the standalone Caregiver Hours & Happiness app;
+     the original still lives in the suite shell — Charlotte "add as a tab, keep original") -->
+<div id="page-hours" style="display:none">
+  <div style="font-size:11px;color:var(--text2);margin:0 14px 8px">Desired Hours &amp; Happiness — embedded from the standalone app. If it prompts for sign-in, use your Microsoft account.</div>
+  <iframe id="hoursFrame" title="Caregiver Hours &amp; Happiness" style="width:100%;height:calc(100vh - 190px);border:none;background:var(--bg)"></iframe>
 </div>
 
 <!-- CA-ON-LEAVE DETAIL MODAL -->
@@ -1171,6 +1179,41 @@ async function saveTrackerNote(el){
       body:JSON.stringify({cgId:nk,notes,nextMeeting,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
   }catch(e){/* keep local value even if the save round-trips slowly */}
 }
+// ── Meeting-skip store (Charlotte): mark a caregiver's next Rise meeting as
+//    skipped, which advances the due date one 6-month cycle so the row isn't
+//    flagged overdue. Persisted server-side & shared across MCEs, like notes. ──
+let meetingSkips=null, meetingSkipsLoading=false;
+async function loadMeetingSkips(){
+  if(meetingSkips||meetingSkipsLoading)return;
+  meetingSkipsLoading=true;
+  try{
+    const r=await fetch(PROXY+'?endpoint=rise_meeting_skips',{headers:await authHeaders()});
+    meetingSkips=r.ok?((await r.json()).skips||{}):{};
+  }catch(e){ meetingSkips={}; }
+  meetingSkipsLoading=false;
+  renderTracker();
+}
+async function skipMeeting(cgId,skippedTo){
+  if(!cgId||!skippedTo)return;
+  if(!meetingSkips)meetingSkips={};
+  meetingSkips[cgId]={skippedTo,at:new Date().toISOString(),by:(CURRENT_USER&&CURRENT_USER.name)||undefined};
+  renderTracker();
+  try{
+    await fetch(PROXY+'?endpoint=rise_meeting_skips',{method:'POST',
+      headers:await authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify({cgId,skippedTo,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
+  }catch(e){/* local state already updated; server catches up */}
+}
+async function unskipMeeting(cgId){
+  if(!cgId)return;
+  if(meetingSkips)delete meetingSkips[cgId];
+  renderTracker();
+  try{
+    await fetch(PROXY+'?endpoint=rise_meeting_skips',{method:'POST',
+      headers:await authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify({cgId,clear:true})});
+  }catch(e){/* local state already updated; server catches up */}
+}
 function renderTracker(){
   if(!spine.length){
     document.getElementById('trackerEmpty').style.display='';
@@ -1199,7 +1242,13 @@ function renderTracker(){
     } else {
       activeDueDate=getActiveDueDate(hireDate,riseRows);
     }
-    const daysUntil=activeDueDate?Math.round((activeDueDate-TODAY)/86400000):null;
+    // Meeting-skip: if this caregiver's next meeting was skipped, treat the due
+    // date as advanced to skippedTo (one Rise cycle) so the row isn't overdue.
+    const skipCgId=(p.viv&&p.viv.id)?p.viv.id:null;
+    const skipRec=(skipCgId&&meetingSkips&&meetingSkips[skipCgId])?meetingSkips[skipCgId]:null;
+    const skippedTo=(skipRec&&skipRec.skippedTo)?parseDate(skipRec.skippedTo):null;
+    const effDueDate=skippedTo||activeDueDate;
+    const daysUntil=effDueDate?Math.round((effDueDate-TODAY)/86400000):null;
 
     // Segment priority: latest 90-day form → First 90 Days window → latest Rise form
     let segment='';
@@ -1231,7 +1280,7 @@ function renderTracker(){
     if(ninetyDone||riseDone||tenure>90){ cycleTag='Rise'; cycleCls='bg-n'; }        // past 90-day → ongoing 6-month cycle
     else if(fortyFiveDone||tenure>45){ cycleTag='90 Day'; cycleCls='bg-p'; }         // between 45-day and 90-day meeting
     else { cycleTag='45 Day'; cycleCls='bg-b'; }                                      // first ~45 days
-    rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting,riseMeetingDates,cycleTag,cycleCls});
+    rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting,riseMeetingDates,cycleTag,cycleCls,skipCgId,skippedTo});
   });
   // Default sort = soonest-due first. Clicking a header overrides with an
   // explicit alphabetical/chronological sort (Charlotte). Notes isn't sortable.
@@ -1259,6 +1308,7 @@ function renderTracker(){
     return;
   }
   if(trackerNotes===null)loadTrackerNotes();   // durable Notes / Next-Meeting store
+  if(meetingSkips===null)loadMeetingSkips();   // durable meeting-skip store
   const autoClear=[];
   tbody.innerHTML=rows.map(row=>{
     let chip='<span class="bdg bg-g">—</span>';
@@ -1288,11 +1338,26 @@ function renderTracker(){
       const tip=[w.action,w.type,(w.endDate?'ends '+formatDate(w.endDate):'')].filter(Boolean).join(' · ');
       return ' <span class="bdg '+cls+'" style="font-size:9px" title="'+escHtml(tip)+'">'+lbl+escHtml(std+ends)+'</span>';
     }).join('');
+    // Due Date cell + meeting-skip control. Skip advances the due date one
+    // 6-month cycle (activeDueDate + 6 months); a skip on file shows a badge
+    // (with an ✕ to undo) and suppresses overdue styling via effDueDate above.
+    let dueCell=(row.activeDueDate?formatDate(row.activeDueDate):'—');
+    if(row.skipCgId){
+      const escSkipId=String(row.skipCgId).replace(/'/g,"\\'");
+      if(row.skippedTo){
+        dueCell+=' <span class="bdg bg-n" title="Next Rise meeting skipped — due date advanced one cycle">Skipped → '+formatDate(row.skippedTo)+
+          ' <span onclick="event.stopPropagation();unskipMeeting(\''+escSkipId+'\')" style="cursor:pointer;margin-left:2px" title="Undo skip">✕</span></span>';
+      } else if(row.activeDueDate){
+        const adv=new Date(row.activeDueDate.getFullYear(),row.activeDueDate.getMonth()+6,row.activeDueDate.getDate());
+        const advVal=adv.toLocaleDateString('en-CA');
+        dueCell+=' <button class="bdg bg-b" style="cursor:pointer;border:none;font-size:9px;margin-left:6px" onclick="event.stopPropagation();skipMeeting(\''+escSkipId+'\',\''+advVal+'\')" title="Skip this Rise meeting — advances the due date one 6-month cycle">Skip</button>';
+      }
+    }
     return '<tr class="clickable" data-nk="'+nkAttr+'" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')">'+
       '<td class="td-name">'+escHtml(row.p.name)+cycleBadge+pipwwBadge+'</td>'+
       '<td class="td-date">'+escHtml(row.p.market||'—')+'</td>'+
       '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
-      '<td class="td-date" style="font-weight:600">'+(row.activeDueDate?formatDate(row.activeDueDate):'—')+'</td>'+
+      '<td class="td-date" style="font-weight:600">'+dueCell+'</td>'+
       '<td>'+chip+'</td>'+
       '<td onclick="event.stopPropagation()"><input type="date" class="trk-next" value="'+escHtml(nmVal)+'" onchange="saveTrackerNote(this)" style="padding:4px 6px;font-size:12px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)"></td>'+
       '<td>'+segPill(row.segment)+'</td>'+
@@ -1507,6 +1572,7 @@ function renderCaregiver(){
   if(!p){return;}
   document.getElementById('emptyState').style.display='none';
   document.getElementById('dashboard').style.display='';
+  if(risePointsStore===null)loadRisePoints();   // durable manual points/spend ledger
   const v=p.viv;
   const isBab=BAB_KEYWORDS.some(k=>(p.market||'').toLowerCase().includes(k));
 
@@ -1555,6 +1621,14 @@ function renderCaregiver(){
   let html='';
 
   // ── Header card ──
+  // Contact line (phone/email from Viv). Omits any field that's null/empty.
+  const rawPhone=(v&&v.phone)?String(v.phone).replace(/\D/g,''):'';
+  const phoneFmt=rawPhone.length===10?'('+rawPhone.slice(0,3)+') '+rawPhone.slice(3,6)+'-'+rawPhone.slice(6):(rawPhone||'');
+  const cgEmail=(v&&v.email)?String(v.email).trim():'';
+  const contactBits=[];
+  if(phoneFmt)contactBits.push('📞 '+escHtml(phoneFmt));
+  if(cgEmail)contactBits.push('✉ <a href="mailto:'+escHtml(cgEmail)+'" style="color:var(--blue-text);text-decoration:none">'+escHtml(cgEmail)+'</a>');
+  const contactLine=contactBits.length?'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+contactBits.join(' &nbsp;·&nbsp; ')+'</div>':'';
   const liveIn=v?(v.liveInVisits||0):0;
   const isLiveIn=liveIn>0||(p.hireDate&&(v&&v.desiredHours>=140));
   const tsBadge=(v&&v.tsEnrolled)?' <span class="bdg bg-p" style="vertical-align:middle">Tribute Secure'+(v.tsLevel?' · TS'+v.tsLevel:'')+'</span>':'';
@@ -1563,6 +1637,7 @@ function renderCaregiver(){
     '<div class="cg-name">'+escHtml(p.name)+tsBadge+liBadge+
       (v&&v.id?' <a href="https://tribute.mavencare.com/caregivers/'+encodeURIComponent(v.id)+'" target="_blank" rel="noopener" style="font-size:12px;font-weight:600;color:var(--blue-text);text-decoration:none;vertical-align:middle;margin-left:6px">View in Viv ↗</a>':'')+
       '</div>'+
+    contactLine+
     '<div class="cg-meta">'+
       (p.title?'<span><strong>Title:</strong> '+escHtml(p.title)+'</span>':'')+
       '<span><strong>Market:</strong> '+escHtml(p.market||'—')+'</span>'+
@@ -1705,6 +1780,40 @@ function renderCaregiver(){
     '<div class="rise-row" style="font-weight:700"><span>Total</span><span class="pts">'+risePoints.total+'</span></div>'+
   '</div></div>';
 
+  // ── Rise Above Points — manual bank + spend ledger (Charlotte) ──
+  html+='<div class="grid full"><div class="fc"><div class="ct">Rise Above Points — Bank &amp; Spend</div>';
+  const rpCg=(v&&v.id)?v.id:null;
+  if(!rpCg){
+    html+='<div class="no-data">Not matched in Viv — the points bank &amp; spend ledger is unavailable for this caregiver.</div>';
+  } else if(risePointsStore===null){
+    html+='<div class="no-data">Loading points ledger…</div>';
+  } else {
+    const escRp=String(rpCg).replace(/'/g,"\\'");
+    const rpRec=risePointsStore[rpCg]||{};
+    const bank=Number(rpRec.adjust)||0, spent=Number(rpRec.spent)||0, bal=bank-spent;
+    const rpLog=(rpRec.log||[]).slice().reverse().slice(0,5);
+    html+='<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Banked points as of the last Rise meeting — set manually until the Rise form points field is wired. Automatic performance-based accrual is pending a defined business formula.</div>';
+    html+='<div class="grid three" style="margin-bottom:14px">'+
+      '<div class="fc"><div class="ct" title="Banked points as of the last Rise meeting — set manually until the Rise form points field is wired.">Bank</div>'+
+        '<div class="big-stat"><span class="v n">'+bank+'</span></div>'+
+        '<div style="display:flex;gap:6px;margin-top:8px"><input type="number" id="rpBankInput" value="'+bank+'" style="width:80px;padding:5px 7px;font-size:12px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)"><button class="rm-btn o" style="padding:5px 12px;font-size:12px" onclick="setRiseBank(\''+escRp+'\')">Set bank</button></div></div>'+
+      '<div class="fc"><div class="ct">Spent</div><div class="big-stat"><span class="v r">'+spent+'</span></div><div class="stat-foot">sum of deductions</div></div>'+
+      '<div class="fc"><div class="ct">Balance</div><div class="big-stat"><span class="v '+(bal>=0?'g':'r')+'">'+bal+'</span></div><div class="stat-foot">bank − spent</div></div>'+
+    '</div>';
+    html+='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+
+      '<input type="number" id="rpSpendAmt" placeholder="Points" title="Positive = spend/deduct · negative = credit back" style="width:100px;padding:6px 8px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">'+
+      '<input type="text" id="rpSpendReason" placeholder="Reason (e.g. redeemed gift card)" style="flex:1;min-width:200px;padding:6px 8px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">'+
+      '<button class="rm-btn g" style="padding:6px 14px;font-size:12px" onclick="spendRisePoints(\''+escRp+'\')">Spend</button></div>';
+    if(rpLog.length){
+      html+='<div class="ct" style="margin-bottom:2px">Recent activity</div>';
+      rpLog.forEach(e=>{
+        const d=Number(e.delta)||0; const sign=d>0?('−'+d):('+'+Math.abs(d));   // spend shows minus, credit shows plus
+        html+='<div class="stat-foot" style="padding:4px 0;border-top:.5px solid var(--border)"><strong>'+sign+'</strong> — '+escHtml(e.reason||'—')+' · '+escHtml(e.by||'—')+' · '+(e.at?formatDate(e.at):'—')+'</div>';
+      });
+    } else html+='<div class="no-data">No spend activity recorded yet.</div>';
+  }
+  html+='</div></div>';
+
   // ── Row 4: Compliment detail | Documents ──
   html+='<div class="grid">';
   html+='<div class="fc"><div class="ct">Compliments — what people said</div>';
@@ -1794,6 +1903,54 @@ function renderCaregiver(){
   document.getElementById('dashboard').innerHTML=html;
   renderCgSchedule(v?v.id:null);
   if(isLiveIn&&v&&v.id)loadLiveInNotes(v.id);
+}
+
+// ── Rise Above points: manual "bank" + spend ledger, persisted server-side and
+//    shared across MCEs (like tracker notes). NOTE the module var is
+//    `risePointsStore`, NOT `risePoints` — renderCaregiver already has a local
+//    `const risePoints` (the calculated 6-month program score) that must not be
+//    shadowed. Automatic performance-based accrual is a pending business rule. ──
+let risePointsStore=null, risePointsLoading=false;
+async function loadRisePoints(){
+  if(risePointsStore||risePointsLoading)return;
+  risePointsLoading=true;
+  try{
+    const r=await fetch(PROXY+'?endpoint=rise_points',{headers:await authHeaders()});
+    risePointsStore=r.ok?((await r.json()).points||{}):{};
+  }catch(e){ risePointsStore={}; }
+  risePointsLoading=false;
+  if(selectedKey)renderCaregiver();
+}
+async function setRiseBank(cgId){
+  const el=document.getElementById('rpBankInput'); if(!el||!cgId)return;
+  const val=Number(el.value)||0;
+  if(!risePointsStore)risePointsStore={};
+  const rec=risePointsStore[cgId]||(risePointsStore[cgId]={});
+  rec.adjust=val;
+  renderCaregiver();
+  try{
+    await fetch(PROXY+'?endpoint=rise_points',{method:'POST',
+      headers:await authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify({cgId,adjust:val,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
+  }catch(e){/* local state already updated; server catches up */}
+}
+async function spendRisePoints(cgId){
+  const aEl=document.getElementById('rpSpendAmt'), rEl=document.getElementById('rpSpendReason');
+  if(!aEl||!cgId)return;
+  const delta=Number(aEl.value)||0;
+  if(!delta){ alert('Enter a number of points to spend (positive), or a negative number to credit back.'); return; }
+  const reason=((rEl&&rEl.value)||'').trim();
+  if(!risePointsStore)risePointsStore={};
+  const rec=risePointsStore[cgId]||(risePointsStore[cgId]={});
+  rec.spent=(Number(rec.spent)||0)+delta;
+  rec.log=rec.log||[];
+  rec.log.push({delta,reason,at:new Date().toISOString(),by:(CURRENT_USER&&CURRENT_USER.name)||undefined});
+  renderCaregiver();
+  try{
+    await fetch(PROXY+'?endpoint=rise_points',{method:'POST',
+      headers:await authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify({cgId,delta,reason,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
+  }catch(e){/* local state already updated; server catches up */}
 }
 
 // Live-in visit-note completion (Charlotte 7/30): % of live-in visit-days with a
@@ -1935,7 +2092,7 @@ let _navReady=false, _curTab='tracker';
 function switchTab(tab,push){
   if(push===undefined)push=true;
   _curTab=tab;
-  ['tracker','scoreboard','dashboard','summary','newhires','leave','certs','referrals','todo'].forEach(t=>{
+  ['tracker','scoreboard','dashboard','summary','newhires','leave','certs','referrals','todo','hours'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
   });
@@ -1947,9 +2104,22 @@ function switchTab(tab,push){
   if(tab==='certs')renderCerts();
   if(tab==='referrals')loadReferrals();
   if(tab==='todo')loadTodo();
+  if(tab==='hours')loadHoursFrame();
   // Push a history entry so the browser Back button steps between tabs instead
   // of leaving the app. popstate handler passes push=false to avoid re-pushing.
   if(push&&_navReady){ try{ history.pushState({riseTab:tab},''); }catch(e){} }
+}
+// Desired Hours tab: embed the standalone Caregiver Hours & Happiness app once.
+// Pass the legacy key via #k= if one is present (so key sessions stay seamless);
+// otherwise the embedded app runs its own sign-in. (Follow-up: migrate that app
+// to Microsoft auth so no key is ever needed.)
+let _hoursLoaded=false;
+function loadHoursFrame(){
+  if(_hoursLoaded)return; _hoursLoaded=true;
+  const f=document.getElementById('hoursFrame'); if(!f)return;
+  const base='https://andrewdobsonn-cell.github.io/Tribute-Operating-System/caregiver_hours.html';
+  const k=(typeof getKey==='function')?getKey():'';
+  f.src=base+(k?('#k='+encodeURIComponent(k)):'');
 }
 window.addEventListener('popstate',function(e){
   const tab=(e.state&&e.state.riseTab)||'tracker';
