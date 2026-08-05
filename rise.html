@@ -346,6 +346,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div class="ntab" id="tab-dashboard" onclick="switchTab('dashboard')">Caregiver Dashboard</div>
   <div class="ntab" id="tab-summary" onclick="switchTab('summary')">Rise Summary</div>
   <div class="ntab" id="tab-newhires" onclick="switchTab('newhires')">New Hires</div>
+  <div class="ntab" id="tab-leave" onclick="switchTab('leave')">CAs on Leave</div>
   <div class="ntab" id="tab-certs" onclick="switchTab('certs')">Certifications</div>
   <div class="ntab" id="tab-referrals" onclick="switchTab('referrals')">Referrals</div>
 </div>
@@ -519,6 +520,47 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <span class="count" id="refCount"></span>
   </div>
   <div id="referrals"><div class="empty-state"><div class="big">🤝</div><div>Loading caregiver referrals…</div></div></div>
+</div>
+
+<!-- PAGE: CAs ON LEAVE -->
+<div id="page-leave" style="display:none">
+  <div class="bar" style="flex-wrap:wrap">
+    <label>Manager</label>
+    <select id="leaveMce" onchange="renderLeave()"><option value="">All Managers</option></select>
+    <label>Market</label>
+    <select id="leaveMarket" onchange="renderLeave()"><option value="">All markets</option></select>
+    <label>Status</label>
+    <select id="leaveStatus" onchange="renderLeave()">
+      <option value="open" selected>Open cases</option>
+      <option value="closed">Closed cases</option>
+      <option value="all">All statuses</option>
+    </select>
+    <label style="display:inline-flex;align-items:center;gap:5px;font-weight:600"><input type="checkbox" id="leaveNeedsForm" onchange="renderLeave()" style="margin:0"> Needs HR form only</label>
+    <input type="text" id="leaveSearch" placeholder="Search caregiver…" oninput="renderLeave()" style="padding:7px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);min-width:200px">
+    <button class="rm-btn o" style="padding:6px 12px;font-size:12px" onclick="loadLeave(true)">↻ Refresh</button>
+    <span class="count" id="leaveCount"></span>
+  </div>
+  <div id="leaveStats" style="display:none;margin:0 14px 10px"></div>
+  <div id="leave"><div class="empty-state"><div class="big">🏝️</div><div>Loading caregivers on leave…</div></div></div>
+  <div style="font-size:11px;color:var(--text2);margin:8px 14px 20px;line-height:1.5">
+    <b>On leave</b> = 14+ consecutive days of temporary unavailability (current or upcoming) <b>and/or</b> an open HR leave/injury form in Viv.
+    A red <b>“Needs HR form”</b> flag means the caregiver is scheduled off 14+ days but has no HR form on file.
+    Click a row to expand the full text of every field on their submitted form. Toggle a case <b>Closed</b> once it's resolved (the toggle is shared across the CE team).
+  </div>
+</div>
+
+<!-- CA-ON-LEAVE DETAIL MODAL -->
+<div class="rm-overlay" id="leaveOverlay" onclick="if(event.target===this)document.getElementById('leaveOverlay').style.display='none'">
+  <div class="rm-modal">
+    <div class="rm-head">
+      <div><h3 id="leaveModalName">Leave detail</h3><div class="sub" id="leaveModalSub"></div></div>
+      <button class="rm-x" onclick="document.getElementById('leaveOverlay').style.display='none'">✕</button>
+    </div>
+    <div class="rm-body" id="leaveModalBody"></div>
+    <div class="rm-foot">
+      <button class="rm-btn o" style="margin-left:auto" onclick="document.getElementById('leaveOverlay').style.display='none'">Close</button>
+    </div>
+  </div>
 </div>
 
 <!-- RISE MEETING PREP MODAL -->
@@ -758,6 +800,28 @@ function parseCSV(text){
 // ════════════════════════════════════════════════════════════════════════════
 // SPINE — unified caregiver list (iSolved roster when uploaded, else Viv)
 // ════════════════════════════════════════════════════════════════════════════
+// Names that appear as a MANAGER on any caregiver record — MCEs/OAs whose own
+// caregiver profile should be excluded suite-wide (Charlotte, "entire suite").
+function mceNameSet(){
+  const s=new Set();
+  if(viv)for(const cg of viv.caregivers){ const m=(cg.mce||'').toLowerCase().trim(); if(m)s.add(m); }
+  return s;
+}
+// A "real field caregiver": excludes Office Associates / MCEs (their own profile
+// surfaces because they hold iSolved certs, e.g. Shanaye Stone, Esther Larsh) and
+// inactive-in-practice caregivers (Viv still marks them "hired" but they have zero
+// visits and zero visit-months, e.g. Angela Gilbert), while keeping PRN and
+// very-recent hires (<60d who simply haven't started visiting yet).
+function isFieldCG(cg,mceNames){
+  if(!cg)return false;
+  if(mceNames.has((cg.name||'').toLowerCase().trim()))return false;   // OA / MCE own profile
+  if(cg.prn)return true;
+  if((cg.careVisits||0)===0 && ((cg.monthsWithVisit||[]).length)===0){
+    const hd=parseDate(cg.hireDate), recent=hd&&((TODAY-hd)/86400000)<60;
+    if(!recent)return false;
+  }
+  return true;
+}
 function buildSpine(){
   spine=[];
   const vivByName={}, vivByNum={};
@@ -795,8 +859,10 @@ function buildSpine(){
       });
     }
   } else if(viv){
+    const mceNames=mceNameSet();
     for(const cg of viv.caregivers){
       if(cg.status!=='hired')continue;   // Viv status vocabulary: hired = active
+      if(!isFieldCG(cg,mceNames))continue;   // suite-wide OA / inactive exclusion (Charlotte)
       // PTO/Sick now come from iSolved: cg.ptoHrs/sickHrs are the totals; cg.pto/sick
       // carry the {total,carryover,newAccrued} bank split; cg.certs are live cert rows.
       const hasBal=cg.ptoHrs!=null||cg.sickHrs!=null;
@@ -1688,7 +1754,7 @@ let _navReady=false, _curTab='tracker';
 function switchTab(tab,push){
   if(push===undefined)push=true;
   _curTab=tab;
-  ['tracker','scoreboard','dashboard','summary','newhires','certs','referrals'].forEach(t=>{
+  ['tracker','scoreboard','dashboard','summary','newhires','leave','certs','referrals'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
   });
@@ -1696,6 +1762,7 @@ function switchTab(tab,push){
   if(tab==='scoreboard')renderPerf();
   if(tab==='summary')renderSummary();
   if(tab==='newhires')loadNewHires();
+  if(tab==='leave')loadLeave();
   if(tab==='certs')renderCerts();
   if(tab==='referrals')loadReferrals();
   // Push a history entry so the browser Back button steps between tabs instead
@@ -2689,6 +2756,137 @@ function renderNewHires(){
       '<td>'+drvChip+'</td><td style="font-size:12px">'+escHtml(r.source||'—')+'</td><td>'+jobChip+'</td>'+
       '<td'+(pc?' style="font-weight:600;color:var(--'+(pc==='g'?'green':pc==='a'?'amber':'red')+')"':'')+'>'+(r.pctDesired!=null?r.pctDesired+'%':'—')+'</td>'+
       '<td style="font-size:11px;max-width:220px;white-space:normal;color:var(--text2)">'+escHtml(r.exitReason||'—')+'</td></tr>';
+  });
+  el.innerHTML=h+'</tbody></table></div>';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PAGE: CAs ON LEAVE (Charlotte/Jen) — caregivers 14+ consecutive days
+// temp-unavailable and/or with an open HR leave/injury form. Open/Closed toggle
+// is shared server-side across the CE team.
+// ════════════════════════════════════════════════════════════════════════════
+let leaveData=null, leaveLoading=false, leaveStatusStore=null;
+async function loadLeave(force){
+  if(force){ leaveData=null; leaveStatusStore=null; }
+  if(leaveData){ renderLeave(); return; }
+  if(leaveLoading)return; leaveLoading=true;
+  const key=getKey(); if(!key){ showGate(); leaveLoading=false; return; }
+  const hd={'X-Retention-Key':key};
+  document.getElementById('leave').innerHTML='<div class="empty-state"><div class="spin"></div>Loading caregivers on leave…</div>';
+  try{
+    const [lr,sr]=await Promise.all([
+      fetch(PROXY+'?endpoint=cas_on_leave',{headers:hd}).then(r=>r.ok?r.json():Promise.reject(new Error('HTTP '+r.status))),
+      fetch(PROXY+'?endpoint=cas_leave_status',{headers:hd}).then(r=>r.ok?r.json():{status:{}}).catch(()=>({status:{}}))
+    ]);
+    leaveData=lr; leaveStatusStore=(sr&&sr.status)||{};
+  }catch(e){
+    document.getElementById('leave').innerHTML='<div class="err" style="display:block">Couldn\'t load CAs on Leave: '+escHtml(e.message)+'. If the backend was just updated, give it a minute and hit Refresh.</div>';
+    leaveLoading=false; return;
+  }
+  leaveLoading=false; renderLeave();
+}
+function _leaveStatusOf(id){ return (leaveStatusStore&&leaveStatusStore[id])?'closed':'open'; }
+async function toggleLeaveStatus(id,ev){
+  if(ev)ev.stopPropagation();
+  const next=_leaveStatusOf(id)==='closed'?'open':'closed';
+  if(!leaveStatusStore)leaveStatusStore={};
+  if(next==='closed')leaveStatusStore[id]={status:'closed'}; else delete leaveStatusStore[id];
+  renderLeave();
+  try{
+    await fetch(PROXY+'?endpoint=cas_leave_status',{method:'POST',
+      headers:{'Content-Type':'application/json','X-Retention-Key':getKey()},
+      body:JSON.stringify({id,status:next})});
+  }catch(e){/* local state already updated; server catches up */}
+}
+function _leaveDateRange(lv){
+  if(!lv)return '—';
+  const f=lv.from?formatDate(parseDate(lv.from)):'?';
+  const u=lv.until?formatDate(parseDate(lv.until)):'?';
+  return f+' → '+u+' <span style="color:var(--text2)">('+lv.days+'d'+(lv.upcoming?', upcoming':'')+')</span>';
+}
+function openLeaveModal(id){
+  const rec=(leaveData&&leaveData.rows||[]).find(r=>String(r.id)===String(id));
+  if(!rec)return;
+  document.getElementById('leaveModalName').textContent=rec.name+(rec.market?' · '+rec.market:'');
+  document.getElementById('leaveModalSub').textContent=(rec.manager?'Manager: '+rec.manager:'')+(rec.leave?'  ·  On leave '+rec.leave.days+' days':'');
+  let h='';
+  if(rec.leave){
+    h+='<div class="fc" style="margin-bottom:12px"><div class="ct">Scheduled leave</div>'+
+      '<div style="font-size:14px;margin-top:4px">'+_leaveDateRange(rec.leave)+'</div>'+
+      (rec.leave.reasons&&rec.leave.reasons.length?'<div class="stat-foot" style="margin-top:4px">'+escHtml(rec.leave.reasons.join(' · '))+'</div>':'')+'</div>';
+  }
+  if(rec.needsForm){
+    h+='<div class="err" style="display:block;margin-bottom:12px">⚠ No HR form on file — this caregiver is scheduled off 14+ days and needs an HR leave/injury form submitted in Viv.</div>';
+  }
+  if(rec.forms&&rec.forms.length){
+    rec.forms.forEach(f=>{
+      h+='<div class="fc" style="margin-bottom:12px"><div class="ct">'+escHtml(f.title)+'</div>'+
+        '<div class="stat-foot" style="margin-top:2px">Submitted '+(f.submittedAt?fmtTime(f.submittedAt):'—')+(f.updatedAt&&f.updatedAt!==f.submittedAt?' · updated '+fmtTime(f.updatedAt):'')+(f.author?' · by '+escHtml(f.author):'')+'</div>'+
+        '<table style="width:100%;margin-top:8px;font-size:13px;border-collapse:collapse">'+
+        (f.fields||[]).map(x=>'<tr><td style="vertical-align:top;padding:4px 10px 4px 0;color:var(--text2);width:42%;font-weight:600">'+escHtml(x.q)+'</td><td style="vertical-align:top;padding:4px 0;white-space:pre-wrap">'+escHtml(x.a)+'</td></tr>').join('')+
+        '</table></div>';
+    });
+  } else {
+    h+='<div style="color:var(--text2);font-size:13px">No submitted HR form fields to display.</div>';
+  }
+  document.getElementById('leaveModalBody').innerHTML=h;
+  document.getElementById('leaveOverlay').style.display='flex';
+}
+function renderLeave(){
+  const el=document.getElementById('leave');
+  if(!leaveData){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading caregivers on leave…</div>'; return; }
+  const rows0=(leaveData.rows||[]);
+  const mceSel=document.getElementById('leaveMce'), mSel=document.getElementById('leaveMarket');
+  if(mceSel.options.length<=1){
+    const mces=[...new Set(rows0.map(r=>r.manager).filter(Boolean))].sort();
+    mceSel.innerHTML='<option value="">All Managers</option>'+mces.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+    const mkts=[...new Set(rows0.map(r=>r.market).filter(Boolean))].sort();
+    mSel.innerHTML='<option value="">All markets</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+  }
+  const mce=mceSel.value, market=mSel.value, statusF=document.getElementById('leaveStatus').value;
+  const needsOnly=document.getElementById('leaveNeedsForm').checked;
+  const q=(document.getElementById('leaveSearch').value||'').toLowerCase().trim();
+  let rows=rows0.filter(r=>{
+    if(mce&&r.manager!==mce)return false;
+    if(market&&r.market!==market)return false;
+    const st=_leaveStatusOf(r.id);
+    if(statusF!=='all'&&st!==statusF)return false;
+    if(needsOnly&&!r.needsForm)return false;
+    if(q&&!(r.name||'').toLowerCase().includes(q))return false;
+    return true;
+  });
+  // stat cards (from unfiltered counts + live status)
+  const openCount=rows0.filter(r=>_leaveStatusOf(r.id)==='open').length;
+  const needsForm=rows0.filter(r=>r.needsForm&&_leaveStatusOf(r.id)==='open').length;
+  const onLeaveNow=rows0.filter(r=>r.onLeaveBySchedule&&r.leave&&!r.leave.upcoming).length;
+  const upcoming=rows0.filter(r=>r.leave&&r.leave.upcoming).length;
+  const stEl=document.getElementById('leaveStats'); stEl.style.display='';
+  stEl.innerHTML='<div class="grid four">'+
+    '<div class="fc"><div class="ct">Open cases</div><div class="big-stat"><span class="v">'+openCount+'</span></div><div class="stat-foot">of '+rows0.length+' total</div></div>'+
+    '<div class="fc"><div class="ct">On leave now</div><div class="big-stat"><span class="v a">'+onLeaveNow+'</span></div><div class="stat-foot">14+ consecutive days</div></div>'+
+    '<div class="fc"><div class="ct">Upcoming leave</div><div class="big-stat"><span class="v n">'+upcoming+'</span></div><div class="stat-foot">starts in the future</div></div>'+
+    '<div class="fc"><div class="ct">Needs HR form</div><div class="big-stat"><span class="v r">'+needsForm+'</span></div><div class="stat-foot">off 14+ days, no form</div></div>'+
+  '</div>';
+  document.getElementById('leaveCount').textContent=rows.length+' shown'+(leaveData.generatedAt?' · as of '+fmtTime(leaveData.generatedAt):'');
+  if(!rows.length){ el.innerHTML='<div class="empty-state"><div class="big">✅</div><div>No caregivers match — nobody currently flagged on leave for this view.</div></div>'; return; }
+  let h='<div class="tbl-wrap"><table><thead><tr>'+
+    '<th>Caregiver</th><th>Market</th><th>Manager</th><th>Dates on leave</th><th>HR form</th><th>Submitted</th><th>Updated</th><th>Status</th></tr></thead><tbody>';
+  rows.forEach(r=>{
+    const st=_leaveStatusOf(r.id);
+    const primaryForm=(r.forms&&r.forms[0])||null;
+    const formCell=primaryForm
+      ? escHtml(primaryForm.title)+(r.forms.length>1?' <span class="bdg bg-n">+'+(r.forms.length-1)+'</span>':'')
+      : (r.needsForm?'<span class="bdg bg-r">⚠ Needs HR form</span>':'<span style="color:var(--text2)">—</span>');
+    h+='<tr style="cursor:pointer" onclick="openLeaveModal(\''+String(r.id).replace(/'/g,"\\'")+'\')">'+
+      '<td class="td-name">'+escHtml(r.name)+(r.needsForm&&primaryForm?' <span class="bdg bg-r" title="also needs HR form">⚠</span>':'')+'</td>'+
+      '<td style="font-size:12px">'+escHtml(r.market||'—')+'</td>'+
+      '<td style="font-size:12px">'+escHtml(r.manager||'—')+'</td>'+
+      '<td style="font-size:12px">'+(r.leave?_leaveDateRange(r.leave):'<span style="color:var(--text2)">form only</span>')+'</td>'+
+      '<td style="font-size:12px;max-width:220px;white-space:normal">'+formCell+'</td>'+
+      '<td class="td-date">'+(primaryForm&&primaryForm.submittedAt?formatDate(parseDate(primaryForm.submittedAt)):'—')+'</td>'+
+      '<td class="td-date">'+(primaryForm&&primaryForm.updatedAt?formatDate(parseDate(primaryForm.updatedAt)):'—')+'</td>'+
+      '<td><button class="bdg '+(st==='closed'?'bg-n':'bg-g')+'" style="cursor:pointer;border:none" onclick="toggleLeaveStatus(\''+String(r.id).replace(/'/g,"\\'")+'\',event)">'+(st==='closed'?'Closed':'Open')+'</button></td>'+
+    '</tr>';
   });
   el.innerHTML=h+'</tbody></table></div>';
 }
