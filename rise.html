@@ -356,6 +356,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div class="ntab" id="tab-leave" onclick="switchTab('leave')">CAs on Leave</div>
   <div class="ntab" id="tab-certs" onclick="switchTab('certs')">Certifications</div>
   <div class="ntab" id="tab-referrals" onclick="switchTab('referrals')">Referrals</div>
+  <div class="ntab" id="tab-todo" onclick="switchTab('todo')">To Do</div>
 </div>
 
 <!-- UPLOADS (iSolved only — everything else streams from Viv) -->
@@ -527,6 +528,31 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <span class="count" id="refCount"></span>
   </div>
   <div id="referrals"><div class="empty-state"><div class="big">🤝</div><div>Loading caregiver referrals…</div></div></div>
+</div>
+
+<!-- PAGE: TO DO -->
+<div id="page-todo" style="display:none">
+  <div class="bar" style="flex-wrap:wrap">
+    <label style="display:inline-flex;align-items:center;gap:5px;font-weight:600"><input type="checkbox" id="todoShowDone" onchange="renderTodo()" style="margin:0"> Show completed</label>
+    <button class="rm-btn o" style="padding:6px 12px;font-size:12px" onclick="loadTodo(true)">↻ Refresh</button>
+    <span class="count" id="todoCount"></span>
+  </div>
+  <div style="margin:0 14px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input type="text" id="todoAddText" placeholder="Add a to-do…" onkeydown="if(event.key==='Enter')todoAdd()" style="padding:7px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);flex:1;min-width:220px">
+    <select id="todoAddSection" style="padding:7px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
+      <option value="today">Today</option>
+      <option value="week" selected>This Week</option>
+      <option value="month">This Month</option>
+    </select>
+    <select id="todoAddRecurring" style="padding:7px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
+      <option value="none" selected>One-time</option>
+      <option value="daily">Repeat daily</option>
+      <option value="weekly">Repeat weekly</option>
+      <option value="monthly">Repeat monthly</option>
+    </select>
+    <button class="rm-btn g" style="padding:7px 14px;font-size:13px" onclick="todoAdd()">+ Add item</button>
+  </div>
+  <div id="todo"><div class="empty-state"><div class="spin"></div>Loading your to-do list…</div></div>
 </div>
 
 <!-- PAGE: CAs ON LEAVE -->
@@ -1909,7 +1935,7 @@ let _navReady=false, _curTab='tracker';
 function switchTab(tab,push){
   if(push===undefined)push=true;
   _curTab=tab;
-  ['tracker','scoreboard','dashboard','summary','newhires','leave','certs','referrals'].forEach(t=>{
+  ['tracker','scoreboard','dashboard','summary','newhires','leave','certs','referrals','todo'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
   });
@@ -1920,6 +1946,7 @@ function switchTab(tab,push){
   if(tab==='leave')loadLeave();
   if(tab==='certs')renderCerts();
   if(tab==='referrals')loadReferrals();
+  if(tab==='todo')loadTodo();
   // Push a history entry so the browser Back button steps between tabs instead
   // of leaving the app. popstate handler passes push=false to avoid re-pushing.
   if(push&&_navReady){ try{ history.pushState({riseTab:tab},''); }catch(e){} }
@@ -2833,6 +2860,189 @@ function renderReferrals(){
       '<td class="td-date">'+escHtml(r.from||'—')+'</td><td style="font-size:12px;max-width:380px;line-height:1.4">"'+escHtml(r.message)+'"</td></tr>';
   });
   el.innerHTML=h+'</tbody></table></div>';
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// TO DO — a per-user checklist (Today · This Week · This Month) that MERGES the
+// user's own stored items with auto-generated operational items. Auto feeds are
+// derived live from the same data the Tracker + Certifications tabs use, so they
+// stay in sync with the rest of the dashboard. Store lives server-side, keyed by
+// the signed-in identity (endpoint=todo_list) — see the backend contract.
+//   auto:meeting:<key>          → Rise meeting overdue / due ≤7d   (→ This Week)
+//   auto:cert:<key>:<certName>  → tracked document expiring ≤30d   (→ This Month)
+// Auto items aren't deletable but ARE completable: completing one just records
+// its stable id in the server `done` map (no stored item is created).
+// ════════════════════════════════════════════════════════════════════════════
+let todoData=null, todoLoading=false;   // {items:[…], done:{id:completedAtISO}}
+
+// Rise-meeting due date for one caregiver — MIRRORS the exact calc renderTracker
+// uses per row (see the 90-day-vs-6-month-cycle block there). Returns
+// {hireDate,activeDueDate,daysUntil} or null when no hire date is known.
+function meetingDueFor(p){
+  const riseRows=riseFormsFor(p), ninetyRows=ninetyFormsFor(p);
+  const hireDate=p.hireDate||firstFormHireDate(riseRows,ninetyRows);
+  if(!hireDate)return null;
+  const ninetyDone=ninetyRows.some(r=>{const d=parseDate(r.meetingDate||r.submittedAt);return d&&d<=TODAY;});
+  const riseDone=riseRows.some(r=>{const d=parseDate(r.meetingDate);return d&&d<=TODAY;});
+  let activeDueDate;
+  if(!ninetyDone&&!riseDone&&hireDate>=NINETY_RULE_HIRE_CUTOFF){
+    activeDueDate=new Date(hireDate); activeDueDate.setDate(activeDueDate.getDate()+90);
+  } else {
+    activeDueDate=getActiveDueDate(hireDate,riseRows);
+  }
+  const daysUntil=activeDueDate?Math.round((activeDueDate-TODAY)/86400000):null;
+  return {hireDate,activeDueDate,daysUntil};
+}
+
+// Build the auto-generated items for the caregivers currently in scope. Scope =
+// the signed-in MCE's own team when currentUserMce() is non-null, else everyone.
+// Reuses the Tracker's meeting-due calc and the Certifications tab's expiry calc.
+function todoAutoItems(){
+  const items=[];
+  if(!spine.length)return items;
+  const mine=currentUserMce();
+  // Same OA/MCE-own-profile exclusion the Certifications tab uses.
+  const mceNames=new Set(spine.map(p=>(p.manager||'').toLowerCase().trim()).filter(Boolean));
+  spine.forEach(p=>{
+    if((p.market||'').toLowerCase().includes('virginia'))return;   // Virginia inactive for Rise
+    if(mine&&p.manager!==mine)return;                              // respect signed-in MCE scope
+    // ── This Week: Rise meeting overdue or due within 7 days ──
+    const md=meetingDueFor(p);
+    if(md&&md.daysUntil!==null&&md.daysUntil<=7){
+      const rel=md.daysUntil<0?(Math.abs(md.daysUntil)+' days overdue')
+        :md.daysUntil===0?'due today'
+        :(md.daysUntil+' day'+(md.daysUntil!==1?'s':'')+' left');
+      items.push({id:'auto:meeting:'+p.key, section:'week', auto:true, key:p.key,
+        text:'Rise meeting for '+p.name+' — due '+formatDate(md.activeDueDate)+' ('+rel+')'});
+    }
+    // ── This Month: tracked certification/document expiring within 30 days ──
+    // (mirrors renderCerts: skip terminated / inactive caregivers + excluded/
+    //  un-dated cert types + MA CPR/CNA which MA doesn't renewal-track.)
+    if(mceNames.has((p.name||'').toLowerCase().trim()))return;                          // OA / MCE own profile
+    if(p.viv&&(p.viv.termDate||(p.viv.status&&!/hired|active/i.test(p.viv.status))))return; // terminated/non-hired
+    if(p.viv&&!p.viv.prn&&(p.viv.careVisits||0)===0&&((p.viv.monthsWithVisit||[]).length)===0){
+      const hd=p.hireDate, recentHire=hd&&((TODAY-hd)/86400000)<60;
+      if(!recentHire)return;
+    }
+    const st=(p.viv&&p.viv.state)||p.market||'';
+    const isMA=/massachusetts/i.test(st);
+    (p.isoCerts||[]).forEach(c=>{
+      const nm=(c.name||'').trim(); if(!nm)return;
+      const cl=nm.toLowerCase();
+      if(CERT_EXCLUDE.some(ex=>cl.includes(ex)))return;         // COVID etc. — not renewal-tracked
+      if(isMA&&(/\bCPR\b/i.test(nm)||/\bCNA\b/i.test(nm)))return;
+      const exp=parseDate(c.expiration); if(!exp)return;
+      const days=Math.round((exp-TODAY)/86400000);
+      if(days>30)return;                                        // only expired or ≤30d out
+      items.push({id:'auto:cert:'+p.key+':'+nm, section:'month', auto:true, key:p.key,
+        text:nm+' for '+p.name+' expires '+formatDate(exp)+(days<0?' ('+(-days)+' days ago)':days===0?' (today)':' ('+days+' day'+(days!==1?'s':'')+' left)')});
+    });
+  });
+  return items;
+}
+
+async function loadTodo(force){
+  if(force)todoData=null;
+  if(todoData){ renderTodo(); return; }
+  if(todoLoading)return; todoLoading=true;
+  document.getElementById('todo').innerHTML='<div class="empty-state"><div class="spin"></div>Loading your to-do list…</div>';
+  try{
+    const r=await fetch(PROXY+'?endpoint=todo_list',{headers:await authHeaders()});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    todoData={items:(j&&j.items)||[], done:(j&&j.done)||{}};
+  }catch(e){
+    document.getElementById('todo').innerHTML='<div class="err" style="display:block">Couldn\'t load your to-do list: '+escHtml(e.message)+'. If the backend was just updated, give it a minute and hit Refresh.</div>';
+    todoLoading=false; return;
+  }
+  todoLoading=false; renderTodo();
+}
+
+// POST an action, fold the returned {items,done} back into module state, re-render.
+async function todoPost(body){
+  if(!todoData)todoData={items:[],done:{}};
+  try{
+    const r=await fetch(PROXY+'?endpoint=todo_list',{method:'POST',
+      headers:await authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify(body)});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    if(j&&j.items)todoData.items=j.items;
+    if(j&&j.done)todoData.done=j.done;
+  }catch(e){ showErr('To-do update failed: '+e.message+'. Try again in a moment.'); }
+  renderTodo();
+}
+function todoComplete(id){ todoPost({action:'complete', id}); }
+function todoRestore(id){ todoPost({action:'restore', id}); }
+function todoDelete(id){ if(confirm('Delete this to-do item?'))todoPost({action:'delete', id}); }
+function todoAdd(){
+  const t=document.getElementById('todoAddText');
+  const text=(t.value||'').trim(); if(!text)return;
+  const section=document.getElementById('todoAddSection').value;
+  const recurring=document.getElementById('todoAddRecurring').value;
+  t.value='';
+  todoPost({action:'add', item:{text, section, recurring}});
+}
+
+// One item row: complete/restore control + text (+ auto badge) + delete (user only).
+function todoRow(it,isDone){
+  const idAttr=escHtml(String(it.id).replace(/'/g,"\\'"));
+  const ctrl=isDone
+    ? '<button title="Restore" onclick="todoRestore(\''+idAttr+'\')" style="flex:none;width:22px;height:22px;border-radius:6px;border:1px solid var(--border2);background:var(--green);color:#fff;cursor:pointer;font-size:12px;line-height:1">↺</button>'
+    : '<button title="Mark done" onclick="todoComplete(\''+idAttr+'\')" style="flex:none;width:22px;height:22px;border-radius:6px;border:1px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer;font-size:12px;line-height:1">✓</button>';
+  const autoBadge=it.auto?' <span class="bdg bg-b" style="font-size:9px">auto</span>':'';
+  const recBadge=(!it.auto&&it.recurring&&it.recurring!=='none')?' <span class="bdg bg-n" style="font-size:9px">'+escHtml(it.recurring)+'</span>':'';
+  const del=it.auto?'':'<button title="Delete" onclick="todoDelete(\''+idAttr+'\')" style="flex:none;border:none;background:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;padding:0 2px">×</button>';
+  const txt=it.auto&&it.key
+    ? '<span style="cursor:pointer" onclick="openCaregiver(\''+String(it.key).replace(/'/g,"\\'")+'\')">'+escHtml(it.text)+'</span>'
+    : escHtml(it.text);
+  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-bottom:.5px solid var(--border2)'+(isDone?';opacity:.55':'')+'">'+
+    ctrl+
+    '<div style="flex:1;font-size:13px;line-height:1.4'+(isDone?';text-decoration:line-through':'')+'">'+txt+autoBadge+recBadge+'</div>'+
+    del+'</div>';
+}
+
+function todoSectionBlock(title,sub,list,done,showDone){
+  const open=list.filter(it=>!done[it.id]);
+  const closed=showDone?list.filter(it=>done[it.id]):[];
+  let body='';
+  if(!open.length&&!closed.length){
+    body='<div class="no-data" style="padding:12px">Nothing here'+(showDone?'':' — you\'re all caught up. 🎉')+'</div>';
+  }else{
+    body=open.map(it=>todoRow(it,false)).join('')+closed.map(it=>todoRow(it,true)).join('');
+  }
+  return '<div class="fc" style="padding:0;margin-bottom:14px;overflow:hidden">'+
+    '<div style="padding:12px 14px;border-bottom:1px solid var(--border)">'+
+      '<div class="ct" style="margin:0">'+escHtml(title)+' <span class="bdg bg-n" style="font-size:9px">'+open.length+'</span></div>'+
+      (sub?'<div class="stat-foot" style="margin-top:3px">'+escHtml(sub)+'</div>':'')+
+    '</div>'+body+'</div>';
+}
+
+function renderTodo(){
+  const el=document.getElementById('todo');
+  if(!todoData){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading your to-do list…</div>'; return; }
+  const showDone=!!(document.getElementById('todoShowDone')||{}).checked;
+  const done=todoData.done||{};
+  // Merge auto items with the user's stored items, de-duping by id (a stored item
+  // with the same id as an auto one — shouldn't happen, but be safe — wins).
+  const stored=(todoData.items||[]).map(it=>({id:it.id, text:it.text, section:it.section||'today', recurring:it.recurring||'none', auto:false}));
+  const storedIds=new Set(stored.map(it=>it.id));
+  const auto=todoAutoItems().filter(it=>!storedIds.has(it.id));
+  const all=auto.concat(stored);
+  const bySection=s=>all.filter(it=>it.section===s);
+  const today=bySection('today'), week=bySection('week'), month=bySection('month');
+  const openCount=list=>list.filter(it=>!done[it.id]).length;
+  const oT=openCount(today), oW=openCount(week), oM=openCount(month);
+  document.getElementById('todoCount').textContent=(oT+oW+oM)+' open item'+((oT+oW+oM)!==1?'s':'');
+  let h='<div class="grid three" style="margin-bottom:14px">'+
+    '<div class="fc"><div class="ct">Open — Today</div><div class="big-stat"><span class="v '+(oT?'a':'g')+'">'+oT+'</span></div><div class="stat-foot">due today</div></div>'+
+    '<div class="fc"><div class="ct">Open — This Week</div><div class="big-stat"><span class="v '+(oW?'a':'g')+'">'+oW+'</span></div><div class="stat-foot">next 7 days</div></div>'+
+    '<div class="fc"><div class="ct">Open — This Month</div><div class="big-stat"><span class="v '+(oM?'a':'g')+'">'+oM+'</span></div><div class="stat-foot">next 30 days</div></div>'+
+  '</div>';
+  h+=todoSectionBlock('Today','Your day-of items. '+(today.some(it=>it.auto)?'':'Form-triggered items coming soon.'),today,done,showDone);
+  h+=todoSectionBlock('This Week','Rise meetings overdue or due within 7 days, plus anything you add.',week,done,showDone);
+  h+=todoSectionBlock('This Month','Tracked documents expiring within 30 days, plus anything you add.',month,done,showDone);
+  el.innerHTML=h;
 }
 
 // ── NEW HIRES — 90-Day New-Hire Tracker (Charlotte 7/28) ──
