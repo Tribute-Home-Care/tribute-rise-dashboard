@@ -3240,7 +3240,14 @@ function _nhAdapt(r,ats){
   const los=Math.max(0,r.tenureDays||0);
   const status=r.termDate?'Termed':(los>=90?'Retained':'Active');
   let exit=r.termType||''; if(r.termType&&r.termDetail)exit=r.termType;
-  const drv=a.driver||(a.commuteMethod?(/driv|own vehicle|car/i.test(a.commuteMethod)?'Yes':'No'):'');
+  // Driver flag. The ATS 'driver' field is often "Unset"/"Nan"/"Pending" for
+  // recent hires, so only trust a clean yes/no; otherwise infer from the commute
+  // method ("Drive their own vehicle" etc.), which is populated far more often.
+  let drv='';
+  const dRaw=String(a.driver==null?'':a.driver).trim().toLowerCase();
+  if(dRaw==='yes'||dRaw==='y'||dRaw==='true')drv='Yes';
+  else if(dRaw==='no'||dRaw==='n'||dRaw==='false')drv='No';
+  else if(a.commuteMethod)drv=(/driv|own vehicle|\bcar\b/i.test(a.commuteMethod)?'Yes':'No');
   return { name:r.name, state:r.state||'', st:_nhST2AB[r.state]||r.state||'?', mce:r.mce||'',
     hireIso:r.hireDate||'', hireYear:+String(r.hireDate||'').slice(0,4)||0, termDate:r.termDate||null,
     status, los, visitType:a.visit_type||String(r.jobTitle||'').replace(/caregiver/ig,'').replace(/\s+/g,' ').trim()||'—',
