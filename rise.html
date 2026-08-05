@@ -312,11 +312,15 @@ table.sched-tbl tr:last-child td{border-bottom:none}
 <div class="gate" id="gate">
   <div class="gate-box">
     <div class="logo" style="justify-content:center"><span class="wordmark">Tribute<span class="wm-dot">.</span></span><span class="pulse"></span><span class="wordmark-sub">Rise Dashboard</span></div>
-    <div class="gt">Team access</div>
-    <div class="gs">Enter the shared team password to connect live Viv data.</div>
-    <input type="password" id="gateInput" placeholder="Team password" onkeydown="if(event.key==='Enter')submitGate()">
-    <button onclick="submitGate()">Connect</button>
+    <div class="gt">Sign in required</div>
+    <div class="gs">Sign in with your Tribute Microsoft account to open the Rise Dashboard.</div>
+    <button onclick="location.reload()">Sign in with Microsoft</button>
     <div class="gate-err" id="gateErr"></div>
+    <div style="margin-top:14px;font-size:11px;color:var(--text2)">Trouble signing in? <a href="#" onclick="var g=document.getElementById('gateLegacy');g.style.display='block';this.style.display='none';return false;" style="color:var(--blue-text);text-decoration:none">Use team password</a></div>
+    <div id="gateLegacy" style="display:none;margin-top:10px">
+      <input type="password" id="gateInput" placeholder="Team password" onkeydown="if(event.key==='Enter')submitGate()">
+      <button onclick="submitGate()">Connect</button>
+    </div>
   </div>
 </div>
 
@@ -706,7 +710,7 @@ async function syncViv(manual){
   setSyncLine('<span class="dot"></span>Syncing from Viv… first build can take ~2 minutes','');
   try{
     let r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers});
-    if(r.status===401){ localStorage.removeItem(KEY_LS); showGate('That password was not accepted.'); throw new Error('unauthorized'); }
+    if(r.status===401){ localStorage.removeItem(KEY_LS); showGate('Your session has expired — please sign in again.'); throw new Error('unauthorized'); }
     if(r.status>=500){
       // Cold cache build can outlive the Azure HTTP timeout; the server kept the
       // finished pieces, so one automatic retry usually completes the build.
@@ -1069,7 +1073,7 @@ async function loadTrackerNotes(){
   trackerNotesLoading=true;
   try{
     const key=getKey();
-    const r=await fetch(PROXY+'?endpoint=rise_tracker_notes',{headers:{'X-Retention-Key':key}});
+    const r=await fetch(PROXY+'?endpoint=rise_tracker_notes',{headers:await authHeaders()});
     trackerNotes=r.ok?((await r.json()).notes||{}):{};
   }catch(e){ trackerNotes={}; }
   trackerNotesLoading=false;
@@ -1084,7 +1088,7 @@ async function saveTrackerNote(el){
   if(!notes&&!nextMeeting)delete trackerNotes[nk]; else trackerNotes[nk]={notes,nextMeeting};
   try{
     await fetch(PROXY+'?endpoint=rise_tracker_notes',{method:'POST',
-      headers:{'Content-Type':'application/json','X-Retention-Key':getKey()},
+      headers:await authHeaders({'Content-Type':'application/json'}),
       body:JSON.stringify({cgId:nk,notes,nextMeeting,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
   }catch(e){/* keep local value even if the save round-trips slowly */}
 }
@@ -1739,7 +1743,7 @@ async function loadLiveInNotes(cgid){
   if(liveInNoteCache[cgid]){ paint(liveInNoteCache[cgid]); return; }
   const key=getKey(); if(!key){ showGate(); return; }
   try{
-    const r=await fetch(PROXY+'?endpoint=rise_livein_notes&cgid='+cgid,{headers:{'X-Retention-Key':key}});
+    const r=await fetch(PROXY+'?endpoint=rise_livein_notes&cgid='+cgid,{headers:await authHeaders()});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const d=await r.json(); liveInNoteCache[cgid]=d;
     // caregiver may have changed while awaiting
@@ -1772,7 +1776,7 @@ async function renderCgSchedule(cgid){
     el.innerHTML='<div class="no-data"><span class="spin" style="display:inline-block;vertical-align:middle"></span> Loading schedule…</div>';
     const key=getKey(); if(!key){ showGate(); return; }
     try{
-      const r=await fetch(PROXY+'?endpoint=rise_week_schedule&week='+wkStart,{headers:{'X-Retention-Key':key}});
+      const r=await fetch(PROXY+'?endpoint=rise_week_schedule&week='+wkStart,{headers:await authHeaders()});
       if(!r.ok)throw new Error('HTTP '+r.status);
       schedCache[wkStart]=await r.json();
     }catch(e){ el.innerHTML='<div class="err" style="display:block">Couldn\'t load schedule: '+escHtml(e.message)+'</div>'; return; }
@@ -1811,7 +1815,7 @@ async function printNewHireSchedules(){
     .sort((a,b)=>a.name.localeCompare(b.name));
   if(!nh.length){ alert('No new hires in their first 90 days match the current MCE/state filter.'); return; }
   let data=schedCache[wk];
-  if(!data){ try{ const r=await fetch(PROXY+'?endpoint=rise_week_schedule&week='+wk,{headers:{'X-Retention-Key':key}}); if(!r.ok)throw new Error('HTTP '+r.status); data=await r.json(); schedCache[wk]=data; }catch(e){ alert('Could not load schedules: '+e.message); return; } }
+  if(!data){ try{ const r=await fetch(PROXY+'?endpoint=rise_week_schedule&week='+wk,{headers:await authHeaders()}); if(!r.ok)throw new Error('HTTP '+r.status); data=await r.json(); schedCache[wk]=data; }catch(e){ alert('Could not load schedules: '+e.message); return; } }
   const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const fmtT=ts=>{ if(!ts)return''; const d=new Date(ts); return isNaN(d)?'':d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); };
   const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -2034,7 +2038,7 @@ async function loadCelebrations(){
   if(celebratedSet||celLoading)return;
   celLoading=true;
   try{
-    const r=await fetch(PROXY+'?endpoint=rise_celebrations',{headers:{'X-Retention-Key':getKey()}});
+    const r=await fetch(PROXY+'?endpoint=rise_celebrations',{headers:await authHeaders()});
     const j=r.ok?await r.json():{}; celebratedSet=new Set(Object.keys(j.celebrated||{}));
   }catch(e){ celebratedSet=new Set(); }
   celLoading=false; renderCelebrations();
@@ -2043,7 +2047,7 @@ async function toggleCelebrated(id,el){
   if(!celebratedSet)celebratedSet=new Set();
   const now=!celebratedSet.has(id);
   if(now)celebratedSet.add(id); else celebratedSet.delete(id);
-  try{ await fetch(PROXY+'?endpoint=rise_celebrations',{method:'POST',headers:{'Content-Type':'application/json','X-Retention-Key':getKey()},body:JSON.stringify({id,celebrated:now,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})}); }catch(e){}
+  try{ await fetch(PROXY+'?endpoint=rise_celebrations',{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({id,celebrated:now,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})}); }catch(e){}
   renderCelebrations();
 }
 function celBtn(id){
@@ -2665,7 +2669,7 @@ async function parseRiseMeeting(){
   btn.disabled=true; msg.textContent='Tribute Intelligence is reading your notes…';
   try{
     const r=await fetch(PROXY+'?endpoint=rise_meeting_parse',{method:'POST',
-      headers:{'Content-Type':'application/json','X-Retention-Key':key},
+      headers:await authHeaders({'Content-Type':'application/json'}),
       body:JSON.stringify({caregiverName:p?p.name:'', notes})});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const j=await r.json(); const f=j.fields||{};
@@ -2736,8 +2740,8 @@ async function loadReferrals(){
   const key=getKey(); if(!key){ showGate(); refLoading=false; return; }
   document.getElementById('referrals').innerHTML='<div class="empty-state"><div class="spin"></div>Scanning caregiver chats for referrals… first load can take ~1 minute.</div>';
   try{
-    let r=await fetch(PROXY+'?endpoint=rise_referrals',{headers:{'X-Retention-Key':key}});
-    if(r.status>=500){ await new Promise(s=>setTimeout(s,2000)); r=await fetch(PROXY+'?endpoint=rise_referrals',{headers:{'X-Retention-Key':key}}); }
+    let r=await fetch(PROXY+'?endpoint=rise_referrals',{headers:await authHeaders()});
+    if(r.status>=500){ await new Promise(s=>setTimeout(s,2000)); r=await fetch(PROXY+'?endpoint=rise_referrals',{headers:await authHeaders()}); }
     if(!r.ok)throw new Error('HTTP '+r.status);
     refData=await r.json();
   }catch(e){
@@ -2807,7 +2811,7 @@ async function loadNewHires(){
   if(newHiresData){ renderNewHires(); return; }
   if(newHiresLoading)return; newHiresLoading=true;
   const key=getKey(); if(!key){ showGate(); newHiresLoading=false; return; }
-  const hd={'X-Retention-Key':key};
+  const hd=await authHeaders();
   try{
     const yrs=[]; for(let y=2025;y<=TODAY.getFullYear();y++)yrs.push(y);
     const reqs=yrs.map(y=>fetch(PROXY+'?endpoint=ninety_day&year='+y,{headers:hd}).then(r=>r.ok?r.json():{rows:[]}));
@@ -2894,7 +2898,7 @@ async function loadLeave(force){
   if(leaveData){ renderLeave(); return; }
   if(leaveLoading)return; leaveLoading=true;
   const key=getKey(); if(!key){ showGate(); leaveLoading=false; return; }
-  const hd={'X-Retention-Key':key};
+  const hd=await authHeaders();
   document.getElementById('leave').innerHTML='<div class="empty-state"><div class="spin"></div>Loading caregivers on leave…</div>';
   try{
     const [lr,sr]=await Promise.all([
@@ -2917,7 +2921,7 @@ async function toggleLeaveStatus(id,ev){
   renderLeave();
   try{
     await fetch(PROXY+'?endpoint=cas_leave_status',{method:'POST',
-      headers:{'Content-Type':'application/json','X-Retention-Key':getKey()},
+      headers:await authHeaders({'Content-Type':'application/json'}),
       body:JSON.stringify({id,status:next,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
   }catch(e){/* local state already updated; server catches up */}
 }
@@ -3309,8 +3313,16 @@ renderLiveChips();
 // return to, and Back retraces tabs instead of exiting on the first press.
 try{ history.replaceState({riseTab:'tracker'},''); }catch(e){}
 _navReady=true;
-ensureCurrentUser();   // start decoding the signed-in identity early (no-op in password-only sessions)
-if(getKey())syncViv(false); else showGate();
+ensureCurrentUser();   // start decoding the signed-in identity early
+// Microsoft sign-in is the gate (entra-auth.js walls the page on load and signs
+// the user in). Once a token is available we load immediately. A legacy team
+// password (getKey) is still honored purely as a no-lockout safety net; it is no
+// longer offered in normal use. If neither is present, prompt sign-in.
+(async()=>{
+  let token=null;
+  try{ token=(window.tributeKsfGate&&window.tributeKsfGate.getToken)?await window.tributeKsfGate.getToken():null; }catch(e){}
+  if(token||getKey()) syncViv(false); else showGate();
+})();
 </script>
 </body>
 </html>
