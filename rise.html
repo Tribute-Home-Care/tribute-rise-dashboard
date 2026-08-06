@@ -974,15 +974,18 @@ function mceNameSet(){
 // inactive-in-practice caregivers (Viv still marks them "hired" but they have zero
 // visits and zero visit-months, e.g. Angela Gilbert), while keeping PRN and
 // very-recent hires (<60d who simply haven't started visiting yet).
+// Office Associates who are 'hired' in Viv but aren't field caregivers and don't
+// appear as a manager (so the name-match below misses them). Add names as needed.
+const OA_EXCLUDE=new Set(['angela gilbert','angie gilbert','esther larsh','chenelle johnson','shanaye stone']);
 function isFieldCG(cg,mceNames){
   if(!cg)return false;
-  if(mceNames.has((cg.name||'').toLowerCase().trim()))return false;   // OA / MCE own profile
-  if(cg.prn)return true;
-  if((cg.careVisits||0)===0 && ((cg.monthsWithVisit||[]).length)===0){
-    const hd=parseDate(cg.hireDate), recent=hd&&((TODAY-hd)/86400000)<60;
-    if(!recent)return false;
-  }
+  const nm=(cg.name||'').toLowerCase().trim();
+  if(mceNames.has(nm))return false;   // appears as a manager (MCE / OA own profile)
+  if(OA_EXCLUDE.has(nm))return false; // explicitly-flagged Office Associates
   return true;
+  // NOTE: we intentionally no longer exclude zero-visit caregivers — that wrongly
+  // hid real active caregivers who simply have no completed visits yet (e.g. new
+  // Chicago hires like Gedam Kifle). Inactive OAs are handled by the lists above.
 }
 function buildSpine(){
   spine=[];
@@ -1286,6 +1289,17 @@ function renderTracker(){
     else { cycleTag='45 Day'; cycleCls='bg-b'; }                                      // first ~45 days
     rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting,riseMeetingDates,cycleTag,cycleCls,skipCgId,skippedTo});
   });
+  // Effective "next meeting" per row = the MCE-typed value (durable trackerNotes)
+  // if present, else the Rise-form value; blank once that date is entered in Viv.
+  // The sort must use THIS, not the raw form value (Dova: typed dates weren't sorting).
+  rows.forEach(row=>{
+    const nk=(row.p.viv&&row.p.viv.id)?row.p.viv.id:row.p.key;
+    const stored=(trackerNotes&&trackerNotes[nk])||null;
+    let v=stored?(stored.nextMeeting||''):'';
+    if(!v&&row.nextMeeting){ const d=parseDate(row.nextMeeting); if(d)v=d.toLocaleDateString('en-CA'); }
+    if(v&&(row.riseMeetingDates||[]).includes(v))v='';
+    row._effNext=v;
+  });
   // Default sort = soonest-due first. Clicking a header overrides with an
   // explicit alphabetical/chronological sort (Charlotte). Notes isn't sortable.
   const daysCmp=(a,b)=>{ if(a.daysUntil===null&&b.daysUntil===null)return 0; if(a.daysUntil===null)return 1; if(b.daysUntil===null)return -1; return a.daysUntil-b.daysUntil; };
@@ -1298,7 +1312,7 @@ function renderTracker(){
       hire:(a,b)=>(a.hireDate||0)-(b.hireDate||0),
       due:(a,b)=>((a.activeDueDate||0)-(b.activeDueDate||0)),
       days:daysCmp,
-      next:(a,b)=>{const da=parseDate(a.nextMeeting),db=parseDate(b.nextMeeting);if(da&&db)return da-db;return s(a.nextMeeting).localeCompare(s(b.nextMeeting));},
+      next:(a,b)=>{const da=a._effNext?parseDate(a._effNext):null,db=b._effNext?parseDate(b._effNext):null;if(da&&db)return da-db;if(da)return -1;if(db)return 1;return 0;},
       segment:(a,b)=>s(a.segment).localeCompare(s(b.segment))
     }[trackerSort.col]||daysCmp;
     rows.sort((a,b)=>cmp(a,b)*trackerSort.dir);
