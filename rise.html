@@ -1242,12 +1242,24 @@ function renderTracker(){
     // until the 90-day form is submitted), then the 6-month cycle takes over.
     const ninetyDone=ninetyRows.some(r=>{const d=parseDate(r.meetingDate||r.submittedAt);return d&&d<=TODAY;});
     const riseDone=riseRows.some(r=>{const d=parseDate(r.meetingDate);return d&&d<=TODAY;});
-    let activeDueDate,dueKind='';
-    if(!ninetyDone&&!riseDone&&hireDate>=NINETY_RULE_HIRE_CUTOFF){
-      activeDueDate=new Date(hireDate); activeDueDate.setDate(activeDueDate.getDate()+90);
-      dueKind='90-day';
+    const fortyFiveDone=fortyFiveRows.some(r=>{const d=parseDate(r.meetingDate||r.submittedAt);return d&&d<=TODAY;});
+    const tenure=Math.round((TODAY-hireDate)/86400000);
+    // Meeting cadence (Dova): 45-day -> 90-day -> recurring 6-month "Rise". The
+    // active due date AND the cycle tag reflect the NEXT meeting owed, from what's
+    // been completed -- NOT raw tenure (which wrongly tagged a past-90-day-but-
+    // pre-6-month caregiver as "Rise" too early, e.g. Naomi Doja).
+    let activeDueDate,dueKind='',cycleTag,cycleCls;
+    if(hireDate>=NINETY_RULE_HIRE_CUTOFF && !ninetyDone && !riseDone){
+      if(!fortyFiveDone && tenure<90){
+        activeDueDate=new Date(hireDate); activeDueDate.setDate(activeDueDate.getDate()+45);
+        dueKind='45-day'; cycleTag='45 Day'; cycleCls='bg-b';
+      } else {
+        activeDueDate=new Date(hireDate); activeDueDate.setDate(activeDueDate.getDate()+90);
+        dueKind='90-day'; cycleTag='90 Day'; cycleCls='bg-p';
+      }
     } else {
       activeDueDate=getActiveDueDate(hireDate,riseRows);
+      dueKind='rise'; cycleTag='Rise'; cycleCls='bg-n';
     }
     // Meeting-skip: if this caregiver's next meeting was skipped, treat the due
     // date as advanced to skippedTo (one Rise cycle) so the row isn't overdue.
@@ -1279,14 +1291,6 @@ function renderTracker(){
     // Completed Rise meeting dates (YYYY-MM-DD) — used to auto-clear a typed
     // "next meeting" once the form for that date is entered in Viv.
     const riseMeetingDates=riseRows.map(r=>{const d=parseDate(r.meetingDate);return d&&d<=TODAY?d.toLocaleDateString('en-CA'):null;}).filter(Boolean);
-    // Full Rise-cycle tag (Charlotte): where the caregiver sits in the cycle,
-    // derived from tenure + which early-cycle forms have been submitted.
-    const fortyFiveDone=fortyFiveRows.some(r=>{const d=parseDate(r.meetingDate||r.submittedAt);return d&&d<=TODAY;});
-    const tenure=Math.round((TODAY-hireDate)/86400000);
-    let cycleTag,cycleCls;
-    if(ninetyDone||riseDone||tenure>90){ cycleTag='Rise'; cycleCls='bg-n'; }        // past 90-day → ongoing 6-month cycle
-    else if(fortyFiveDone||tenure>45){ cycleTag='90 Day'; cycleCls='bg-p'; }         // between 45-day and 90-day meeting
-    else { cycleTag='45 Day'; cycleCls='bg-b'; }                                      // first ~45 days
     rows.push({p,hireDate,activeDueDate,daysUntil,dueKind,segment,notes,nextMeeting,riseMeetingDates,cycleTag,cycleCls,skipCgId,skippedTo});
   });
   // Effective "next meeting" per row = the MCE-typed value (durable trackerNotes)
@@ -3078,14 +3082,19 @@ function meetingDueFor(p){
   if(!hireDate)return null;
   const ninetyDone=ninetyRows.some(r=>{const d=parseDate(r.meetingDate||r.submittedAt);return d&&d<=TODAY;});
   const riseDone=riseRows.some(r=>{const d=parseDate(r.meetingDate);return d&&d<=TODAY;});
-  let activeDueDate;
-  if(!ninetyDone&&!riseDone&&hireDate>=NINETY_RULE_HIRE_CUTOFF){
-    activeDueDate=new Date(hireDate); activeDueDate.setDate(activeDueDate.getDate()+90);
+  const fortyFiveDone=fortyFiveFormsFor(p).some(r=>{const d=parseDate(r.meetingDate||r.submittedAt);return d&&d<=TODAY;});
+  const tenure=Math.round((TODAY-hireDate)/86400000);
+  // 45-day -> 90-day -> 6-month "Rise" cadence (matches the tracker).
+  let activeDueDate,dueKind='rise';
+  if(hireDate>=NINETY_RULE_HIRE_CUTOFF && !ninetyDone && !riseDone){
+    activeDueDate=new Date(hireDate);
+    if(!fortyFiveDone && tenure<90){ activeDueDate.setDate(activeDueDate.getDate()+45); dueKind='45-day'; }
+    else { activeDueDate.setDate(activeDueDate.getDate()+90); dueKind='90-day'; }
   } else {
     activeDueDate=getActiveDueDate(hireDate,riseRows);
   }
   const daysUntil=activeDueDate?Math.round((activeDueDate-TODAY)/86400000):null;
-  return {hireDate,activeDueDate,daysUntil};
+  return {hireDate,activeDueDate,daysUntil,dueKind};
 }
 
 // Build the auto-generated items for the caregivers currently in scope. Scope =
@@ -3106,8 +3115,9 @@ function todoAutoItems(){
       const rel=md.daysUntil<0?(Math.abs(md.daysUntil)+' days overdue')
         :md.daysUntil===0?'due today'
         :(md.daysUntil+' day'+(md.daysUntil!==1?'s':'')+' left');
+      const mLbl=md.dueKind==='45-day'?'45-Day meeting':md.dueKind==='90-day'?'90-Day meeting':'Rise meeting';
       items.push({id:'auto:meeting:'+p.key, section:'week', auto:true, key:p.key,
-        text:'Rise meeting for '+p.name+' — due '+formatDate(md.activeDueDate)+' ('+rel+')'});
+        text:mLbl+' for '+p.name+' — due '+formatDate(md.activeDueDate)+' ('+rel+')'});
     }
     // ── This Month: tracked certification/document expiring within 30 days ──
     // (mirrors renderCerts: skip terminated / inactive caregivers + excluded/
