@@ -2347,7 +2347,7 @@ function perfWindowNotes(v,weeks){
 // Count dated exceptions in the last `days`, classified for the Short List.
 function perfExcWindow(v,days){
   const cut=new Date(TODAY); cut.setDate(cut.getDate()-days); const cutStr=cut.toLocaleDateString('en-CA');
-  const out={prevCallout:0,emergCallout:0,connection:0,communication:0};
+  const out={prevCallout:0,emergCallout:0,connection:0,communication:0,reliability:0,flexibility:0,lateness:0};
   (v.exceptions||[]).forEach(inc=>{
     const d=(inc.date||'').slice(0,10); if(d<cutStr)return;
     const t=(inc.type||'').toLowerCase(), prev=(inc.preventable||'').toLowerCase();
@@ -2358,6 +2358,9 @@ function perfExcWindow(v,days){
     }
     if(/connection complaint|match fail/.test(t))out.connection++;
     if(/communication complaint/.test(t))out.communication++;
+    if(/reliability complaint/.test(t))out.reliability++;
+    if(/flexibility complaint/.test(t))out.flexibility++;
+    if(/\blate\b|lateness|tardy/.test(t))out.lateness++;
   });
   return out;
 }
@@ -2706,6 +2709,15 @@ function shortListTriggers(p){
   if(notes2.error>0) trig.push({t:notes2.error+' missing visit note'+(notes2.error>1?'s':'')+' (recent)',sev:'r'});
   if(exc.connection>1) trig.push({t:exc.connection+' connection complaints this month',sev:'r'});
   if(exc.communication>1) trig.push({t:exc.communication+' communication complaints this month',sev:'r'});
+  // r11: 3+ reliability/connection/communication/flexibility complaints + lateness SEs within 8 weeks
+  const exc8=perfExcWindow(v,56);
+  const cluster8=exc8.connection+exc8.communication+exc8.reliability+exc8.flexibility+exc8.lateness;
+  if(cluster8>=3) trig.push({t:cluster8+' reliability/connection/communication/flexibility/lateness SEs in 8 wks',sev:'r'});
+  // r10: a new SE while a written warning or PIP is active
+  const activeCA=activePipwwFor(p);
+  if(activeCA.length && (v.exceptions||[]).some(inc=>_withinDays(inc.date,30))){
+    trig.push({t:'New SE during active '+((activeCA[0].type||'WW/PIP').toString().toUpperCase()),sev:'r'});
+  }
   if(v.sundayRemoved && _withinDays(v.sundayRemoved.date,35)) trig.push({t:'Removed Sunday availability ('+formatDate(v.sundayRemoved.date)+')',sev:'warn'});
   return trig;
 }
@@ -2721,7 +2733,7 @@ function renderShortList(){
   });
   flagged.sort((a,b)=>(b.trig.some(t=>t.sev==='r')?1:0)-(a.trig.some(t=>t.sev==='r')?1:0)||b.trig.length-a.trig.length||a.p.name.localeCompare(b.p.name));
   document.getElementById('sbCount').textContent=flagged.length+' on the short list · '+scope.length+' caregivers';
-  let h='<div class="sb-note">Short List criteria (past 2 weeks / past month, from live Viv data): OTP &lt;80% (2 wks) · &gt;15 min late more than twice · &gt;1 preventable call-out · &gt;3 emergency call-outs · any missing visit note · &gt;1 connection complaint (incl. match failures) · &gt;1 communication complaint · removed Sunday availability.</div>';
+  let h='<div class="sb-note">Short List criteria (past 2 weeks / past month, from live Viv data): OTP &lt;80% (2 wks) · &gt;15 min late more than twice · &gt;1 preventable call-out · &gt;3 emergency call-outs · any missing visit note · &gt;1 connection complaint (incl. match failures) · &gt;1 communication complaint · 3+ complaint/lateness SEs in 8 wks · new SE during an active WW/PIP · removed Sunday availability.</div>';
   h+='<div class="sl-gro01">⚠️ Needs attention <span style="color:var(--text3);font-weight:600">· '+flagged.length+' caregiver'+(flagged.length!==1?'s':'')+'</span></div>';
   if(!flagged.length){ h+='<div class="sb-allgood">🎉 Nobody trips a Short List criterion right now — great work across the board!</div>'; }
   else h+=flagged.map(x=>{
