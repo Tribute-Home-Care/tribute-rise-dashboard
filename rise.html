@@ -365,6 +365,8 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div class="bar">
     <label for="managerFilter">Manager</label>
     <select id="managerFilter" onchange="renderTracker()"><option value="">All Managers</option></select>
+    <label for="trackerState">State</label>
+    <select id="trackerState" onchange="renderTracker()"><option value="">All states</option><option value="MD">MD</option><option value="IL">IL</option><option value="MA">MA</option></select>
     <span class="count" id="trackerCount"></span>
   </div>
   <div id="trackerEmpty" class="empty-state">
@@ -375,6 +377,8 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <table class="tbl">
       <thead><tr>
         <th onclick="trackerSortBy('name')" style="cursor:pointer;user-select:none">Caregiver<span class="tsort" data-c="name"></span></th>
+        <th>Phone</th>
+        <th>Email</th>
         <th onclick="trackerSortBy('market')" style="cursor:pointer;user-select:none">Market<span class="tsort" data-c="market"></span></th>
         <th onclick="trackerSortBy('hire')" style="cursor:pointer;user-select:none">Hire Date<span class="tsort" data-c="hire"></span></th>
         <th onclick="trackerSortBy('due')" style="cursor:pointer;user-select:none">Due Date<span class="tsort" data-c="due"></span></th>
@@ -398,8 +402,10 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div class="bar" style="flex-wrap:wrap">
     <label>Team (MCE)</label>
     <select id="sbMce" onchange="renderPerf()"><option value="">All MCEs</option></select>
+    <label>Market</label>
+    <select id="sbMarket" onchange="renderPerf()"><option value="">All markets</option></select>
     <label>State</label>
-    <select id="sbMarket" onchange="renderPerf()"><option value="">All states</option></select>
+    <select id="sbState" onchange="renderPerf()"><option value="">All states</option><option value="MD">MD</option><option value="IL">IL</option><option value="MA">MA</option></select>
     <span id="sbCaregiverWrap" style="display:none;align-items:center;gap:6px">
       <label>Caregiver</label>
       <select id="sbCaregiver" onchange="renderPerf()" style="min-width:200px"><option value="">All caregivers (team view)</option></select>
@@ -1037,6 +1043,19 @@ function buildSpine(){
   }
   spine.sort((a,b)=>a.name.localeCompare(b.name));
 }
+// State abbreviation (MD / IL / MA) for the state filter shared by the Rise
+// Meeting Tracker and Performance views. Prefer the per-caregiver Viv state
+// (a full name like "Maryland"); if it's absent, derive from the market
+// (Baltimore/Annapolis/Bethesda = MD, the Boston markets = MA, Chicago = IL).
+function cgStateAB(p){
+  const raw=((p.viv&&p.viv.state)||'').trim();
+  if(raw)return String(_nhST2AB[raw]||raw).toUpperCase();
+  const m=(p.market||'').toLowerCase();
+  if(/baltimore|annapolis|bethesda|maryland/.test(m))return 'MD';
+  if(/boston|metrowest|massachusetts/.test(m))return 'MA';
+  if(/chicago|illinois/.test(m))return 'IL';
+  return '';
+}
 function findVivByName(displayName){
   if(!viv)return null;
   return viv.caregivers.find(cg=>namesMatch(cg.name,displayName))||null;
@@ -1240,10 +1259,12 @@ function renderTracker(){
     return;
   }
   const managerFilter=document.getElementById('managerFilter').value;
+  const stateFilter=(document.getElementById('trackerState')||{}).value||'';
   const rows=[];
   spine.forEach(p=>{
     if((p.market||'').toLowerCase().includes('virginia'))return;   // Virginia inactive for Rise
     if(managerFilter&&p.manager!==managerFilter)return;
+    if(stateFilter&&cgStateAB(p)!==stateFilter)return;
     const riseRows=riseFormsFor(p);
     const ninetyRows=ninetyFormsFor(p);
     const fortyFiveRows=fortyFiveFormsFor(p);
@@ -1337,7 +1358,7 @@ function renderTracker(){
   document.getElementById('trackerCount').textContent=rows.length+' caregiver'+(rows.length!==1?'s':'');
   const tbody=document.getElementById('trackerBody');
   if(!rows.length){
-    tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:22px;font-style:italic">No caregivers found</td></tr>';
+    tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:22px;font-style:italic">No caregivers found</td></tr>';
     return;
   }
   if(trackerNotes===null)loadTrackerNotes();   // durable Notes / Next-Meeting store
@@ -1395,8 +1416,24 @@ function renderTracker(){
         dueCell+=' <button class="bdg bg-b" style="cursor:pointer;border:none;font-size:9px;margin-left:6px" onclick="event.stopPropagation();skipMeeting(\''+escSkipId+'\',\''+advVal+'\')" title="Skip this meeting — advances the due date to the next meeting in the cadence">Skip</button>';
       }
     }
+    // Phone/Email contact cells — same Teams click-to-call + mailto pattern as the
+    // Caregiver Dashboard contact line. stopPropagation so a link tap doesn't also
+    // open the caregiver (the whole row is clickable).
+    const cv=row.p.viv;
+    const rawPhone=(cv&&cv.phone)?String(cv.phone).replace(/\D/g,''):'';
+    const phoneFmt=rawPhone.length===10?'('+rawPhone.slice(0,3)+') '+rawPhone.slice(3,6)+'-'+rawPhone.slice(6):(rawPhone||'');
+    let phoneCell='—';
+    if(phoneFmt){
+      const tel=(rawPhone.length===10?'+1':'+')+rawPhone;
+      const callHref='https://teams.microsoft.com/l/call/0/0?users=4:'+encodeURIComponent(tel);
+      phoneCell='<a href="'+callHref+'" title="Call in Microsoft Teams" onclick="event.stopPropagation()" style="color:var(--blue-text);text-decoration:none">'+escHtml(phoneFmt)+'</a>';
+    }
+    const cgEmail=(cv&&cv.email)?String(cv.email).trim():'';
+    const emailCell=cgEmail?'<a href="mailto:'+escHtml(cgEmail)+'" onclick="event.stopPropagation()" style="color:var(--blue-text);text-decoration:none">'+escHtml(cgEmail)+'</a>':'—';
     return '<tr class="clickable" data-nk="'+nkAttr+'" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')">'+
       '<td class="td-name">'+escHtml(row.p.name)+cycleBadge+pipwwBadge+'</td>'+
+      '<td class="td-date">'+phoneCell+'</td>'+
+      '<td class="td-date">'+emailCell+'</td>'+
       '<td class="td-date">'+escHtml(row.p.market||'—')+'</td>'+
       '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
       '<td class="td-date" style="font-weight:600">'+dueCell+'</td>'+
@@ -2225,19 +2262,21 @@ function perfPopulateFilters(){
   }
   if(mktSel.options.length<=1){
     const mkts=[...new Set(spine.map(p=>p.market).filter(Boolean))].sort();
-    mktSel.innerHTML='<option value="">All states</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+    mktSel.innerHTML='<option value="">All markets</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
   }
-  // caregiver list depends on MCE/state filter
+  // caregiver list depends on MCE / market / state filters
   const mce=mceSel.value, market=mktSel.value;
+  const st=(document.getElementById('sbState')||{}).value||'';
   const cur=cgSel.value;
-  const cgs=spine.filter(p=>p.viv&&!(p.market||'').toLowerCase().includes('virginia')&&(!mce||p.manager===mce)&&(!market||p.market===market))
+  const cgs=spine.filter(p=>p.viv&&!(p.market||'').toLowerCase().includes('virginia')&&(!mce||p.manager===mce)&&(!market||p.market===market)&&(!st||cgStateAB(p)===st))
     .sort((a,b)=>a.name.localeCompare(b.name));
   cgSel.innerHTML='<option value="">All caregivers (team view)</option>'+cgs.map(p=>'<option value="'+p.key+'">'+escHtml(p.name)+'</option>').join('');
   if(cgs.some(p=>p.key===cur))cgSel.value=cur;
 }
 function perfScope(){
   const mce=document.getElementById('sbMce').value, market=document.getElementById('sbMarket').value;
-  return spine.filter(p=>p.viv&&!(p.market||'').toLowerCase().includes('virginia')&&(!mce||p.manager===mce)&&(!market||p.market===market));
+  const st=(document.getElementById('sbState')||{}).value||'';
+  return spine.filter(p=>p.viv&&!(p.market||'').toLowerCase().includes('virginia')&&(!mce||p.manager===mce)&&(!market||p.market===market)&&(!st||cgStateAB(p)===st));
 }
 // Sum a caregiver's weekly check-in / note buckets over the last N Sunday-weeks.
 function perfWeeksBack(n){
