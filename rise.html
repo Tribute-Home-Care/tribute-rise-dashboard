@@ -1697,6 +1697,10 @@ function renderCaregiver(){
   const certAlerts=getCertAlerts(p,isBab);
   const riseRows=riseFormsFor(p);
   const lastMeeting=getMostRecentForm(riseRows);
+  // r13: the "Last Meeting" card shows the most recent meeting of ANY type
+  // (6-month Rise, 90-day, or 45-day) so its discussion notes surface. The Bank
+  // & points logic below still keys off the 6-month Rise form (lastMeeting).
+  const lastAnyMeeting=getMostRecentForm(riseRows.concat(ninetyFormsFor(p),fortyFiveFormsFor(p)));
   const past6=getPast6Months();
 
   // ── Rise Above points bank comes from the latest Rise form's points field
@@ -1980,36 +1984,37 @@ function renderCaregiver(){
   }
   html+='</div></div>';
 
-  // ── Last Rise Meeting ──
-  html+='<div class="grid full"><div class="fc"><div class="ct">Last Rise Meeting</div>';
-  if(!lastMeeting){
-    html+='<div class="no-data">No Rise meeting form found for this caregiver.</div>';
+    // ── Last Meeting (any type: 45-Day / 90-Day / 6-month Rise) — r13 ──
+    const _mType=lastAnyMeeting?(FORTY_FIVE_DAY_FORMS.has(lastAnyMeeting.formNum)?'45-Day':NINETY_DAY_FORMS.has(lastAnyMeeting.formNum)?'90-Day':'Rise'):'';
+  html+='<div class="grid full"><div class="fc"><div class="ct">Last Meeting'+(_mType?' — '+_mType:'')+'</div>';
+  if(!lastAnyMeeting){
+    html+='<div class="no-data">No meeting form (45-Day, 90-Day, or Rise) found for this caregiver.</div>';
   } else {
-    const segLabel=normalizeSegment(lastMeeting.segment);
+    const segLabel=normalizeSegment(lastAnyMeeting.segment);
     let meta='';
-    if(lastMeeting.meetingDate)meta+='Meeting date: <strong>'+formatDate(lastMeeting.meetingDate)+'</strong>';
+    if(lastAnyMeeting.meetingDate)meta+='Meeting date: <strong>'+formatDate(lastAnyMeeting.meetingDate)+'</strong>';
     if(segLabel)meta+=(meta?' &nbsp;·&nbsp; ':'')+'Segment: '+segPill(segLabel);
-    if(lastMeeting.author)meta+=(meta?' &nbsp;·&nbsp; ':'')+'Held by: '+escHtml(lastMeeting.author);
+    if(lastAnyMeeting.author)meta+=(meta?' &nbsp;·&nbsp; ':'')+'Held by: '+escHtml(lastAnyMeeting.author);
     if(meta)html+='<div style="font-size:12px;color:var(--text2);margin-bottom:14px">'+meta+'</div>';
     html+='<div class="meeting-field"><div class="mf-label">Rise Above Points Recorded</div>';
-    if(lastMeeting.points){
-      const numMatch=String(lastMeeting.points).match(/\b(\d+)\b/);
-      html+=(numMatch&&String(lastMeeting.points).length<30)?'<div class="meeting-points">'+numMatch[1]+'</div>':'<div style="font-size:13px">'+escHtml(lastMeeting.points)+'</div>';
+    if(lastAnyMeeting.points){
+      const numMatch=String(lastAnyMeeting.points).match(/\b(\d+)\b/);
+      html+=(numMatch&&String(lastAnyMeeting.points).length<30)?'<div class="meeting-points">'+numMatch[1]+'</div>':'<div style="font-size:13px">'+escHtml(lastAnyMeeting.points)+'</div>';
     } else html+='<div class="no-data">Not recorded</div>';
     html+='</div>';
     html+='<div class="meeting-field"><div class="mf-label">Discussion Notes</div>';
-    if(lastMeeting.discussion&&lastMeeting.discussion.length){
-      html+='<div class="meeting-comments"><ul>'+lastMeeting.discussion.map(c=>'<li>'+escHtml(c)+'</li>').join('')+'</ul></div>';
+    if(lastAnyMeeting.discussion&&lastAnyMeeting.discussion.length){
+      html+='<div class="meeting-comments"><ul>'+lastAnyMeeting.discussion.map(c=>'<li>'+escHtml(c)+'</li>').join('')+'</ul></div>';
     } else html+='<div class="no-data">No discussion notes recorded</div>';
     html+='</div>';
     html+='<div class="meeting-field"><div class="mf-label">Goal Set</div>';
-    html+=lastMeeting.goal?'<div class="meeting-goal">'+escHtml(lastMeeting.goal)+'</div>':'<div class="no-data">No goal recorded</div>';
+    html+=lastAnyMeeting.goal?'<div class="meeting-goal">'+escHtml(lastAnyMeeting.goal)+'</div>':'<div class="no-data">No goal recorded</div>';
     html+='</div>';
-    html+='<div class="meeting-field"><div class="mf-label">Next Rise Meeting</div>';
-    const nmDate=parseDate(lastMeeting.nextMeeting);
-    if(lastMeeting.nextMeeting||lastMeeting.notes){
-      html+='<div style="font-size:13px">'+(lastMeeting.nextMeeting?'Scheduled: <strong>'+(nmDate?formatDate(nmDate):escHtml(lastMeeting.nextMeeting))+'</strong>':'Not scheduled yet')+'</div>';
-      if(lastMeeting.notes)html+='<div style="font-size:13px;margin-top:4px;white-space:pre-wrap">'+escHtml(lastMeeting.notes)+'</div>';
+    html+='<div class="meeting-field"><div class="mf-label">Next Meeting</div>';
+    const nmDate=parseDate(lastAnyMeeting.nextMeeting);
+    if(lastAnyMeeting.nextMeeting||lastAnyMeeting.notes){
+      html+='<div style="font-size:13px">'+(lastAnyMeeting.nextMeeting?'Scheduled: <strong>'+(nmDate?formatDate(nmDate):escHtml(lastAnyMeeting.nextMeeting))+'</strong>':'Not scheduled yet')+'</div>';
+      if(lastAnyMeeting.notes)html+='<div style="font-size:13px;margin-top:4px;white-space:pre-wrap">'+escHtml(lastAnyMeeting.notes)+'</div>';
     } else html+='<div class="no-data">Nothing recorded</div>';
     html+='</div>';
   }
