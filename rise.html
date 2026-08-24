@@ -1166,18 +1166,35 @@ async function loadTrackerNotes(){
   }catch(e){ trackerNotes={}; }
   trackerNotesLoading=false;
   renderTracker();
+  if(selectedKey)renderCaregiver();   // the dashboard Notes section reads this same store
 }
 async function saveTrackerNote(el){
   const tr=el.closest('tr'); if(!tr)return;
   const nk=tr.dataset.nk; if(!nk)return;
-  const dEl=tr.querySelector('.trk-next'), nEl=tr.querySelector('.trk-notes');
-  const nextMeeting=dEl?dEl.value:'', notes=nEl?nEl.value:'';
+  const dEl=tr.querySelector('.trk-next'), tEl=tr.querySelector('.trk-next-time'), nEl=tr.querySelector('.trk-notes');
+  const nextMeeting=dEl?dEl.value:'', nextMeetingTime=tEl?tEl.value:'', notes=nEl?nEl.value:'';
   if(!trackerNotes)trackerNotes={};
-  if(!notes&&!nextMeeting)delete trackerNotes[nk]; else trackerNotes[nk]={notes,nextMeeting};
+  if(!notes&&!nextMeeting&&!nextMeetingTime)delete trackerNotes[nk]; else trackerNotes[nk]={notes,nextMeeting,nextMeetingTime};
   try{
     await fetch(PROXY+'?endpoint=rise_tracker_notes',{method:'POST',
       headers:await authHeaders({'Content-Type':'application/json'}),
-      body:JSON.stringify({cgId:nk,notes,nextMeeting,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
+      body:JSON.stringify({cgId:nk,notes,nextMeeting,nextMeetingTime,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
+  }catch(e){/* keep local value even if the save round-trips slowly */}
+}
+// Dashboard Notes section writes the SAME store as the tracker; preserve the
+// caregiver's existing next-meeting date/time so a note edit never wipes them.
+async function saveCaregiverNote(cgId,el){
+  if(!cgId)return;
+  const notes=el?el.value:'';
+  if(!trackerNotes)trackerNotes={};
+  const prev=trackerNotes[cgId]||{};
+  const nextMeeting=prev.nextMeeting||'', nextMeetingTime=prev.nextMeetingTime||'';
+  if(!notes&&!nextMeeting&&!nextMeetingTime)delete trackerNotes[cgId]; else trackerNotes[cgId]={notes,nextMeeting,nextMeetingTime};
+  renderTracker();   // reflect the edit in the tracker's Notes column immediately
+  try{
+    await fetch(PROXY+'?endpoint=rise_tracker_notes',{method:'POST',
+      headers:await authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify({cgId,notes,nextMeeting,nextMeetingTime,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
   }catch(e){/* keep local value even if the save round-trips slowly */}
 }
 // ── Meeting-skip store (Charlotte): mark a caregiver's next Rise meeting as
@@ -1338,6 +1355,7 @@ function renderTracker(){
     const nk=(row.p.viv&&row.p.viv.id)?row.p.viv.id:row.p.key;
     const stored=(trackerNotes&&trackerNotes[nk])||null;
     let nmVal=stored?(stored.nextMeeting||''):'';
+    const nmTime=stored?(stored.nextMeetingTime||''):'';
     if(!nmVal&&row.nextMeeting){ const d=parseDate(row.nextMeeting); if(d)nmVal=d.toLocaleDateString('en-CA'); }
     // Auto-clear: the meeting for that date has been entered in Viv → forget it.
     if(nmVal&&(row.riseMeetingDates||[]).includes(nmVal)){ autoClear.push(nk); nmVal=''; }
@@ -1383,7 +1401,7 @@ function renderTracker(){
       '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
       '<td class="td-date" style="font-weight:600">'+dueCell+'</td>'+
       '<td>'+chip+'</td>'+
-      '<td onclick="event.stopPropagation()"><input type="date" class="trk-next" value="'+escHtml(nmVal)+'" onchange="saveTrackerNote(this)" style="padding:4px 6px;font-size:12px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)"></td>'+
+      '<td onclick="event.stopPropagation()"><input type="date" class="trk-next" value="'+escHtml(nmVal)+'" onchange="saveTrackerNote(this)" style="padding:4px 6px;font-size:12px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)"><input type="time" class="trk-next-time" value="'+escHtml(nmTime)+'" onchange="saveTrackerNote(this)" title="Meeting time" style="margin-left:4px;padding:4px 6px;font-size:12px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)"></td>'+
       '<td>'+segPill(row.segment)+'</td>'+
       '<td class="td-notes" onclick="event.stopPropagation()"><textarea class="trk-notes" rows="2" onchange="saveTrackerNote(this)" placeholder="Add a note…" style="width:100%;min-width:180px;font-size:12px;font-family:inherit;padding:5px 7px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text);resize:vertical">'+escHtml(notesVal)+'</textarea></td></tr>';
   }).join('');
@@ -1597,6 +1615,7 @@ function renderCaregiver(){
   document.getElementById('emptyState').style.display='none';
   document.getElementById('dashboard').style.display='';
   if(risePointsStore===null)loadRisePoints();   // durable manual points/spend ledger
+  if(trackerNotes===null)loadTrackerNotes();    // shared Notes store (also used by the tracker)
   const v=p.viv;
   const isBab=BAB_KEYWORDS.some(k=>(p.market||'').toLowerCase().includes(k));
 
@@ -1642,6 +1661,16 @@ function renderCaregiver(){
   const lastMeeting=getMostRecentForm(riseRows);
   const past6=getPast6Months();
 
+  // ── Rise Above points bank comes from the latest Rise form's points field
+  //    (Charlotte). Balance = form bank − points already spent in the ledger.
+  const latestRise=lastMeeting;
+  const riseBankParsed=parseInt((latestRise&&latestRise.points)||'',10);
+  const riseBankMissing=Number.isNaN(riseBankParsed);
+  const riseBank=riseBankMissing?0:riseBankParsed;
+  const riseCg=(v&&v.id)?v.id:null;
+  const riseSpent=(riseCg&&risePointsStore&&risePointsStore[riseCg])?(Number(risePointsStore[riseCg].spent)||0):0;
+  const riseBalance=riseBank-riseSpent;
+
   let html='';
 
   // ── Header card ──
@@ -1675,7 +1704,7 @@ function renderCaregiver(){
       '<span><strong>Hire Date:</strong> '+(p.hireDate?formatDate(p.hireDate):'—')+'</span>'+
       (v?'':'<span class="bdg bg-a">Not matched in Viv — live metrics unavailable</span>')+
     '</div></div>'+
-    '<div class="points-box"><div class="points-num">'+risePoints.total+'</div><div class="points-label">Rise Above points<br>past 6 months</div></div>'+
+    '<div class="points-box"><div class="points-num">'+riseBalance+'</div><div class="points-label">Rise Above balance<br>bank − spent</div></div>'+
   '</div>';
   if(v)html+='<div style="margin:-4px 0 12px"><button onclick="openRiseMeeting(\''+p.key+'\')" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-radius:20px;background:linear-gradient(135deg,var(--orange),var(--purple));color:#fff;cursor:pointer">📋 Rise Meeting Prep — Prefill with Tribute Intelligence</button></div>';
   if(win.isCustom)html+='<div class="fc" style="border-left:3px solid var(--orange);margin-bottom:12px;padding:9px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="bdg" style="background:var(--orange-bg);color:var(--orange-text)">📅 '+escHtml(win.label)+'</span><span style="font-size:12px;color:var(--text2)">On-time, visit-note & manual %s are computed for the exact dates in this range; compliments, service exceptions & last-minute bookings are filtered to the exact dates too. <strong>Rise Above points remain the fixed 6-month program score.</strong></span></div>';
@@ -1730,7 +1759,7 @@ function renderCaregiver(){
     html+='<div class="fc"><div class="ct">Visit Note Completion</div><div class="big-stat">'+
       '<span class="v '+vnColor+'">'+(taskPct!==null?taskPct.toFixed(1)+'%':'—')+'</span>'+
       (taskPct!==null?'<span class="bdg '+(vnColor==='g'?'bg-g">✓ ≥95%':'bg-r">✗ <95%')+'</span>':'<span class="bdg bg-n">No data</span>')+
-      '</div><div class="stat-foot">'+winTxt+' · threshold 95%'+(tk&&tk.total>0?' · '+tk.completed+' of '+tk.total+' checked-out visits passed':'')+'</div></div>';
+      '</div><div class="stat-foot">'+winTxt+' · threshold 95%'+(tk&&tk.total>0?' · '+tk.completed+' of '+tk.total+' tasks completed':'')+'</div></div>';
   }
 
   const mColor=manualPct===null?'n':manualPct<=15?'g':manualPct<=35?'a':'r';
@@ -1813,13 +1842,13 @@ function renderCaregiver(){
   } else {
     const escRp=String(rpCg).replace(/'/g,"\\'");
     const rpRec=risePointsStore[rpCg]||{};
-    const bank=Number(rpRec.adjust)||0, spent=Number(rpRec.spent)||0, bal=bank-spent;
+    const bank=riseBank, spent=Number(rpRec.spent)||0, bal=bank-spent;
     const rpLog=(rpRec.log||[]).slice().reverse().slice(0,5);
-    html+='<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Banked points as of the last Rise meeting — set manually until the Rise form points field is wired. Automatic performance-based accrual is pending a defined business formula.</div>';
+    html+='<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Bank is pulled from the latest Rise form’s points field. Balance = bank − points spent below.</div>';
     html+='<div class="grid three" style="margin-bottom:14px">'+
-      '<div class="fc"><div class="ct" title="Banked points as of the last Rise meeting — set manually until the Rise form points field is wired.">Bank</div>'+
+      '<div class="fc"><div class="ct" title="Banked points from the latest Rise form’s points field.">Bank</div>'+
         '<div class="big-stat"><span class="v n">'+bank+'</span></div>'+
-        '<div style="display:flex;gap:6px;margin-top:8px"><input type="number" id="rpBankInput" value="'+bank+'" style="width:80px;padding:5px 7px;font-size:12px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)"><button class="rm-btn o" style="padding:5px 12px;font-size:12px" onclick="setRiseBank(\''+escRp+'\')">Set bank</button></div></div>'+
+        (riseBankMissing?'<div class="stat-foot" style="color:var(--text3)">no points on latest Rise form</div>':'<div class="stat-foot">from latest Rise form</div>')+'</div>'+
       '<div class="fc"><div class="ct">Spent</div><div class="big-stat"><span class="v r">'+spent+'</span></div><div class="stat-foot">sum of deductions</div></div>'+
       '<div class="fc"><div class="ct">Balance</div><div class="big-stat"><span class="v '+(bal>=0?'g':'r')+'">'+bal+'</span></div><div class="stat-foot">bank − spent</div></div>'+
     '</div>';
@@ -1834,6 +1863,23 @@ function renderCaregiver(){
         html+='<div class="stat-foot" style="padding:4px 0;border-top:.5px solid var(--border)"><strong>'+sign+'</strong> — '+escHtml(e.reason||'—')+' · '+escHtml(e.by||'—')+' · '+(e.at?formatDate(e.at):'—')+'</div>';
       });
     } else html+='<div class="no-data">No spend activity recorded yet.</div>';
+  }
+  html+='</div></div>';
+
+  // ── Notes (Charlotte): same store as the Rise Meeting Tracker's Notes column,
+  //    so a note typed here appears there and vice-versa. Keyed on the Viv id. ──
+  html+='<div class="grid full"><div class="fc"><div class="ct">Notes</div>';
+  const noteCg=(v&&v.id)?v.id:null;
+  if(!noteCg){
+    html+='<div class="no-data">Not matched in Viv — shared notes are unavailable for this caregiver.</div>';
+  } else if(trackerNotes===null){
+    html+='<div class="no-data">Loading notes…</div>';
+  } else {
+    const noteRec=trackerNotes[noteCg]||null;
+    const noteVal=noteRec?(noteRec.notes||''):'';
+    const escNoteCg=String(noteCg).replace(/'/g,"\\'");
+    html+='<div style="font-size:12px;color:var(--text2);margin-bottom:8px">Shared with the Rise Meeting Tracker — edits here appear in the tracker’s Notes column and vice-versa.</div>';
+    html+='<textarea onchange="saveCaregiverNote(\''+escNoteCg+'\',this)" rows="4" placeholder="Add a note…" style="width:100%;font-size:13px;font-family:inherit;padding:8px 10px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text);resize:vertical">'+escHtml(noteVal)+'</textarea>';
   }
   html+='</div></div>';
 
