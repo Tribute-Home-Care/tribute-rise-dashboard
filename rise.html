@@ -1694,7 +1694,7 @@ function renderCaregiver(){
   const liBadge=isLiveIn?' <span class="bdg bg-b" style="vertical-align:middle">Live-In</span>':'';
   html+='<div class="cg-header"><div>'+
     '<div class="cg-name">'+escHtml(p.name)+tsBadge+liBadge+
-      (v&&v.id?' <a href="https://tribute.mavencare.com/caregivers/'+encodeURIComponent(v.id)+'" target="_blank" rel="noopener" style="font-size:12px;font-weight:600;color:var(--blue-text);text-decoration:none;vertical-align:middle;margin-left:6px">View in Viv ↗</a>':'')+
+      (v&&v.id?' <a href="https://tribute.mavencare.com/caregivers/'+encodeURIComponent(v.id)+'/dashboard/summary" target="_blank" rel="noopener" style="font-size:12px;font-weight:600;color:var(--blue-text);text-decoration:none;vertical-align:middle;margin-left:6px">View in Viv ↗</a>':'')+
       '</div>'+
     contactLine+
     '<div class="cg-meta">'+
