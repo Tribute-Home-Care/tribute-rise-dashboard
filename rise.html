@@ -1551,7 +1551,7 @@ function getCertAlerts(p,isBab){
     if(CERT_EXCLUDE.some(ex=>cl.includes(ex)))return;
     const endDate=parseDate(c.expiration);
     if(!endDate)return;   // no-expiration certs (e.g. COVID) don't alert
-    if(endDate<=in6m)alerts.push({cert,date:endDate});
+    if(endDate<=in6m)alerts.push({cert,date:endDate,authority:(c.authority||'').trim()});
   });
   alerts.sort((a,b)=>a.date-b.date);
   return alerts;
@@ -1653,6 +1653,7 @@ function renderCaregiver(){
   document.getElementById('dashboard').style.display='';
   if(risePointsStore===null)loadRisePoints();   // durable manual points/spend ledger
   if(trackerNotes===null)loadTrackerNotes();    // shared Notes store (also used by the tracker)
+  if(todoData===null&&!todoLoading)loadTodo();  // To-Do store — for this caregiver's items (r14)
   const v=p.viv;
   const isBab=BAB_KEYWORDS.some(k=>(p.market||'').toLowerCase().includes(k));
 
@@ -1782,7 +1783,7 @@ function renderCaregiver(){
       '</div><div class="big-stat">'+
       '<span class="v '+otColor+'">'+(onTimePct!==null?onTimePct.toFixed(1)+'%':'—')+'</span>'+
       (onTimePct!==null?'<span class="bdg '+(otColor==='g'?'bg-g">✓ ≥92%':'bg-r">✗ <92%')+'</span>':'<span class="bdg bg-n">No data</span>')+
-      '</div><div class="stat-foot">'+winTxt+' · threshold 92% · '+(ck?ck.checked+' checked-in visits':'')+'</div>'+
+      '</div><div class="stat-foot">'+winTxt+' · threshold 92% · '+(ck?ck.onTime+' of '+ck.checked+' check-ins on time':'')+'</div>'+
       (otVerify?'<div class="stat-foot" style="color:var(--amber-text);margin-top:5px;border-top:.5px solid var(--border);padding-top:5px">⚑ '+otMarginalLate+(otMarginalLate!==1?' check-ins were':' check-in was')+' 1–7 min late — Viv’s grace window may score some on-time (up to '+onTime7Pct.toFixed(1)+'%). Cross-check in Viv before counting this as a miss.</div>':'')+
       '</div>';
   }
@@ -1948,8 +1949,35 @@ function renderCaregiver(){
   else if(!certAlerts.length)html+='<div class="no-data">No documents requiring attention (next 6 months)</div>';
   else certAlerts.forEach(c=>{
     const expired=c.date<TODAY;
-    html+='<div class="doc-item"><span>'+escHtml(c.cert)+'</span><span class="bdg '+(expired?'bg-r':'bg-a')+'">'+(expired?'Expired':'Exp')+' '+formatDate(c.date)+'</span></div>';
+    // Issuer/authority (from iSolved) — for MD CNA & Medtech this carries the
+    // license #, so MCEs can verify status on the board of nursing site (r9).
+    const iss=c.authority?'<div style="font-size:11px;color:var(--text2);margin-top:2px">'+escHtml(c.authority)+'</div>':'';
+    html+='<div class="doc-item"><span>'+escHtml(c.cert)+iss+'</span><span class="bdg '+(expired?'bg-r':'bg-a')+'">'+(expired?'Expired':'Exp')+' '+formatDate(c.date)+'</span></div>';
   });
+  html+='</div></div>';
+
+  // ── To-Do items for this caregiver (r14) ──
+  // Pulls from the shared To-Do store: auto items keyed to this caregiver
+  // (meeting due, cert expiring) plus any user-added items that name them.
+  html+='<div class="grid full"><div class="fc"><div class="ct">To-Do for '+escHtml(p.name)+'</div>';
+  if(todoData===null){
+    html+='<div class="no-data">Loading to-do items…</div>';
+  } else {
+    const _done=todoData.done||{};
+    const _auto=todoAutoItems().filter(it=>it.key===p.key);
+    const _nmLc=(p.name||'').toLowerCase();
+    const _stored=(todoData.items||[]).filter(it=>!it.auto&&(it.text||'').toLowerCase().includes(_nmLc));
+    const _cgTodos=_auto.concat(_stored).filter(it=>!_done[it.id]);
+    if(!_cgTodos.length){
+      html+='<div class="no-data">No open to-do items for this caregiver.</div>';
+    } else {
+      _cgTodos.forEach(it=>{
+        const secLbl=it.section==='today'?'Today':it.section==='week'?'This week':it.section==='month'?'This month':'';
+        html+='<div class="doc-item"><span>'+escHtml(it.text)+(it.auto?' <span class="bdg bg-b" style="font-size:9px">auto</span>':'')+'</span>'+
+          (secLbl?'<span class="bdg bg-n" style="font-size:10px">'+secLbl+'</span>':'')+'</div>';
+      });
+    }
+  }
   html+='</div></div>';
 
   // ── Last Rise Meeting ──
@@ -3240,6 +3268,7 @@ async function loadTodo(force){
     todoLoading=false; return;
   }
   todoLoading=false; renderTodo();
+  if(selectedKey)renderCaregiver();   // the dashboard's per-caregiver To-Do card reads this store (r14)
 }
 
 // POST an action, fold the returned {items,done} back into module state, re-render.
