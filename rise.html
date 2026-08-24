@@ -1750,7 +1750,7 @@ function renderCaregiver(){
   '</div>';
   if(v)html+='<div style="margin:-4px 0 12px"><button onclick="openRiseMeeting(\''+p.key+'\')" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;border-radius:20px;background:linear-gradient(135deg,var(--orange),var(--purple));color:#fff;cursor:pointer">📋 Rise Meeting Prep — Prefill with Tribute Intelligence</button></div>';
   if(win.isCustom)html+='<div class="fc" style="border-left:3px solid var(--orange);margin-bottom:12px;padding:9px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span class="bdg" style="background:var(--orange-bg);color:var(--orange-text)">📅 '+escHtml(win.label)+'</span><span style="font-size:12px;color:var(--text2)">On-time, visit-note & manual %s are computed for the exact dates in this range; compliments, service exceptions & last-minute bookings are filtered to the exact dates too. <strong>Rise Above points remain the fixed 6-month program score.</strong></span></div>';
-  if(isLiveIn)html+='<div class="fc" style="border-left:3px solid var(--blue);margin-bottom:12px;padding:10px 16px"><span class="bdg bg-b">Live-In caregiver</span> <span style="font-size:12px;color:var(--text2)">'+liveIn+' live-in visit'+(liveIn!==1?'s':'')+' in the window. Live-in metrics are measured differently: <strong>On-Time Check-In</strong> = their arrival &amp; return check-ins only (live-ins check in once per stay, not hourly); <strong>Visit Note Completion</strong> = share of visit days with a submitted daily visit note. <strong>Manual Check-In</strong> doesn\'t apply.</span></div>';
+  if(isLiveIn)html+='<div class="fc" style="border-left:3px solid var(--blue);margin-bottom:12px;padding:10px 16px"><span class="bdg bg-b">Live-In caregiver</span> <span style="font-size:12px;color:var(--text2)">'+liveIn+' live-in visit'+(liveIn!==1?'s':'')+' in the window. Live-in metrics are measured differently: <strong>On-Time Check-In</strong> = their arrival &amp; return check-ins only (live-ins check in once per stay, not hourly); <strong>Visit Note Completion</strong> uses Viv\'s % Task Completion (matches the Caregiver Performance dashboard), with the daily-visit-note rate shown beneath it. <strong>Manual Check-In</strong> doesn\'t apply.</span></div>';
 
   // ── Row 1: Balances | On-time | Visit notes | Manual check-ins ──
   html+='<div class="grid four">';
@@ -1794,9 +1794,15 @@ function renderCaregiver(){
 
   const vnColor=taskPct===null?'n':taskPct>=95?'g':'r';
   if(isLiveIn){
-    // Live-in caregivers have no hourly checkout-task validation; their visit-note
-    // completion is computed on-demand from the daily "detailed note" they submit.
-    html+='<div class="fc"><div class="ct">Visit Note Completion</div><div id="vnLivein"><div class="big-stat"><span class="v n">—</span> <span class="bdg bg-n"><span class="spin" style="display:inline-block;vertical-align:middle;width:11px;height:11px;margin-right:3px"></span>Loading…</span></div><div class="stat-foot">live-in daily visit notes · 6-month</div></div></div>';
+    // Live-ins now show the SAME % Task Completion (queries.tasks) as everyone else, so the
+    // headline matches Viv's Caregiver-Performance dashboard (the source of truth MCEs
+    // cross-reference — this is the number Brianna flagged for Christina Blay). The live-in
+    // daily-visit-note rate is kept as a secondary operational stat (loaded into #vnLiveinDaily).
+    html+='<div class="fc"><div class="ct">Visit Note Completion</div><div class="big-stat">'+
+      '<span class="v '+vnColor+'">'+(taskPct!==null?taskPct.toFixed(1)+'%':'—')+'</span>'+
+      (taskPct!==null?'<span class="bdg '+(vnColor==='g'?'bg-g">✓ ≥95%':'bg-r">✗ <95%')+'</span>':'<span class="bdg bg-n">No data</span>')+
+      '</div><div class="stat-foot">'+winTxt+' · threshold 95%'+(tk&&tk.total>0?' · '+tk.completed+' of '+tk.total+' tasks completed (matches Viv)':'')+'</div>'+
+      '<div class="stat-foot" id="vnLiveinDaily" style="margin-top:5px;border-top:.5px solid var(--border);padding-top:5px;color:var(--text2)">Daily visit notes: <span class="spin" style="display:inline-block;vertical-align:middle;width:10px;height:10px"></span> loading…</div></div>';
   } else {
     html+='<div class="fc"><div class="ct">Visit Note Completion</div><div class="big-stat">'+
       '<span class="v '+vnColor+'">'+(taskPct!==null?taskPct.toFixed(1)+'%':'—')+'</span>'+
@@ -2096,15 +2102,13 @@ async function spendRisePoints(cgId){
 // submitted daily "detailed note about your visit". Fetched on-demand, cached.
 let liveInNoteCache={};
 async function loadLiveInNotes(cgid){
-  const el=document.getElementById('vnLivein'); if(!el)return;
+  const el=document.getElementById('vnLiveinDaily')||document.getElementById('otLivein'); if(!el)return;
   const paint=d=>{
-    // visit-note completion card
-    const el2=document.getElementById('vnLivein');
+    // secondary daily-visit-note line (the headline Visit Note % is now queries.tasks)
+    const el2=document.getElementById('vnLiveinDaily');
     if(el2){
-      if(!d||d.completionPct==null||!d.visitDays){ el2.innerHTML='<div class="big-stat"><span class="v n">—</span> <span class="bdg bg-n">No visit notes found</span></div><div class="stat-foot">no live-in visit notes in the 6-month window</div>'; }
-      else { const pct=d.completionPct, col=pct>=95?'g':pct>=80?'a':'r';
-        el2.innerHTML='<div class="big-stat"><span class="v '+col+'">'+pct+'%</span> <span class="bdg '+(col==='g'?'bg-g':col==='a'?'bg-a':'bg-r')+'">'+(pct>=95?'✓ ≥95%':'daily notes')+'</span></div>'+
-          '<div class="stat-foot">'+d.visitDaysWithNote+' of '+d.visitDays+' live-in visit days had a submitted visit note · 6-month</div>'; }
+      if(!d||d.completionPct==null||!d.visitDays){ el2.innerHTML='Daily visit notes: no live-in visit notes in the 6-month window'; }
+      else { el2.innerHTML='Daily visit notes: <strong>'+d.completionPct+'%</strong> · '+d.visitDaysWithNote+' of '+d.visitDays+' live-in visit days had a submitted daily note (6-month)'; }
     }
     // arrival/return on-time card
     const el3=document.getElementById('otLivein');
@@ -2124,7 +2128,7 @@ async function loadLiveInNotes(cgid){
     // caregiver may have changed while awaiting
     const cur=spine.find(x=>x.key===selectedKey);
     if(cur&&cur.viv&&cur.viv.id===cgid)paint(d);
-  }catch(e){ ['vnLivein','otLivein'].forEach(id=>{ const el2=document.getElementById(id); if(el2)el2.innerHTML='<div class="big-stat"><span class="v n">—</span> <span class="bdg bg-n">Couldn\'t load</span></div><div class="stat-foot">'+escHtml(e.message)+'</div>'; }); }
+  }catch(e){ const eod=document.getElementById('vnLiveinDaily'); if(eod)eod.innerHTML='Daily visit notes: couldn\'t load ('+escHtml(e.message)+')'; const eot=document.getElementById('otLivein'); if(eot)eot.innerHTML='<div class="big-stat"><span class="v n">—</span> <span class="bdg bg-n">Couldn\'t load</span></div><div class="stat-foot">'+escHtml(e.message)+'</div>'; }
 }
 
 // ── Weekly schedule quick-view on the caregiver page ──
