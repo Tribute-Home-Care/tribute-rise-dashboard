@@ -3656,17 +3656,23 @@ function renderSummary(){
   else { h+='<div class="no-data">Upload the iSolved corrective-action report to track PIPs and written warnings here.</div>'; }
   h+='</div>';
 
-  // ── 4) ATTENDANCE AUDITS (weekend coverage + PRN activity vs. latest complete month) ──
-  // Reference month = the newest 'YYYY-MM' present across ALL caregivers' visit
-  // history (data can lag, so we never hardcode "last month").
-  let refMonth=null;
-  spine.forEach(p=>{ if(p.viv&&Array.isArray(p.viv.monthsWithVisit)) p.viv.monthsWithVisit.forEach(m=>{ if(m&&(!refMonth||m>refMonth))refMonth=m; }); });
-  if(!refMonth){
+  // ── 4) ATTENDANCE AUDITS (weekend coverage + PRN activity vs. last complete month) ──
+  // Data-max = the newest 'YYYY-MM' present across ALL caregivers' visit history.
+  let dataMax=null;
+  spine.forEach(p=>{ if(p.viv&&Array.isArray(p.viv.monthsWithVisit)) p.viv.monthsWithVisit.forEach(m=>{ if(m&&(!dataMax||m>dataMax))dataMax=m; }); });
+  if(!dataMax){
     h+='<h2 style="margin:22px 0 4px">Attendance Audits</h2>'+
       '<div class="no-data">No visit-history months found in Viv yet — nothing to audit.</div>';
     el.innerHTML=h; return;
   }
   const _monthAdd=(key,delta)=>{ const pr=key.split('-'); const d=new Date(+pr[0],(+pr[1])-1+delta,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); };
+  // Reference month = the LAST COMPLETE calendar month (the month before the current
+  // one). Early in a month the newest data is the current PARTIAL month, which would
+  // flag everyone; the last complete month avoids that. Never point past the data:
+  // if the last complete month is newer than any data present, fall back to data-max.
+  const _curMonthKey=TODAY.getFullYear()+'-'+String(TODAY.getMonth()+1).padStart(2,'0');
+  const _lastComplete=_monthAdd(_curMonthKey,-1);
+  const refMonth=_lastComplete>dataMax?dataMax:_lastComplete;
   const window6=[]; for(let i=5;i>=0;i--)window6.push(_monthAdd(refMonth,-i));  // ascending, last = refMonth
   const _fmtMonth=key=>{ if(!key)return null; const d=new Date(+key.split('-')[0],(+key.split('-')[1])-1,1); return d.toLocaleDateString('en-US',{month:'short',year:'numeric'}); };
   const refLabel=(()=>{ const d=new Date(+refMonth.split('-')[0],(+refMonth.split('-')[1])-1,1); return d.toLocaleDateString('en-US',{month:'long',year:'numeric'}); })();
@@ -3675,21 +3681,27 @@ function renderSummary(){
   const _missStreak=arr=>{ const set=new Set(arr||[]); let s=0; for(let i=window6.length-1;i>=0;i--){ if(set.has(window6[i]))break; s++; } return s; };
   const _missBadge=s=>s>=3?'<span class="bdg bg-r">'+s+' mo</span>':s===2?'<span class="bdg bg-a">2 mo</span>':'<span class="bdg bg-a">1 mo</span>';
 
-  // Weekend audit: Long-Hours (desired ≥ 30) or Tribute Secure caregivers who did
-  // NOT work a weekend visit in the reference month.
-  const weekendPop=active.filter(p=>p.viv&&((p.viv.desiredHours||0)>=30||p.viv.tsEnrolled));
-  const weekendFlag=weekendPop.filter(p=>!(p.viv.weekendMonthsWorked||[]).includes(refMonth))
+  // Weekend audit: Long-Hours caregivers (desired ≥ 30 hrs/wk) who did NOT work a
+  // weekend visit in the reference month. SH-TS caregivers (desired < 30) correctly
+  // drop out; LH and LH-TS stay. Caregivers in their first 45 days are excluded
+  // (too new to expect weekend coverage).
+  const weekendPop=active.filter(p=>p.viv&&(p.viv.desiredHours||0)>=30);
+  const weekendFlag=weekendPop.filter(p=>{
+      if((p.viv.weekendMonthsWorked||[]).includes(refMonth))return false;
+      const hd=parseDate(p.viv.hireDate); if(hd&&(TODAY-hd)/86400000<45)return false;
+      return true;
+    })
     .map(p=>({ p, streak:_missStreak(p.viv.weekendMonthsWorked), last:_maxMonth(p.viv.weekendMonthsWorked),
       lh:(p.viv.desiredHours||0)>=30, ts:!!p.viv.tsEnrolled }))
     .sort((a,b)=>b.streak-a.streak||a.p.name.localeCompare(b.p.name));
   const wkTs=weekendFlag.filter(x=>x.ts).length, wk3=weekendFlag.filter(x=>x.streak>=3).length;
   h+='<h2 style="margin:22px 0 4px">Weekend Coverage Audit</h2>';
-  h+='<div class="stat-foot" style="margin-bottom:10px">Long-Hours (desired ≥ 30 hrs/wk) and Tribute Secure caregivers who did <strong>not</strong> work a weekend visit in <strong>'+escHtml(refLabel)+'</strong> (the latest complete month in the data). Streak = consecutive months with no weekend, counting back from '+escHtml(refLabel)+'.</div>';
+  h+='<div class="stat-foot" style="margin-bottom:10px">Long-Hours caregivers (desired ≥ 30 hrs/wk) who did <strong>not</strong> work a weekend visit in <strong>'+escHtml(refLabel)+'</strong> (the last complete calendar month). Excludes anyone in their first 45 days. Streak = consecutive months with no weekend, counting back from '+escHtml(refLabel)+'.</div>';
   h+='<div class="grid four" style="margin-bottom:14px">'+
     '<div class="fc"><div class="ct">Flagged this month</div><div class="big-stat"><span class="v '+(weekendFlag.length?'a':'g')+'">'+weekendFlag.length+'</span></div><div class="stat-foot">no weekend in '+escHtml(refLabel)+'</div></div>'+
     '<div class="fc"><div class="ct">Of those, Tribute Secure</div><div class="big-stat"><span class="v '+(wkTs?'a':'g')+'">'+wkTs+'</span></div><div class="stat-foot">TS caregivers flagged</div></div>'+
     '<div class="fc"><div class="ct">3+ month streak</div><div class="big-stat"><span class="v '+(wk3?'r':'g')+'">'+wk3+'</span></div><div class="stat-foot">sustained no-weekend</div></div>'+
-    '<div class="fc"><div class="ct">LH + TS population</div><div class="big-stat"><span class="v b">'+weekendPop.length+'</span></div><div class="stat-foot">caregivers audited</div></div>'+
+    '<div class="fc"><div class="ct">Long-Hours population</div><div class="big-stat"><span class="v b">'+weekendPop.length+'</span></div><div class="stat-foot">caregivers audited</div></div>'+
   '</div>';
   if(weekendFlag.length){
     h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Market</th><th>Manager</th><th>Type</th><th>Last weekend worked</th><th>Streak</th></tr></thead><tbody>';
@@ -3706,30 +3718,34 @@ function renderSummary(){
     h+='</tbody></table></div>';
   } else { h+='<div class="no-data">✅ Every Long-Hours and Tribute Secure caregiver worked a weekend in '+escHtml(refLabel)+'.</div>'; }
 
-  // PRN audit: PRN caregivers with NO visit at all in the reference month.
+  // PRN audit: the manager's ENTIRE PRN population, each with their last month with a
+  // visit. Those who did NOT work the reference month are flagged (amber/red streak);
+  // those who did get a green "active" chip. Inactive rows sort to the top by streak.
   const prnPop=active.filter(p=>p.viv&&p.viv.prn);
-  const prnFlag=prnPop.filter(p=>!(p.viv.monthsWithVisit||[]).includes(refMonth))
-    .map(p=>({ p, streak:_missStreak(p.viv.monthsWithVisit), last:_maxMonth(p.viv.monthsWithVisit) }))
-    .sort((a,b)=>b.streak-a.streak||a.p.name.localeCompare(b.p.name));
-  const prn3=prnFlag.filter(x=>x.streak>=3).length;
+  const prnRows=prnPop.map(p=>{ const worked=(p.viv.monthsWithVisit||[]).includes(refMonth);
+      return { p, worked, streak:worked?0:_missStreak(p.viv.monthsWithVisit), last:_maxMonth(p.viv.monthsWithVisit) }; })
+    .sort((a,b)=>(a.worked-b.worked)||(b.streak-a.streak)||a.p.name.localeCompare(b.p.name));
+  const prnInactive=prnRows.filter(x=>!x.worked).length;
+  const prn3=prnRows.filter(x=>!x.worked&&x.streak>=3).length;
   h+='<h2 style="margin:22px 0 4px">PRN Activity Audit</h2>';
-  h+='<div class="stat-foot" style="margin-bottom:10px">PRN caregivers with <strong>no visit at all</strong> in <strong>'+escHtml(refLabel)+'</strong>. Streak = consecutive months with no visit, counting back from '+escHtml(refLabel)+'.</div>';
+  h+='<div class="stat-foot" style="margin-bottom:10px">Every PRN caregiver in scope, with their last month with a visit. Those with <strong>no visit at all</strong> in <strong>'+escHtml(refLabel)+'</strong> (the last complete calendar month) are flagged; streak = consecutive months with no visit, counting back from '+escHtml(refLabel)+'.</div>';
   h+='<div class="grid three" style="margin-bottom:14px">'+
-    '<div class="fc"><div class="ct">PRN flagged</div><div class="big-stat"><span class="v '+(prnFlag.length?'a':'g')+'">'+prnFlag.length+'</span></div><div class="stat-foot">no visit in '+escHtml(refLabel)+'</div></div>'+
-    '<div class="fc"><div class="ct">3+ month streak</div><div class="big-stat"><span class="v '+(prn3?'r':'g')+'">'+prn3+'</span></div><div class="stat-foot">sustained inactivity</div></div>'+
     '<div class="fc"><div class="ct">PRN population</div><div class="big-stat"><span class="v b">'+prnPop.length+'</span></div><div class="stat-foot">caregivers audited</div></div>'+
+    '<div class="fc"><div class="ct">Inactive this month</div><div class="big-stat"><span class="v '+(prnInactive?'a':'g')+'">'+prnInactive+'</span></div><div class="stat-foot">no visit in '+escHtml(refLabel)+'</div></div>'+
+    '<div class="fc"><div class="ct">3+ month streak</div><div class="big-stat"><span class="v '+(prn3?'r':'g')+'">'+prn3+'</span></div><div class="stat-foot">sustained inactivity</div></div>'+
   '</div>';
-  if(prnFlag.length){
-    h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Market</th><th>Manager</th><th>Last month with a visit</th><th>Streak</th></tr></thead><tbody>';
-    prnFlag.forEach(x=>{
+  if(prnRows.length){
+    h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Market</th><th>Manager</th><th>Last month with a visit</th><th>Status</th></tr></thead><tbody>';
+    prnRows.forEach(x=>{
+      const statusBadge=x.worked?'<span class="bdg bg-g">active</span>':_missBadge(x.streak);
       h+='<tr><td class="td-name">'+escHtml(x.p.name)+'</td>'+
         '<td style="font-size:12px">'+escHtml(x.p.market||'—')+'</td>'+
         '<td style="font-size:12px">'+escHtml(x.p.manager||'—')+'</td>'+
         '<td class="td-date">'+(x.last?escHtml(_fmtMonth(x.last)):'<span style="color:var(--text2)">none on record</span>')+'</td>'+
-        '<td>'+_missBadge(x.streak)+'</td></tr>';
+        '<td>'+statusBadge+'</td></tr>';
     });
     h+='</tbody></table></div>';
-  } else { h+='<div class="no-data">✅ Every PRN caregiver logged a visit in '+escHtml(refLabel)+'.</div>'; }
+  } else { h+='<div class="no-data">No PRN caregivers in scope.</div>'; }
 
   el.innerHTML=h;
 }
