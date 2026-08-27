@@ -1787,7 +1787,7 @@ function renderCaregiver(){
       '</div><div class="big-stat">'+
       '<span class="v '+otColor+'">'+(onTimePct!==null?onTimePct.toFixed(1)+'%':'—')+'</span>'+
       (onTimePct!==null?'<span class="bdg '+(otColor==='g'?'bg-g">✓ ≥92%':'bg-r">✗ <92%')+'</span>':'<span class="bdg bg-n">No data</span>')+
-      '</div><div class="stat-foot">'+winTxt+' · threshold 92% · '+(ck?ck.onTime+' of '+ck.checked+' check-ins on time':'')+'</div>'+
+      '</div><div class="stat-foot">'+winTxt+' · threshold 92% · '+(ck?ck[ONTIME_RULE]+' of '+ck.checked+' check-ins on time':'')+'</div>'+
       (otVerify?'<div class="stat-foot" style="color:var(--amber-text);margin-top:5px;border-top:.5px solid var(--border);padding-top:5px">⚑ '+otMarginalLate+(otMarginalLate!==1?' check-ins were':' check-in was')+' 1–7 min late — Viv’s grace window may score some on-time (up to '+onTime7Pct.toFixed(1)+'%). Cross-check in Viv before counting this as a miss.</div>':'')+
       '</div>';
   }
