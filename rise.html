@@ -627,7 +627,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
 const PROXY='https://tribute-api-prod-bkc4hfcwf3f2f6bf.centralus-01.azurewebsites.net/api/vivProxy';
 const KEY_LS='tribute_rise_viv_key';
 const LM_THRESHOLD_HRS=24;       // a booking filled within this many hours of visit start counts as "last-minute"
-const ONTIME_RULE='onTime1';     // 'onTime1' = Viv "CheckIn On Time" (≤1 min late); 'onTime7' = 7-min grace
+const ONTIME_RULE='onTime1';     // 'onTime1' bucket now carries Viv's on-time rule (≤2 min late, calibrated to match); 'onTime7' = 7-min grace
 
 const BAB_KEYWORDS=['baltimore','annapolis','bethesda'];
 const CERT_EXCLUDE=['car insurance','covid vaccination',"driver's license",'drivers license','hha','pca','pto expiration reminder','tb test results','hire: travel limitations','cannot drive clients'];
@@ -1678,8 +1678,11 @@ function renderCaregiver(){
   // the 1–7 min band Viv may forgive (grace rate would pass). Prompts a quick
   // cross-check before treating it as a miss in the Rise meeting.
   const onTime7Pct=(ck&&ck.checked>0)?(ck.onTime7/ck.checked*100):null;
-  const otMarginalLate=ck?(ck.onTime7-ck.onTime1):0;   // check-ins 1–7 min late
-  const otVerify=onTimePct!==null&&onTimePct<92&&onTime7Pct>=92&&otMarginalLate>=2;
+  const otMarginalLate=ck?(ck.onTime7-ck.onTime1):0;   // check-ins 2–7 min late
+  // "Verify in Viv" caveat retired: on-time now uses the ≤2-min rule calibrated to
+  // match Viv exactly (see rise_src_checkins), so a below-92% number is a real miss
+  // in Viv too — no grace-window ambiguity left to flag.
+  const otVerify=false;
   const manualPct=(ck&&ck.manualDen>0)?(ck.manual/ck.manualDen*100):null;
   const tk=v&&MW.tasks;
   const taskPct=(tk&&tk.total>0)?(tk.completed/tk.total*100):null;
@@ -2630,7 +2633,7 @@ function sbAllTeams(active,sortFn){
   h+=sbLeaderboard(top,true);
   // needs coaching across all teams (capped — pick a team to see its full list)
   h+=sbCoachSection(active,25);
-  h+='<div class="sb-note">Metrics reflect the live Rise window (~6 months) from Viv: on-time = check-in ≤1 min late; visit notes = checkout task validation; compliments, call-outs & complaints from service exceptions. Rise points = compliments×40 + on-time bonus + notes bonus + last-minute pickups + no-call-out months.</div>';
+  h+='<div class="sb-note">Metrics reflect the live Rise window (~6 months) from Viv: on-time = check-in ≤2 min late (matches Viv); visit notes = % task completion; compliments, call-outs & complaints from service exceptions. Rise points = compliments×40 + on-time bonus + notes bonus + last-minute pickups + no-call-out months.</div>';
   return h;
 }
 
