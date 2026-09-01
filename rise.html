@@ -3102,8 +3102,12 @@ function copyRiseMeetingForViv(){
   L.push('PREP: MEETING INFORMATION');
   L.push('Caregiver Name: '+_rmVal('rm_name'));
   L.push('Caregiver Title: '+_rmVal('rm_title'));
-  L.push('Hired Date: '+_rmVal('rm_hire'));
-  L.push('Meeting Date: '+_rmVal('rm_mdate'));
+  // Viv AI parses a bare (midnight) date and rolls it back ~1h to the previous day
+  // (Dova 9/1 → landed as 8/31 11pm). Anchor dates to NOON so any such shift keeps the
+  // calendar day correct. Meeting date carries the meeting time if one was entered.
+  const _rmDateViv=(v,t)=>{ v=(v||'').trim(); if(!v)return v; t=(t||'').trim(); return v+' '+(t||'12:00 PM'); };
+  L.push('Hired Date: '+_rmDateViv(_rmVal('rm_hire')));
+  L.push('Meeting Date: '+_rmDateViv(_rmVal('rm_mdate'), _rmVal('rm_mtime')));
   if(_rmVal('rm_mtime'))L.push('Meeting Time: '+_rmVal('rm_mtime'));
   L.push('Is this meeting for an anniversary?: '+_rmVal('rm_anniv'));
   if(_rmVal('rm_bonus'))L.push('Anniversary bonus (amount + paycheck date): '+_rmVal('rm_bonus'));
