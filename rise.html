@@ -1706,12 +1706,23 @@ function renderCaregiver(){
   const lastAnyMeeting=getMostRecentForm(riseRows.concat(ninetyFormsFor(p),fortyFiveFormsFor(p)));
   const past6=getPast6Months();
 
-  // ── Rise Above points bank comes from the latest Rise form's points field
-  //    (Charlotte). Balance = form bank − points already spent in the ledger.
+  // ── Rise Above points bank: the points field is FREE TEXT (e.g. "…410 points
+  //    total"), and the most recent meeting sometimes leaves it blank — so we (a) parse
+  //    the TOTAL out of the text and (b) fall back to the most recent Rise form that
+  //    actually recorded one, rather than showing 0. (Sonia Ntum: 8/21 form had no
+  //    points; 2/26 had "410 points total".) Balance = bank − points spent in the ledger.
+  const _riseBankPts=function(txt){
+    if(txt==null)return null;
+    var s=String(txt);
+    var m=s.match(/(\d[\d,]*)\s*(?:points?|pts)\s*total/i)||s.match(/total[^\d]{0,10}(\d[\d,]*)/i);
+    if(m)return parseInt(m[1].replace(/,/g,''),10);
+    var nums=(s.match(/\d[\d,]*/g)||[]).map(function(x){return parseInt(x.replace(/,/g,''),10);}).filter(function(n){return Number.isFinite(n);});
+    return nums.length?Math.max.apply(null,nums):null;
+  };
+  const _riseByDateDesc=riseRows.slice().sort(function(a,b){var da=parseDate(a.meetingDate||a.submittedAt),db=parseDate(b.meetingDate||b.submittedAt);return (db?db.getTime():0)-(da?da.getTime():0);});
   const latestRise=lastMeeting;
-  const riseBankParsed=parseInt((latestRise&&latestRise.points)||'',10);
-  const riseBankMissing=Number.isNaN(riseBankParsed);
-  const riseBank=riseBankMissing?0:riseBankParsed;
+  let riseBank=0, riseBankMissing=true, riseBankForm=null;
+  for(const _rf of _riseByDateDesc){ const _v=_riseBankPts(_rf.points); if(_v!=null){ riseBank=_v; riseBankMissing=false; riseBankForm=_rf; break; } }
   const riseCg=(v&&v.id)?v.id:null;
   const riseSpent=(riseCg&&risePointsStore&&risePointsStore[riseCg])?(Number(risePointsStore[riseCg].spent)||0):0;
   const riseBalance=riseBank-riseSpent;
@@ -1895,11 +1906,11 @@ function renderCaregiver(){
     const rpRec=risePointsStore[rpCg]||{};
     const bank=riseBank, spent=Number(rpRec.spent)||0, bal=bank-spent;
     const rpLog=(rpRec.log||[]).slice().reverse().slice(0,5);
-    html+='<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Bank is pulled from the latest Rise form’s points field. Balance = bank − points spent below.</div>';
+    html+='<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Bank is the points total from the most recent Rise form that recorded one (the field is free‑text, so we read the total). Balance = bank − points spent below.</div>';
     html+='<div class="grid three" style="margin-bottom:14px">'+
       '<div class="fc"><div class="ct" title="Banked points from the latest Rise form’s points field.">Bank</div>'+
         '<div class="big-stat"><span class="v n">'+bank+'</span></div>'+
-        (riseBankMissing?'<div class="stat-foot" style="color:var(--text3)">no points on latest Rise form</div>':'<div class="stat-foot">from latest Rise form</div>')+'</div>'+
+        (riseBankMissing?'<div class="stat-foot" style="color:var(--text3)">no points recorded on any Rise form</div>':'<div class="stat-foot">from Rise form dated '+formatDate(parseDate(riseBankForm.meetingDate||riseBankForm.submittedAt))+'</div>')+'</div>'+
       '<div class="fc"><div class="ct">Spent</div><div class="big-stat"><span class="v r">'+spent+'</span></div><div class="stat-foot">sum of deductions</div></div>'+
       '<div class="fc"><div class="ct">Balance</div><div class="big-stat"><span class="v '+(bal>=0?'g':'r')+'">'+bal+'</span></div><div class="stat-foot">bank − spent</div></div>'+
     '</div>';
