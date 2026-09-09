@@ -3122,13 +3122,17 @@ function closeRiseMeeting(){ document.getElementById('rmOverlay').classList.remo
 // ── Zoom Rise transcript match (r28) ────────────────────────────────────────
 // zoomRiseProcess classifies cloud-recorded meetings; here we offer the signed-in
 // MCE their own recent Rise transcripts to drop into the notes box + auto-summarize.
-let _zoomRiseRows=null;
+let _zoomRiseRows=null, _zoomRiseAt=0;
 async function _fetchZoomRise(){
-  if(_zoomRiseRows)return _zoomRiseRows;
+  // Re-check each time a prep opens, but reuse within 60s so opening several
+  // caregivers in a row isn't chatty. Keeps freshly-processed transcripts
+  // visible without a full page refresh.
+  if(_zoomRiseRows && (Date.now()-_zoomRiseAt)<60000)return _zoomRiseRows;
   try{
     const r=await fetch(PROXY+'?endpoint=zoom_rise_list',{headers:await authHeaders()});
-    _zoomRiseRows=r.ok?((await r.json()).rows||[]):[];
-  }catch(e){ _zoomRiseRows=[]; }
+    _zoomRiseRows=r.ok?((await r.json()).rows||[]):(_zoomRiseRows||[]);
+  }catch(e){ _zoomRiseRows=_zoomRiseRows||[]; }
+  _zoomRiseAt=Date.now();
   return _zoomRiseRows;
 }
 function _mceEmailGuess(name){
