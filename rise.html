@@ -1727,8 +1727,13 @@ function renderCaregiver(){
   let riseBank=0, riseBankMissing=true, riseBankForm=null;
   for(const _rf of _riseByDateDesc){ const _v=_riseBankPts(_rf.points); if(_v!=null){ riseBank=_v; riseBankMissing=false; riseBankForm=_rf; break; } }
   const riseCg=(v&&v.id)?v.id:null;
-  const riseSpent=(riseCg&&risePointsStore&&risePointsStore[riseCg])?(Number(risePointsStore[riseCg].spent)||0):0;
-  const riseBalance=riseBank-riseSpent;
+  const _rpr=(riseCg&&risePointsStore&&risePointsStore[riseCg])?risePointsStore[riseCg]:null;
+  const riseSpent=_rpr?(Number(_rpr.spent)||0):0;
+  // Manual current-points entry (r24) wins over the form-derived figure when set.
+  const riseManual=(_rpr&&_rpr.manualBank!=null&&Number.isFinite(Number(_rpr.manualBank)))?Number(_rpr.manualBank):null;
+  const riseBankIsManual=riseManual!=null;
+  const riseBankEff=riseBankIsManual?riseManual:riseBank;
+  const riseBalance=riseBankEff-riseSpent;
 
   let html='';
 
@@ -1907,16 +1912,23 @@ function renderCaregiver(){
   } else {
     const escRp=String(rpCg).replace(/'/g,"\\'");
     const rpRec=risePointsStore[rpCg]||{};
-    const bank=riseBank, spent=Number(rpRec.spent)||0, bal=bank-spent;
+    const bank=riseBankEff, spent=Number(rpRec.spent)||0, bal=bank-spent;
     const rpLog=(rpRec.log||[]).slice().reverse().slice(0,5);
-    html+='<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Bank is the points total from the most recent Rise form that recorded one (the field is free‑text, so we read the total). Balance = bank − points spent below.</div>';
+    html+='<div style="font-size:12px;color:var(--text2);margin-bottom:12px">Bank = the caregiver’s current Rise Above points. Enter it manually below to match your Rise tracker; if left blank it falls back to the total on their most recent Rise form. Balance = bank − points spent.</div>';
     html+='<div class="grid three" style="margin-bottom:14px">'+
-      '<div class="fc"><div class="ct" title="Banked points from the latest Rise form’s points field.">Bank</div>'+
+      '<div class="fc"><div class="ct" title="Current Rise Above points — manual entry, or the latest Rise form total.">Bank</div>'+
         '<div class="big-stat"><span class="v n">'+bank+'</span></div>'+
-        (riseBankMissing?'<div class="stat-foot" style="color:var(--text3)">no points recorded on any Rise form</div>':'<div class="stat-foot">from Rise form dated '+formatDate(parseDate(riseBankForm.meetingDate||riseBankForm.submittedAt))+'</div>')+'</div>'+
+        (riseBankIsManual
+          ? '<div class="stat-foot">manually set'+(rpRec.manualBankBy?' by '+escHtml(rpRec.manualBankBy):'')+(rpRec.manualBankAt?' · '+formatDate(rpRec.manualBankAt):'')+'</div>'
+          : (riseBankMissing?'<div class="stat-foot" style="color:var(--text3)">no points on any Rise form — enter manually below</div>':'<div class="stat-foot">from Rise form dated '+formatDate(parseDate(riseBankForm.meetingDate||riseBankForm.submittedAt))+'</div>'))+'</div>'+
       '<div class="fc"><div class="ct">Spent</div><div class="big-stat"><span class="v r">'+spent+'</span></div><div class="stat-foot">sum of deductions</div></div>'+
       '<div class="fc"><div class="ct">Balance</div><div class="big-stat"><span class="v '+(bal>=0?'g':'r')+'">'+bal+'</span></div><div class="stat-foot">bank − spent</div></div>'+
     '</div>';
+    // Manual current-points entry (r24): type the caregiver's current balance to match the tracker.
+    html+='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">'+
+      '<input type="number" id="rpBankAmt" placeholder="Current points" value="'+(riseBankIsManual?riseManual:'')+'" title="Type the caregiver’s current Rise Above points balance" style="width:130px;padding:6px 8px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">'+
+      '<button class="rm-btn g" style="padding:6px 14px;font-size:12px" onclick="setRiseBankManual(\''+escRp+'\')">Set current points</button>'+
+      (riseBankIsManual?'<button class="rm-btn" style="padding:6px 10px;font-size:12px" onclick="setRiseBankManual(\''+escRp+'\',true)">Clear (use form)</button>':'')+'</div>';
     html+='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+
       '<input type="number" id="rpSpendAmt" placeholder="Points" title="Positive = spend/deduct · negative = credit back" style="width:100px;padding:6px 8px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">'+
       '<input type="text" id="rpSpendReason" placeholder="Reason (e.g. redeemed gift card)" style="flex:1;min-width:200px;padding:6px 8px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">'+
@@ -2083,17 +2095,28 @@ async function loadRisePoints(){
   risePointsLoading=false;
   if(selectedKey)renderCaregiver();
 }
-async function setRiseBank(cgId){
-  const el=document.getElementById('rpBankInput'); if(!el||!cgId)return;
-  const val=Number(el.value)||0;
+// Manual current-points entry (r24): MCE types the caregiver's current Rise Above
+// balance (matching their Rise tracker); it overrides the form-derived figure until
+// cleared. clear=true reverts to the form value.
+async function setRiseBankManual(cgId, clear){
+  if(!cgId)return;
+  let val;
+  if(clear){ val=''; }
+  else {
+    const el=document.getElementById('rpBankAmt'); if(!el)return;
+    if(el.value===''){ alert('Enter the caregiver’s current Rise Above points (or Clear to revert to the form value).'); return; }
+    val=Number(el.value); if(!Number.isFinite(val)){ alert('Enter a valid number of points.'); return; }
+  }
   if(!risePointsStore)risePointsStore={};
   const rec=risePointsStore[cgId]||(risePointsStore[cgId]={});
-  rec.adjust=val;
+  rec.manualBank=(val===''?null:val);
+  rec.manualBankAt=new Date().toISOString();
+  rec.manualBankBy=(CURRENT_USER&&CURRENT_USER.name)||undefined;
   renderCaregiver();
   try{
     await fetch(PROXY+'?endpoint=rise_points',{method:'POST',
       headers:await authHeaders({'Content-Type':'application/json'}),
-      body:JSON.stringify({cgId,adjust:val,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
+      body:JSON.stringify({cgId,manualBank:(val===''?'':val),by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
   }catch(e){/* local state already updated; server catches up */}
 }
 async function spendRisePoints(cgId){
