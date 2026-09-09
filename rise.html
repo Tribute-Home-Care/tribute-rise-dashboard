@@ -3102,6 +3102,7 @@ function openRiseMeeting(key){
   '</div>';
   b+='<div class="rm-sec">✨ Meeting Notes → Tribute Intelligence</div>'+
     '<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Paste your meeting notes or a transcript, then let Tribute Intelligence write the "Connect" section in your voice. Review &amp; edit before copying.</div>'+
+    '<div id="rmZoom" style="margin-bottom:8px"></div>'+
     '<textarea class="rm-notes" id="rm_rawnotes" placeholder="Paste raw meeting notes / transcript here…"></textarea>'+
     '<div style="margin:8px 0"><button class="rm-btn p" id="rmParseBtn" onclick="parseRiseMeeting()">✨ Prefill with Tribute Intelligence</button> <span id="rmParseMsg" style="font-size:12px;color:var(--text3)"></span></div>';
   b+='<div class="rm-sec">Connect · Happiness &amp; Performance</div><div class="rm-grid">'+
@@ -3114,8 +3115,64 @@ function openRiseMeeting(key){
   document.getElementById('rmBody').innerHTML=b;
   document.getElementById('rmCopyMsg').textContent='';
   document.getElementById('rmOverlay').classList.add('open');
+  loadZoomRiseForModal(p);   // offer a matching Zoom Rise transcript, if any
 }
 function closeRiseMeeting(){ document.getElementById('rmOverlay').classList.remove('open'); }
+
+// ── Zoom Rise transcript match (r28) ────────────────────────────────────────
+// zoomRiseProcess classifies cloud-recorded meetings; here we offer the signed-in
+// MCE their own recent Rise transcripts to drop into the notes box + auto-summarize.
+let _zoomRiseRows=null;
+async function _fetchZoomRise(){
+  if(_zoomRiseRows)return _zoomRiseRows;
+  try{
+    const r=await fetch(PROXY+'?endpoint=zoom_rise_list',{headers:await authHeaders()});
+    _zoomRiseRows=r.ok?((await r.json()).rows||[]):[];
+  }catch(e){ _zoomRiseRows=[]; }
+  return _zoomRiseRows;
+}
+function _mceEmailGuess(name){
+  const n=String(name||'').toLowerCase().trim().replace(/[^a-z ]/g,'').replace(/\s+/g,'.');
+  return n?n+'@tributehomecare.com':'';
+}
+async function loadZoomRiseForModal(p){
+  const box=document.getElementById('rmZoom'); if(!box)return;
+  box.innerHTML='<div style="font-size:12px;color:var(--text3)">🎥 Checking for a Zoom Rise recording…</div>';
+  const rows=await _fetchZoomRise();
+  const mine=String(CURRENT_USER&&CURRENT_USER.email||'').toLowerCase();
+  const cgMce=_mceEmailGuess(p&&(p.manager||p.mce));
+  const wanted=new Set([mine,cgMce].filter(Boolean));
+  let cands=rows.filter(r=>r.hostEmail&&wanted.has(String(r.hostEmail).toLowerCase()))
+    .sort((a,b)=>String(b.startTime||'').localeCompare(String(a.startTime||''))).slice(0,4);
+  if(!cands.length){
+    box.innerHTML='<div style="font-size:12px;color:var(--text3)">🎥 No Zoom Rise meeting found for you in the last 45 days. A cloud-recorded Rise meeting will appear here automatically.</div>';
+    return;
+  }
+  let h='<div style="border:.5px solid var(--border2);border-radius:8px;padding:10px;background:var(--bg2)">'+
+    '<div style="font-size:12px;font-weight:600;margin-bottom:6px">🎥 Zoom Rise meeting found — use the transcript?</div>';
+  cands.forEach(c=>{
+    const dt=c.startTime?new Date(c.startTime):null;
+    const when=dt&&!isNaN(dt)?dt.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'(unknown date)';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0">'+
+      '<div style="font-size:12px;min-width:0">📄 <strong>'+when+'</strong> · '+escHtml(c.topic||'Zoom meeting')+' <span style="color:var(--text3)">('+escHtml(c.hostEmail||'')+')</span></div>'+
+      '<button class="rm-btn p" style="padding:4px 10px;font-size:12px;white-space:nowrap" onclick="useZoomTranscript(\''+String(c.safeUuid).replace(/'/g,"")+'\',this)">Use this</button></div>';
+  });
+  h+='</div>';
+  box.innerHTML=h;
+}
+async function useZoomTranscript(safeUuid,btn){
+  const ta=document.getElementById('rm_rawnotes'); if(!ta)return;
+  const old=btn.textContent; btn.disabled=true; btn.textContent='Loading…';
+  try{
+    const r=await fetch(PROXY+'?endpoint=zoom_rise_text&safeUuid='+encodeURIComponent(safeUuid),{headers:await authHeaders()});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json();
+    ta.value=(j.text||'').trim();
+    ta.classList.add('rm-parsed');
+    btn.textContent='✓ Loaded';
+    parseRiseMeeting();   // run the existing summarizer on the transcript
+  }catch(e){ btn.textContent='Failed — paste manually'; btn.disabled=false; setTimeout(()=>{btn.textContent=old;},2000); }
+}
 async function parseRiseMeeting(){
   const notes=(document.getElementById('rm_rawnotes').value||'').trim();
   const msg=document.getElementById('rmParseMsg'), btn=document.getElementById('rmParseBtn');
