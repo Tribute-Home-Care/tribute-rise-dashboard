@@ -3828,6 +3828,17 @@ function fillSummaryFilters(){
     mSel.innerHTML='<option value="">All markets</option>'+mkts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
   }
 }
+// Market label with submarket abbreviation, e.g. "Maryland (ANN)" (r6).
+function _mktLabel(p){
+  const v=(p&&p.viv)||{};
+  const ABBR={Baltimore:'BAL',Annapolis:'ANN',Bethesda:'BETH',Boston:'BOS','MetroWest Boston':'MWB','North of Boston':'NOB','South of Boston':'SOB',Chicago:'CHI'};
+  const STATE={MD:'Maryland',MA:'Massachusetts',IL:'Illinois',Maryland:'Maryland',Massachusetts:'Massachusetts',Illinois:'Illinois'};
+  const mk=v.market||p.market, st=v.state, stFull=STATE[st]||st||'';
+  const ab=ABBR[mk];
+  if(stFull&&ab)return stFull+' ('+ab+')';
+  if(mk&&stFull)return stFull+' · '+mk;
+  return mk||stFull||'—';
+}
 function renderSummary(){
   const el=document.getElementById('summary');
   if(!viv){ el.innerHTML='<div class="empty-state"><div class="big">📊</div><div>Sync Viv data to see the Rise program summary.</div></div>'; return; }
@@ -3955,9 +3966,13 @@ function renderSummary(){
   // weekend visit in the reference month. SH-TS caregivers (desired < 30) correctly
   // drop out; LH and LH-TS stay. Caregivers in their first 45 days are excluded
   // (too new to expect weekend coverage).
-  const weekendPop=active.filter(p=>p.viv&&(p.viv.desiredHours||0)>=30);
+  // Exclude SH-TS (Tribute Secure short-hours, TS level 16) — they aren't held to
+  // weekend coverage even though their desired hours can read ≥30 (r5, Monya Johnson).
+  const weekendPop=active.filter(p=>p.viv&&(p.viv.desiredHours||0)>=30&&p.viv.tsLevel!==16);
   const weekendFlag=weekendPop.filter(p=>{
       if((p.viv.weekendMonthsWorked||[]).includes(refMonth))return false;
+      // Already worked a weekend in the current (partial) month → drop from the list (r12, Pearl Manner).
+      if((p.viv.weekendMonthsWorked||[]).includes(_curMonthKey))return false;
       const hd=parseDate(p.viv.hireDate); if(hd&&(TODAY-hd)/86400000<45)return false;
       return true;
     })
@@ -3966,7 +3981,7 @@ function renderSummary(){
     .sort((a,b)=>b.streak-a.streak||a.p.name.localeCompare(b.p.name));
   const wkTs=weekendFlag.filter(x=>x.ts).length, wk3=weekendFlag.filter(x=>x.streak>=3).length;
   h+='<h2 style="margin:22px 0 4px">Weekend Coverage Audit</h2>';
-  h+='<div class="stat-foot" style="margin-bottom:10px">Long-Hours caregivers (desired ≥ 30 hrs/wk) who did <strong>not</strong> work a weekend visit in <strong>'+escHtml(refLabel)+'</strong> (the last complete calendar month). Excludes anyone in their first 45 days. Streak = consecutive months with no weekend, counting back from '+escHtml(refLabel)+'.</div>';
+  h+='<div class="stat-foot" style="margin-bottom:10px">Long-Hours caregivers (desired ≥ 30 hrs/wk) who did <strong>not</strong> work a weekend visit in <strong>'+escHtml(refLabel)+'</strong> (the last complete calendar month). Excludes SH-TS (short-hours Tribute Secure), anyone in their first 45 days, and anyone who has already worked a weekend this month. Streak = consecutive months with no weekend, counting back from '+escHtml(refLabel)+'.</div>';
   h+='<div class="grid four" style="margin-bottom:14px">'+
     '<div class="fc"><div class="ct">Flagged this month</div><div class="big-stat"><span class="v '+(weekendFlag.length?'a':'g')+'">'+weekendFlag.length+'</span></div><div class="stat-foot">no weekend in '+escHtml(refLabel)+'</div></div>'+
     '<div class="fc"><div class="ct">Of those, Tribute Secure</div><div class="big-stat"><span class="v '+(wkTs?'a':'g')+'">'+wkTs+'</span></div><div class="stat-foot">TS caregivers flagged</div></div>'+
@@ -3979,7 +3994,7 @@ function renderSummary(){
       const typeBadge=x.lh&&x.ts?'<span class="bdg bg-p">LH+TS</span>':x.ts?'<span class="bdg bg-p">TS</span>':'<span class="bdg bg-b">LH</span>';
       const wkBadge=x.streak===1?'<span class="bdg bg-a">1 mo no weekend</span>':_missBadge(x.streak);
       h+='<tr><td class="td-name">'+escHtml(x.p.name)+'</td>'+
-        '<td style="font-size:12px">'+escHtml(x.p.market||'—')+'</td>'+
+        '<td style="font-size:12px">'+escHtml(_mktLabel(x.p))+'</td>'+
         '<td style="font-size:12px">'+escHtml(x.p.manager||'—')+'</td>'+
         '<td>'+typeBadge+'</td>'+
         '<td class="td-date">'+(x.last?escHtml(_fmtMonth(x.last)):'<span style="color:var(--text2)">none on record</span>')+'</td>'+
@@ -3992,13 +4007,15 @@ function renderSummary(){
   // visit. Those who did NOT work the reference month are flagged (amber/red streak);
   // those who did get a green "active" chip. Inactive rows sort to the top by streak.
   const prnPop=active.filter(p=>p.viv&&p.viv.prn);
-  const prnRows=prnPop.map(p=>{ const worked=(p.viv.monthsWithVisit||[]).includes(refMonth);
+  // Active = a visit in the reference month OR the current (partial) month, so a PRN
+  // who worked this month isn't flagged as a stale streak (r13).
+  const prnRows=prnPop.map(p=>{ const worked=(p.viv.monthsWithVisit||[]).includes(refMonth)||(p.viv.monthsWithVisit||[]).includes(_curMonthKey);
       return { p, worked, streak:worked?0:_missStreak(p.viv.monthsWithVisit), last:_maxMonth(p.viv.monthsWithVisit) }; })
     .sort((a,b)=>(a.worked-b.worked)||(b.streak-a.streak)||a.p.name.localeCompare(b.p.name));
   const prnInactive=prnRows.filter(x=>!x.worked).length;
   const prn3=prnRows.filter(x=>!x.worked&&x.streak>=3).length;
   h+='<h2 style="margin:22px 0 4px">PRN Activity Audit</h2>';
-  h+='<div class="stat-foot" style="margin-bottom:10px">Every PRN caregiver in scope, with their last month with a visit. Those with <strong>no visit at all</strong> in <strong>'+escHtml(refLabel)+'</strong> (the last complete calendar month) are flagged; streak = consecutive months with no visit, counting back from '+escHtml(refLabel)+'.</div>';
+  h+='<div class="stat-foot" style="margin-bottom:10px">Every PRN caregiver in scope, with their last month with a visit. Those with <strong>no visit</strong> in <strong>'+escHtml(refLabel)+'</strong> (the last complete calendar month) <strong>or</strong> the current month are flagged; a visit this month counts as active. Streak = consecutive months with no visit, counting back from '+escHtml(refLabel)+'.</div>';
   h+='<div class="grid three" style="margin-bottom:14px">'+
     '<div class="fc"><div class="ct">PRN population</div><div class="big-stat"><span class="v b">'+prnPop.length+'</span></div><div class="stat-foot">caregivers audited</div></div>'+
     '<div class="fc"><div class="ct">Inactive this month</div><div class="big-stat"><span class="v '+(prnInactive?'a':'g')+'">'+prnInactive+'</span></div><div class="stat-foot">no visit in '+escHtml(refLabel)+'</div></div>'+
@@ -4009,7 +4026,7 @@ function renderSummary(){
     prnRows.forEach(x=>{
       const statusBadge=x.worked?'<span class="bdg bg-g">active</span>':_missBadge(x.streak);
       h+='<tr><td class="td-name">'+escHtml(x.p.name)+'</td>'+
-        '<td style="font-size:12px">'+escHtml(x.p.market||'—')+'</td>'+
+        '<td style="font-size:12px">'+escHtml(_mktLabel(x.p))+'</td>'+
         '<td style="font-size:12px">'+escHtml(x.p.manager||'—')+'</td>'+
         '<td class="td-date">'+(x.last?escHtml(_fmtMonth(x.last)):'<span style="color:var(--text2)">none on record</span>')+'</td>'+
         '<td>'+statusBadge+'</td></tr>';
