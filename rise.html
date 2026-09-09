@@ -377,8 +377,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <table class="tbl">
       <thead><tr>
         <th onclick="trackerSortBy('name')" style="cursor:pointer;user-select:none">Caregiver<span class="tsort" data-c="name"></span></th>
-        <th>Phone</th>
-        <th>Email</th>
+        <th>Contact</th>
         <th onclick="trackerSortBy('market')" style="cursor:pointer;user-select:none">Market<span class="tsort" data-c="market"></span></th>
         <th onclick="trackerSortBy('hire')" style="cursor:pointer;user-select:none">Hire Date<span class="tsort" data-c="hire"></span></th>
         <th onclick="trackerSortBy('due')" style="cursor:pointer;user-select:none">Due Date<span class="tsort" data-c="due"></span></th>
@@ -1358,7 +1357,7 @@ function renderTracker(){
   document.getElementById('trackerCount').textContent=rows.length+' caregiver'+(rows.length!==1?'s':'');
   const tbody=document.getElementById('trackerBody');
   if(!rows.length){
-    tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:22px;font-style:italic">No caregivers found</td></tr>';
+    tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:22px;font-style:italic">No caregivers found</td></tr>';
     return;
   }
   if(trackerNotes===null)loadTrackerNotes();   // durable Notes / Next-Meeting store
@@ -1422,18 +1421,20 @@ function renderTracker(){
     const cv=row.p.viv;
     const rawPhone=(cv&&cv.phone)?String(cv.phone).replace(/\D/g,''):'';
     const phoneFmt=rawPhone.length===10?'('+rawPhone.slice(0,3)+') '+rawPhone.slice(3,6)+'-'+rawPhone.slice(6):(rawPhone||'');
-    let phoneCell='—';
+    // Compact contact column (r15): call + email as icons so the tracker fits one
+    // screen instead of a wide phone + full-email column.
+    let phoneIco='';
     if(phoneFmt){
       const tel=(rawPhone.length===10?'+1':'+')+rawPhone;
       const callHref='https://teams.microsoft.com/l/call/0/0?users=4:'+encodeURIComponent(tel);
-      phoneCell='<a href="'+callHref+'" title="Call in Microsoft Teams" onclick="event.stopPropagation()" style="color:var(--blue-text);text-decoration:none">'+escHtml(phoneFmt)+'</a>';
+      phoneIco='<a href="'+callHref+'" title="Call '+escHtml(phoneFmt)+' in Microsoft Teams" onclick="event.stopPropagation()" style="text-decoration:none;font-size:15px">📞</a>';
     }
     const cgEmail=(cv&&cv.email)?String(cv.email).trim():'';
-    const emailCell=cgEmail?'<a href="mailto:'+escHtml(cgEmail)+'" onclick="event.stopPropagation()" style="color:var(--blue-text);text-decoration:none">'+escHtml(cgEmail)+'</a>':'—';
+    const emailIco=cgEmail?'<a href="mailto:'+escHtml(cgEmail)+'" title="'+escHtml(cgEmail)+'" onclick="event.stopPropagation()" style="text-decoration:none;font-size:15px">✉️</a>':'';
+    const contactCell=(phoneIco||emailIco)?('<span style="white-space:nowrap;display:inline-flex;gap:10px;align-items:center">'+phoneIco+emailIco+'</span>'):'—';
     return '<tr data-nk="'+nkAttr+'">'+
       '<td class="td-name"><span class="cg-link clickable" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')" style="cursor:pointer;color:var(--blue-text);font-weight:600">'+escHtml(row.p.name)+'</span>'+cycleBadge+pipwwBadge+'</td>'+
-      '<td class="td-date">'+phoneCell+'</td>'+
-      '<td class="td-date">'+emailCell+'</td>'+
+      '<td class="td-date" style="text-align:center">'+contactCell+'</td>'+
       '<td class="td-date">'+escHtml(row.p.market||'—')+'</td>'+
       '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
       '<td class="td-date" style="font-weight:600">'+dueCell+'</td>'+
@@ -2501,6 +2502,10 @@ function celBtn(id){
   return '<button onclick="event.stopPropagation();toggleCelebrated(\''+id.replace(/'/g,"")+'\',this)" style="font-size:11px;font-weight:600;padding:4px 10px;border-radius:14px;cursor:pointer;border:1px solid '+(done?'var(--border2);background:var(--bg2);color:var(--text3)':'var(--green);background:var(--green-bg);color:var(--green-text)')+'">'+(done?'✓ Celebrated · undo':'Mark celebrated')+'</button>';
 }
 function _mmddNext(days){ const set={}; const d=new Date(TODAY); for(let i=0;i<=days;i++){ set[String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')]=i; d.setDate(d.getDate()+1); } return set; }
+// Signed window: back days before today (negative offset) through ahead days after.
+// Used so birthdays/anniversaries linger AFTER the date until marked celebrated (r20).
+function _mmddWindow(back,ahead){ const set={}; const d=new Date(TODAY); d.setDate(d.getDate()-back); for(let i=-back;i<=ahead;i++){ set[String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')]=i; d.setDate(d.getDate()+1); } return set; }
+function _celWhen(n){ return n===0?'today!':(n>0?'in '+n+'d':Math.abs(n)+'d ago'); }
 function _daysAgoStr(n){ const d=new Date(TODAY); d.setDate(d.getDate()-n); return d.toLocaleDateString('en-CA'); }
 
 function renderCelebrations(){
@@ -2511,7 +2516,7 @@ function renderCelebrations(){
   const scope=perfScope();
   const isDone=id=>celebratedSet&&celebratedSet.has(id);
   const showable=id=>celShowDone||!isDone(id);
-  const upcoming=_mmddNext(5);          // today → +5 days
+  const upcoming=_mmddWindow(10,5);     // 10 days past → +5 ahead; past ones linger until marked (r20)
   const comp48=_daysAgoStr(7), fill48=_daysAgoStr(7);   // recent = last 7 days; celebrated items drop off via the button, not by aging out
   let h='';
 
@@ -2521,16 +2526,16 @@ function renderCelebrations(){
     '<label style="font-size:12px;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px"><input type="checkbox" '+(celShowDone?'checked':'')+' onchange="celShowDone=this.checked;renderCelebrations()"> Show already-celebrated</label></div>';
 
   // ── SECTION 1: TODAY'S CELEBRATIONS ──────────────────────────────────────
-  h+='<div class="sb-section-h">🎂 Today\'s Celebrations <span class="pill">birthdays &amp; anniversaries (next 5 days) · compliments &amp; fill-ins (last 7 days) — mark celebrated to clear</span></div>';
+  h+='<div class="sb-section-h">🎂 Today\'s Celebrations <span class="pill">birthdays &amp; anniversaries (5 days ahead, and recent ones until marked) · compliments &amp; fill-ins (last 7 days) — mark celebrated to clear</span></div>';
   // Birthdays
   const bdays=scope.filter(p=>p.viv&&p.viv.birthMonthDay&&upcoming[p.viv.birthMonthDay]!=null)
     .map(p=>({p,id:'bday:'+(p.viv.id||p.key)+':'+TODAY.getFullYear(),when:upcoming[p.viv.birthMonthDay],md:p.viv.birthMonthDay}))
-    .filter(x=>showable(x.id)).sort((a,b)=>a.when-b.when);
+    .filter(x=>showable(x.id)).sort((a,b)=>((a.when<0)-(b.when<0))||(a.when<0?b.when-a.when:a.when-b.when));
   // Anniversaries
   const annivs=scope.filter(p=>p.hireDate).map(p=>{
     const md=String(p.hireDate.getMonth()+1).padStart(2,'0')+'-'+String(p.hireDate.getDate()).padStart(2,'0');
     return {p,md,when:upcoming[md],years:TODAY.getFullYear()-p.hireDate.getFullYear(),id:'anniv:'+(p.viv&&p.viv.id||p.key)+':'+TODAY.getFullYear()};
-  }).filter(x=>x.when!=null&&x.years>=1&&showable(x.id)).sort((a,b)=>a.when-b.when);
+  }).filter(x=>x.when!=null&&x.years>=1&&showable(x.id)).sort((a,b)=>((a.when<0)-(b.when<0))||(a.when<0?b.when-a.when:a.when-b.when));
   // Recent compliments (last 48h)
   const recentComps=[];
   scope.forEach(p=>(p.viv&&p.viv.compliments||[]).forEach((c,i)=>{ if((c.date||'')>=comp48){ const id='comp:'+(p.viv.id||p.key)+':'+c.date+':'+i; if(showable(id))recentComps.push({p,c,id}); } }));
@@ -2546,9 +2551,9 @@ function renderCelebrations(){
 
   h+='<div class="grid"><div>';
   h+='<div class="cel-sub">🎂 Birthdays</div>';
-  h+=bdays.length?bdays.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+escHtml(x.p.market||'')+' · '+(x.when===0?'today!':'in '+x.when+'d')+'</span>',x.id)).join(''):'<div class="no-data">No birthdays in the next 5 days.</div>';
+  h+=bdays.length?bdays.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+escHtml(x.p.market||'')+' · '+_celWhen(x.when)+'</span>',x.id)).join(''):'<div class="no-data">No birthdays in the window.</div>';
   h+='<div class="cel-sub" style="margin-top:12px">🎊 Work Anniversaries</div>';
-  h+=annivs.length?annivs.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+x.years+' yr'+(x.years!==1?'s':'')+' · '+(x.when===0?'today!':'in '+x.when+'d')+' · '+escHtml(x.p.market||'')+'</span>',x.id)).join(''):'<div class="no-data">No anniversaries in the next 5 days.</div>';
+  h+=annivs.length?annivs.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+x.years+' yr'+(x.years!==1?'s':'')+' · '+_celWhen(x.when)+' · '+escHtml(x.p.market||'')+'</span>',x.id)).join(''):'<div class="no-data">No anniversaries in the window.</div>';
   h+='</div><div>';
   h+='<div class="cel-sub">⭐ Compliments (last 7 days)</div>';
   h+=recentComps.length?recentComps.map(x=>celItem('<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.c.reason||'')+(x.c.from?' · '+escHtml(x.c.from):'')+'</span></div><div style="font-size:12px;color:var(--text2);margin-top:3px">"'+escHtml(x.c.desc||'')+'"</div>',x.id)).join(''):'<div class="no-data">No compliments in the last 7 days.</div>';
@@ -2790,14 +2795,24 @@ function renderShortList(){
   if(!flagged.length){ h+='<div class="sb-allgood">🎉 Nobody trips a Short List criterion right now — great work across the board!</div>'; }
   else h+=flagged.map(x=>{
     const hard=x.trig.some(t=>t.sev==='r');
-    return '<div class="sl-row sev-'+(hard?'r':'good')+'" onclick="openCaregiver(\''+x.p.key+'\')">'+
-      '<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.p.manager||'—')+' · '+escHtml(x.p.market||'—')+'</span></div>'+
+    const v=x.p.viv||{};
+    const recentSes=((v.exceptions)||[]).filter(e=>_withinDays(e.date,60)).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    let det='<div class="sl-detail" id="sld_'+x.p.key+'" hidden style="padding:8px 10px 2px;border-top:.5px solid var(--border);margin-top:8px">';
+    if(recentSes.length){
+      det+='<div class="ct" style="margin-bottom:4px">Service exceptions (last 60 days)</div>'+
+        recentSes.slice(0,12).map(e=>'<div class="stat-foot" style="padding:2px 0"><strong>'+formatDate(parseDate(e.date))+'</strong> · '+escHtml(e.type||'—')+(e.desc?' — '+escHtml(e.desc):'')+'</div>').join('');
+    } else det+='<div class="stat-foot">No service exceptions in the last 60 days.</div>';
+    det+='<div style="margin-top:6px"><a class="card-link" style="cursor:pointer" onclick="event.stopPropagation();openCaregiver(\''+x.p.key+'\')">Open full dashboard →</a></div></div>';
+    return '<div class="sl-row sev-'+(hard?'r':'good')+'" style="cursor:pointer" onclick="toggleSlDetail(\''+x.p.key+'\')">'+
+      '<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.p.manager||'—')+' · '+escHtml(x.p.market||'—')+' <span style="color:var(--text3)" title="click to expand">▾</span></span></div>'+
       '<div class="sl-trig">'+x.trig.map(t=>'<span class="sl-chip'+(t.sev==='warn'?' warn':'')+'">'+escHtml(t.t)+'</span>').join('')+'</div>'+
+      det+
     '</div>';
   }).join('');
   h+='<div class="sb-note" style="margin-top:16px">🙌 Shout-outs &amp; last-minute pickups have moved to the <strong>Celebrations</strong> tab.</div>';
   el.innerHTML=h;
 }
+function toggleSlDetail(key){ const e=document.getElementById('sld_'+key); if(e)e.hidden=!e.hidden; }
 
 // ── VISIT COMPLIANCE — trend graph + per-caregiver drill-in (Viv tab) ──
 function perfWeeklySeries(list,weeks){
@@ -3691,7 +3706,14 @@ function renderLeave(){
   const mce=mceSel.value, market=mSel.value, statusF=document.getElementById('leaveStatus').value;
   const needsOnly=document.getElementById('leaveNeedsForm').checked;
   const q=(document.getElementById('leaveSearch').value||'').toLowerCase().trim();
+  // Exclude inactive/terminated caregivers (r8): keep only those in the active
+  // spine (which already drops inactive/OAs). Guarded — if the spine hasn't loaded
+  // yet, don't filter (never blank the tab).
+  const _activeIds=new Set(spine.map(p=>p&&p.viv&&p.viv.id).filter(Boolean).map(String));
+  const _activeNames=new Set(spine.map(p=>(p&&p.name||'').toLowerCase().trim()).filter(Boolean));
+  const _spineReady=spine.length>0;
   let rows=rows0.filter(r=>{
+    if(_spineReady && !(_activeIds.has(String(r.id)) || _activeNames.has((r.name||'').toLowerCase().trim())))return false;
     if(mce&&r.manager!==mce)return false;
     if(market&&r.market!==market)return false;
     const st=_leaveStatusOf(r.id);
