@@ -1430,8 +1430,8 @@ function renderTracker(){
     }
     const cgEmail=(cv&&cv.email)?String(cv.email).trim():'';
     const emailCell=cgEmail?'<a href="mailto:'+escHtml(cgEmail)+'" onclick="event.stopPropagation()" style="color:var(--blue-text);text-decoration:none">'+escHtml(cgEmail)+'</a>':'—';
-    return '<tr class="clickable" data-nk="'+nkAttr+'" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')">'+
-      '<td class="td-name">'+escHtml(row.p.name)+cycleBadge+pipwwBadge+'</td>'+
+    return '<tr data-nk="'+nkAttr+'">'+
+      '<td class="td-name"><span class="cg-link clickable" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')" style="cursor:pointer;color:var(--blue-text);font-weight:600">'+escHtml(row.p.name)+'</span>'+cycleBadge+pipwwBadge+'</td>'+
       '<td class="td-date">'+phoneCell+'</td>'+
       '<td class="td-date">'+emailCell+'</td>'+
       '<td class="td-date">'+escHtml(row.p.market||'—')+'</td>'+
@@ -1845,7 +1845,15 @@ function renderCaregiver(){
     const hit=monthsWithVisit.has(m.key);
     html+='<div class="month-cell '+(hit?'hit':'miss')+'">'+m.label+'<br>'+(hit?'✓':'✗')+'</div>';
   });
-  html+='</div></div>';
+  html+='</div>';
+  // Distinct clients seen + care visits over the last 6 months (r26).
+  if(v){
+    const _cs=Number(v.clientsSeen)||0, _cv=Number(v.careVisits)||0;
+    html+='<div class="stat-foot" style="margin-top:8px;border-top:.5px solid var(--border);padding-top:6px">'+
+      '<strong>'+_cs+'</strong> distinct client'+(_cs===1?'':'s')+' seen · <strong>'+_cv+'</strong> care visit'+(_cv===1?'':'s')+
+      ' <span style="color:var(--text3)">(last 6 mo)</span></div>';
+  }
+  html+='</div>';
 
   html+='<div class="fc"><div class="ct">Weekend Work (Viv)</div>';
   if(!v){
