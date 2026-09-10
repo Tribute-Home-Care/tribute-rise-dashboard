@@ -602,8 +602,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
             <input type="text" id="docsCg" placeholder="Search caregiver…" autocomplete="off" oninput="ceFilterCg(this.value)" onfocus="ceFilterCg(this.value)" onkeydown="ceCgKey(event)" style="width:100%;padding:7px 9px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
             <div class="search-dropdown" id="docsCgDrop"></div>
           </div>
-          <div id="docsCgMeta" class="stat-foot" style="margin-top:3px"></div>
-          <div id="docsSeBox" style="margin-top:8px"></div></div>
+          <div id="docsCgMeta" class="stat-foot" style="margin-top:3px"></div></div>
         <div><div class="ct">Document type</div>
           <select id="docsType" style="width:100%;padding:7px 9px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
             <option value="pip">Development / Performance Improvement Plan</option>
@@ -612,6 +611,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
             <option value="letter">Recognition / Other Letter</option>
           </select></div>
       </div>
+      <div id="docsSeBox" style="margin-top:10px"></div>
       <div style="margin-top:10px"><div class="ct">What should this say? (situation + key points)</div>
         <textarea id="docsSituation" rows="5" placeholder="Describe what happened, the standard involved, what you'd like the caregiver to do, the timeframe, and any support. AI turns this into a Tributey document and won't invent facts — it leaves [bracketed placeholders] where you need to add specifics." style="width:100%;font-size:13px;font-family:inherit;padding:8px 10px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text);resize:vertical"></textarea></div>
       <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
