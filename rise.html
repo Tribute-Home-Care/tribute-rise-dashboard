@@ -2077,7 +2077,15 @@ function renderCaregiver(){
       '<div class="se-list" id="se-'+cat[0]+'">';
     if(!items.length)html+='<div class="se-item"><span class="no-data">No incidents</span></div>';
     else items.forEach(inc=>{
-      html+='<div class="se-item"><span class="se-type">'+escHtml(inc.type)+'</span><span class="se-date">'+escHtml(inc.date)+'</span><div class="se-desc">'+escHtml(inc.desc||'')+'</div></div>';
+      // r16: show resolution / follow-up + who's handling it, when captured in Viv.
+      let resLine='';
+      if(inc.resolution){
+        resLine='<div class="se-desc" style="margin-top:4px;padding-left:8px;border-left:2px solid var(--green);color:var(--text2)"><strong>Resolution:</strong> '+escHtml(inc.resolution)+
+          (inc.assignee?' <span style="color:var(--text3)">— '+escHtml(inc.assignee)+(inc.resolvedAt?', '+escHtml(inc.resolvedAt):'')+'</span>':'')+'</div>';
+      } else if(inc.assignee){
+        resLine='<div class="se-desc" style="margin-top:4px;color:var(--text3)">Assigned to '+escHtml(inc.assignee)+' — no resolution logged yet</div>';
+      }
+      html+='<div class="se-item"><span class="se-type">'+escHtml(inc.type)+'</span><span class="se-date">'+escHtml(inc.date)+'</span><div class="se-desc">'+escHtml(inc.desc||'')+'</div>'+resLine+'</div>';
     });
     html+='</div></div>';
   });
