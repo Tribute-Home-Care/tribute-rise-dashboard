@@ -358,6 +358,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div class="ntab" id="tab-referrals" onclick="switchTab('referrals')">Referrals</div>
   <div class="ntab" id="tab-todo" onclick="switchTab('todo')">To Do</div>
   <div class="ntab" id="tab-hours" onclick="switchTab('hours')">Desired Hours</div>
+  <div class="ntab" id="tab-docs" onclick="switchTab('docs')">DocuSign Assist</div>
 </div>
 
 <!-- PAGE: TRACKER -->
@@ -587,6 +588,44 @@ table.sched-tbl tr:last-child td{border-bottom:none}
 <div id="page-hours" style="display:none">
   <div style="font-size:11px;color:var(--text2);margin:0 14px 8px">Desired Hours &amp; Happiness — embedded from the standalone app. If it prompts for sign-in, use your Microsoft account.</div>
   <iframe id="hoursFrame" title="Caregiver Hours &amp; Happiness" style="width:100%;height:calc(100vh - 190px);border:none;background:var(--bg)"></iframe>
+</div>
+
+<div id="page-docs" style="display:none">
+  <div style="max-width:920px;margin:0 auto;padding:0 14px 40px">
+    <div style="font-family:'Space Grotesk',Inter,sans-serif;font-size:20px;font-weight:700;margin:6px 0 2px">📝 DocuSign Assist</div>
+    <div class="stat-foot" style="margin-bottom:12px">Draft a PIP, written warning, corrective action, or letter in Tribute's voice with AI, review and edit it, then send it for signature in DocuSign — in one place. Sensitive HR documents: you always review before it sends; nothing goes out automatically.</div>
+    <div id="dsConn" style="margin-bottom:14px"></div>
+    <div class="fc" style="margin-bottom:14px">
+      <div class="grid two" style="gap:10px">
+        <div><div class="ct">Caregiver</div>
+          <input list="docsCgList" id="docsCg" placeholder="Search caregiver…" oninput="ceOnCgPick()" style="width:100%;padding:7px 9px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
+          <datalist id="docsCgList"></datalist>
+          <div id="docsCgMeta" class="stat-foot" style="margin-top:3px"></div></div>
+        <div><div class="ct">Document type</div>
+          <select id="docsType" style="width:100%;padding:7px 9px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
+            <option value="pip">Development / Performance Improvement Plan</option>
+            <option value="warning">Written Warning</option>
+            <option value="corrective">Corrective Action</option>
+            <option value="letter">Recognition / Other Letter</option>
+          </select></div>
+      </div>
+      <div style="margin-top:10px"><div class="ct">What should this say? (situation + key points)</div>
+        <textarea id="docsSituation" rows="5" placeholder="Describe what happened, the standard involved, what you'd like the caregiver to do, the timeframe, and any support. AI turns this into a Tributey document and won't invent facts — it leaves [bracketed placeholders] where you need to add specifics." style="width:100%;font-size:13px;font-family:inherit;padding:8px 10px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text);resize:vertical"></textarea></div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="rm-btn p" id="docsDraftBtn" onclick="ceDraft()">✨ Draft with Tribute Intelligence</button>
+        <span id="docsDraftMsg" class="stat-foot"></span></div>
+    </div>
+    <div class="fc" id="docsDraftCard" style="display:none;margin-bottom:14px">
+      <div class="ct">Draft — review &amp; edit before sending</div>
+      <input id="docsTitle" style="width:100%;font-size:15px;font-weight:700;margin:6px 0 8px;padding:6px 8px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
+      <div id="docsBody" contenteditable="true" style="min-height:220px;border:.5px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);padding:14px 16px;font-size:14px;line-height:1.55;overflow:auto"></div>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="rm-btn g" id="docsSendBtn" onclick="ceCreate()">Create in DocuSign →</button>
+        <button class="rm-btn" onclick="ceDraft()">↻ Re-draft</button>
+        <span id="docsSendMsg" class="stat-foot"></span></div>
+      <div id="docsResult" style="margin-top:8px"></div>
+    </div>
+  </div>
 </div>
 
 <!-- CA-ON-LEAVE DETAIL MODAL -->
@@ -2292,7 +2331,7 @@ let _navReady=false, _curTab='tracker';
 function switchTab(tab,push){
   if(push===undefined)push=true;
   _curTab=tab;
-  ['tracker','scoreboard','dashboard','summary','newhires','leave','certs','referrals','todo','hours'].forEach(t=>{
+  ['tracker','scoreboard','dashboard','summary','newhires','leave','certs','referrals','todo','hours','docs'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
   });
@@ -2305,6 +2344,7 @@ function switchTab(tab,push){
   if(tab==='referrals')loadReferrals();
   if(tab==='todo')loadTodo();
   if(tab==='hours')loadHoursFrame();
+  if(tab==='docs')renderDocs();
   // Push a history entry so the browser Back button steps between tabs instead
   // of leaving the app. popstate handler passes push=false to avoid re-pushing.
   if(push&&_navReady){ try{ history.pushState({riseTab:tab},''); }catch(e){} }
@@ -2325,6 +2365,98 @@ window.addEventListener('popstate',function(e){
   const tab=(e.state&&e.state.riseTab)||'tracker';
   if(tab!==_curTab)switchTab(tab,false);
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// DOCUSIGN ASSIST — AI-drafted PIP/warning/corrective/letters → DocuSign.
+// Reuses leadDesk's per-user DocuSign OAuth + envelope creation (routes on the
+// same API host, not vivProxy). The MCE reviews every draft and sends from the
+// embedded DocuSign sender view. ════════════════════════════════════════════
+const CE_API=PROXY.replace(/\/vivProxy$/i,'');
+let _docsCg=null, _docsDsConnected=false;
+function _mceSid(){ return String((CURRENT_USER&&CURRENT_USER.email)||'').toLowerCase(); }
+function _cgTenure(p){ const hd=p&&parseDate(p.hireDate); if(!hd)return ''; const days=Math.floor((TODAY-hd)/86400000); if(days<0)return ''; const y=Math.floor(days/365),m=Math.floor((days%365)/30); return (y?y+' yr ':'')+(m?m+' mo':(y?'':days+' days')); }
+async function renderDocs(){
+  const dl=document.getElementById('docsCgList');
+  if(dl&&spine.length&&dl.children.length<2){
+    dl.innerHTML=spine.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>'<option value="'+escHtml(p.name)+'">').join('');
+  }
+  ceCheckDs();
+}
+async function ceCheckDs(){
+  const box=document.getElementById('dsConn'); if(!box)return;
+  const sid=_mceSid();
+  if(!sid){ box.innerHTML='<div class="stat-foot">Sign in with Microsoft to use DocuSign Assist.</div>'; return; }
+  box.innerHTML='<div class="stat-foot">Checking DocuSign connection…</div>';
+  try{
+    const r=await fetch(CE_API+'/docusignwhoami?sid='+encodeURIComponent(sid),{headers:await authHeaders()});
+    const j=r.ok?await r.json():{connected:false};
+    _docsDsConnected=!!j.connected;
+    box.innerHTML=j.connected
+      ? '<div class="fc" style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div style="font-size:13px">✅ DocuSign connected'+(j.user?' — '+escHtml(j.user):'')+'</div><button class="rm-btn" style="padding:4px 10px;font-size:12px" onclick="ceConnectDs()">Reconnect</button></div>'
+      : '<div class="fc" style="padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px"><div style="font-size:13px">Connect your DocuSign account to send documents for signature.</div><button class="rm-btn g" style="padding:6px 14px;font-size:12px" onclick="ceConnectDs()">Connect DocuSign</button></div>';
+  }catch(e){ box.innerHTML='<div class="err" style="display:block">Couldn\'t check DocuSign: '+escHtml(e.message)+'</div>'; }
+}
+function ceConnectDs(){
+  const sid=_mceSid(); if(!sid)return;
+  window.open(CE_API+'/docusignoauthstart?sid='+encodeURIComponent(sid),'dsconnect','width=680,height=760');
+  const onFocus=()=>{ setTimeout(ceCheckDs,800); window.removeEventListener('focus',onFocus); };
+  window.addEventListener('focus',onFocus);
+}
+function ceOnCgPick(){
+  const nm=(document.getElementById('docsCg').value||'').trim().toLowerCase();
+  _docsCg=spine.find(p=>p.name.toLowerCase()===nm)||null;
+  const meta=document.getElementById('docsCgMeta');
+  if(_docsCg){ const v=_docsCg.viv||{}; meta.textContent=[_docsCg.title||v.title||'',_docsCg.market||'',_cgTenure(_docsCg)?'tenure '+_cgTenure(_docsCg):'',(v.email||'no email on file')].filter(Boolean).join(' · '); }
+  else meta.textContent='';
+}
+async function ceDraft(){
+  const sit=(document.getElementById('docsSituation').value||'').trim();
+  const type=document.getElementById('docsType').value;
+  const msg=document.getElementById('docsDraftMsg'), btn=document.getElementById('docsDraftBtn');
+  if(!_docsCg&&type!=='letter'){ msg.textContent='Pick a caregiver first.'; return; }
+  if(sit.length<8){ msg.textContent='Add a few sentences about the situation first.'; return; }
+  btn.disabled=true; msg.textContent='Tribute Intelligence is drafting…';
+  const cg=_docsCg?{ name:_docsCg.name, role:_docsCg.title||(_docsCg.viv&&_docsCg.viv.title)||'', market:_docsCg.market||'', tenure:_cgTenure(_docsCg),
+    recentSEs:((_docsCg.viv&&_docsCg.viv.exceptions)||[]).filter(e=>_withinDays(e.date,120)).slice(0,12).map(e=>e.date+' · '+(e.type||'')+(e.desc?' — '+e.desc:'')) }:{};
+  try{
+    const r=await fetch(CE_API+'/cedocdraft',{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify({docType:type, caregiver:cg, situation:sit, mceName:(CURRENT_USER&&CURRENT_USER.name)||''})});
+    if(!r.ok)throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,120));
+    const j=await r.json();
+    document.getElementById('docsTitle').value=j.title||'';
+    document.getElementById('docsBody').innerHTML=j.bodyHtml||'';
+    const card=document.getElementById('docsDraftCard');
+    card.style.display=''; card.dataset.subject=j.subject||''; card.dataset.doctype=j.docType||type;
+    document.getElementById('docsResult').innerHTML='';
+    msg.textContent='✓ Draft ready — review & edit below.';
+    card.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){ msg.textContent='Draft failed: '+e.message; }
+  btn.disabled=false;
+}
+async function ceCreate(){
+  const msg=document.getElementById('docsSendMsg'), btn=document.getElementById('docsSendBtn');
+  if(!_docsDsConnected){ msg.textContent='Connect DocuSign first (above).'; return; }
+  const card=document.getElementById('docsDraftCard');
+  const bodyHtml=document.getElementById('docsBody').innerHTML.trim();
+  const title=(document.getElementById('docsTitle').value||'').trim();
+  if(!bodyHtml){ msg.textContent='Nothing to send.'; return; }
+  const v=(_docsCg&&_docsCg.viv)||{};
+  const cgEmail=(v.email||'').trim();
+  if(!cgEmail&&!confirm('No caregiver email on file — the document will be created without a caregiver signer (you can add one in DocuSign). Continue?'))return;
+  btn.disabled=true; msg.textContent='Creating the envelope in DocuSign…';
+  try{
+    const r=await fetch(CE_API+'/cedoccreate?sid='+encodeURIComponent(_mceSid()),{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify({ docType:card.dataset.doctype||'letter', title, subject:card.dataset.subject||title, bodyHtml,
+        caregiverName:_docsCg?_docsCg.name:'', caregiverEmail:cgEmail,
+        mceName:(CURRENT_USER&&CURRENT_USER.name)||'', mceEmail:_mceSid() })});
+    if(!r.ok)throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,160));
+    const j=await r.json();
+    msg.textContent='✓ Created in DocuSign.';
+    if(j.reviewUrl){ window.open(j.reviewUrl,'_blank'); document.getElementById('docsResult').innerHTML='<div class="stat-foot">Opened DocuSign to review &amp; send. If it didn\'t open, <a class="card-link" href="'+escHtml(j.reviewUrl)+'" target="_blank">click here</a>.</div>'; }
+    else document.getElementById('docsResult').innerHTML='<div class="stat-foot">Envelope '+escHtml(j.envelopeId||'')+' created as a draft in your DocuSign.</div>';
+  }catch(e){ msg.textContent='Create failed: '+e.message; }
+  btn.disabled=false;
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // PERFORMANCE tab — three sub-views: Visit Compliance · Short List · Scoreboard.
