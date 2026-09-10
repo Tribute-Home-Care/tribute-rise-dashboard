@@ -2891,12 +2891,11 @@ function renderVisitCompliance(){
     const inPeriod=late.filter(x=>!minWk||String(x.d||'')>=minWk).sort((a,b)=>String(b.d||'').localeCompare(String(a.d||'')));
     h+='<div class="tbl-wrap" style="margin-top:6px"><div class="ct" style="margin-bottom:4px">Late check-ins ('+escHtml(periodLbl)+') — '+inPeriod.length+' visit'+(inPeriod.length!==1?'s':'')+' more than 2 min late</div>';
     if(inPeriod.length){
-      h+='<table class="tbl"><thead><tr><th>Date</th><th>Scheduled start</th><th>How late</th></tr></thead><tbody>';
+      h+='<table class="tbl"><thead><tr><th>Visit date</th><th>How late</th></tr></thead><tbody>';
       inPeriod.forEach(x=>{
         const lateMin=Math.abs(Number(x.m)||0);
         const sev=lateMin>15?'r':lateMin>7?'a':'';
         h+='<tr><td class="td-date">'+(x.d?formatDate(parseDate(x.d)):'—')+'</td>'+
-          '<td class="td-date">'+escHtml(_fmtSchedTime(x.t))+'</td>'+
           '<td style="font-weight:600'+(sev?';color:var(--'+(sev==='r'?'red':'amber')+')':'')+'">'+lateMin+' min late</td></tr>';
       });
       h+='</tbody></table>';
@@ -2905,8 +2904,6 @@ function renderVisitCompliance(){
   }
   el.innerHTML=h;
 }
-// Read the literal HH:MM out of a scheduled-start datetime string (no timezone shift).
-function _fmtSchedTime(t){ if(!t)return '—'; const m=String(t).match(/[T ](\d{1,2}):(\d{2})/)||String(t).match(/^(\d{1,2}):(\d{2})/); if(!m)return '—'; let h=+m[1]; const ap=h>=12?'PM':'AM'; h=h%12||12; return h+':'+m[2]+' '+ap; }
 function perfWindowCk_list(list,weeks){ let c=0,o=0,m=0,md=0; list.forEach(p=>{const w=perfWindowCk(p.viv,weeks);c+=w.checked;o+=w.onTime;m+=w.manual;md+=w.manualDen;}); return {checked:c,onTime:o,manual:m,manualDen:md}; }
 function perfNotes_list(list,weeks){ let s=0,e=0; list.forEach(p=>{const w=perfWindowNotes(p.viv,weeks);s+=w.success;e+=w.error;}); return {success:s,error:e,total:s+e}; }
 function perfStatCard(label,pct,goal,foot){
