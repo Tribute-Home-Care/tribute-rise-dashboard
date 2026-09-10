@@ -3382,10 +3382,26 @@ function copyRiseMeetingForViv(){
   L.push('PREP: MEETING INFORMATION');
   L.push('Caregiver Name: '+_rmVal('rm_name'));
   L.push('Caregiver Title: '+_rmVal('rm_title'));
-  // Viv AI parses a bare (midnight) date and rolls it back ~1h to the previous day
-  // (Dova 9/1 → landed as 8/31 11pm). Anchor dates to NOON so any such shift keeps the
-  // calendar day correct. Meeting date carries the meeting time if one was entered.
-  const _rmDateViv=(v,t)=>{ v=(v||'').trim(); if(!v)return v; t=(t||'').trim(); return v+' '+(t||'12:00 PM'); };
+  // DATE HANDLING (Dova, Chicago — 9/1 and 9/10): verified against Viv's stored form
+  // values that the AI prefill IGNORES any appended time ("12:00 PM" still stored as
+  // T04:00Z = midnight EASTERN, for every MCE) and materializes a bare date as midnight
+  // in the org timezone (Eastern). Central-time users then see it as the previous day
+  // at 11:00 PM. So we emit the date as an ISO UTC datetime computed from the MCE's
+  // OWN local date+time (browser timezone) — the one form that can carry a time and a
+  // zone through. If Viv still reduces it to a date, we're no worse than before.
+  const _rmParseTime=t=>{ t=String(t||'').trim().toLowerCase(); if(!t)return null;
+    const m=t.match(/^(\d{1,2})(?::?(\d{2}))?\s*(a|p)?\.?m?\.?$/); if(!m)return null;
+    let h=+m[1]; const mi=m[2]?+m[2]:0; const ap=m[3];
+    if(ap==='p'&&h<12)h+=12; if(ap==='a'&&h===12)h=0; if(h>23||mi>59)return null; return {h,mi}; };
+  const _rmLocalDate=v=>{ v=String(v||'').trim(); let m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if(m)return {y:+m[3],mo:+m[1],d:+m[2]};
+    m=v.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m)return {y:+m[1],mo:+m[2],d:+m[3]}; return null; };
+  const _tzName=(()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone||''; }catch(e){ return ''; } })();
+  const _rmDateViv=(v,t)=>{ v=(v||'').trim(); if(!v)return v;
+    const ld=_rmLocalDate(v); const tm=_rmParseTime(t)||{h:12,mi:0};
+    if(!ld)return v+' '+((t||'').trim()||'12:00 PM');
+    const local=new Date(ld.y,ld.mo-1,ld.d,tm.h,tm.mi,0,0);   // MCE's own timezone
+    const hh=String(tm.h%12||12), ap=tm.h>=12?'PM':'AM';
+    return local.toISOString()+' ('+String(ld.mo).padStart(2,'0')+'/'+String(ld.d).padStart(2,'0')+'/'+ld.y+' '+hh+':'+String(tm.mi).padStart(2,'0')+' '+ap+(_tzName?' '+_tzName:'')+')'; };
   L.push('Hired Date: '+_rmDateViv(_rmVal('rm_hire')));
   L.push('Meeting Date: '+_rmDateViv(_rmVal('rm_mdate'), _rmVal('rm_mtime')));
   if(_rmVal('rm_mtime'))L.push('Meeting Time: '+_rmVal('rm_mtime'));
