@@ -598,8 +598,10 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <div class="fc" style="margin-bottom:14px">
       <div class="grid two" style="gap:10px">
         <div><div class="ct">Caregiver</div>
-          <input list="docsCgList" id="docsCg" placeholder="Search caregiver…" oninput="ceOnCgPick()" onfocus="renderDocs(true)" style="width:100%;padding:7px 9px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
-          <datalist id="docsCgList"></datalist>
+          <div class="search-wrapper" style="max-width:none">
+            <input type="text" id="docsCg" placeholder="Search caregiver…" autocomplete="off" oninput="ceFilterCg(this.value)" onfocus="ceFilterCg(this.value)" onkeydown="ceCgKey(event)" style="width:100%;padding:7px 9px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
+            <div class="search-dropdown" id="docsCgDrop"></div>
+          </div>
           <div id="docsCgMeta" class="stat-foot" style="margin-top:3px"></div>
           <div id="docsSeBox" style="margin-top:8px"></div></div>
         <div><div class="ct">Document type</div>
@@ -2376,13 +2378,32 @@ const CE_API=PROXY.replace(/\/vivProxy$/i,'');
 let _docsCg=null, _docsDsConnected=false;
 function _mceSid(){ return String((CURRENT_USER&&CURRENT_USER.email)||'').toLowerCase(); }
 function _cgTenure(p){ const hd=p&&parseDate(p.hireDate); if(!hd)return ''; const days=Math.floor((TODAY-hd)/86400000); if(days<0)return ''; const y=Math.floor(days/365),m=Math.floor((days%365)/30); return (y?y+' yr ':'')+(m?m+' mo':(y?'':days+' days')); }
-async function renderDocs(){
-  const dl=document.getElementById('docsCgList');
-  if(dl&&spine.length&&dl.children.length<2){
-    dl.innerHTML=spine.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>'<option value="'+escHtml(p.name)+'">').join('');
-  }
-  ceCheckDs();
+async function renderDocs(){ ceCheckDs(); }
+// Custom caregiver search dropdown (native <datalist> was unreliable across browsers).
+function ceFilterCg(q){
+  const dd=document.getElementById('docsCgDrop'); if(!dd)return;
+  if(!spine.length){ dd.innerHTML='<div class="dropdown-empty">Caregiver data is still loading…</div>'; dd.classList.add('open'); return; }
+  q=(q||'').toLowerCase().trim();
+  const list=spine.filter(p=>p&&p.name&&(!q||p.name.toLowerCase().includes(q)||String(p.market||'').toLowerCase().includes(q)))
+    .sort((a,b)=>a.name.localeCompare(b.name)).slice(0,60);
+  dd.innerHTML=list.length?list.map(p=>'<div class="dropdown-item" onmousedown="ceSelectCg(\''+String(p.key).replace(/'/g,"\\'")+'\')">'+escHtml(p.name)+'<div class="item-market">'+escHtml(p.market||'')+(p.manager?' · '+escHtml(p.manager):'')+'</div></div>').join('')
+    :'<div class="dropdown-empty">No caregivers found</div>';
+  dd.classList.add('open');
 }
+function ceSelectCg(key){
+  const p=spine.find(x=>x.key===key); if(!p)return;
+  document.getElementById('docsCg').value=p.name;
+  document.getElementById('docsCgDrop').classList.remove('open');
+  ceOnCgPick();
+}
+function ceCgKey(e){
+  const dd=document.getElementById('docsCgDrop'); const items=dd.querySelectorAll('.dropdown-item'); const active=dd.querySelector('.dropdown-item.active');
+  if(e.key==='ArrowDown'){e.preventDefault();const n=active?active.nextElementSibling:items[0];if(n){active&&active.classList.remove('active');n.classList.add('active');n.scrollIntoView({block:'nearest'});}}
+  else if(e.key==='ArrowUp'){e.preventDefault();const pr=active?active.previousElementSibling:items[items.length-1];if(pr){active&&active.classList.remove('active');pr.classList.add('active');pr.scrollIntoView({block:'nearest'});}}
+  else if(e.key==='Enter'){e.preventDefault();(active||items[0])&&(active||items[0]).dispatchEvent(new MouseEvent('mousedown'));}
+  else if(e.key==='Escape'){dd.classList.remove('open');}
+}
+document.addEventListener('click',e=>{ const w=document.getElementById('docsCgDrop'); if(w&&!e.target.closest('#docsCg')&&!e.target.closest('#docsCgDrop'))w.classList.remove('open'); });
 async function ceCheckDs(){
   const box=document.getElementById('dsConn'); if(!box)return;
   const sid=_mceSid();
