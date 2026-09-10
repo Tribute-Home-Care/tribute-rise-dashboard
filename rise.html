@@ -598,7 +598,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <div class="fc" style="margin-bottom:14px">
       <div class="grid two" style="gap:10px">
         <div><div class="ct">Caregiver</div>
-          <input list="docsCgList" id="docsCg" placeholder="Search caregiver…" oninput="ceOnCgPick()" style="width:100%;padding:7px 9px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
+          <input list="docsCgList" id="docsCg" placeholder="Search caregiver…" oninput="ceOnCgPick()" onfocus="renderDocs(true)" style="width:100%;padding:7px 9px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
           <datalist id="docsCgList"></datalist>
           <div id="docsCgMeta" class="stat-foot" style="margin-top:3px"></div></div>
         <div><div class="ct">Document type</div>
@@ -2428,7 +2428,7 @@ async function ceDraft(){
     const card=document.getElementById('docsDraftCard');
     card.style.display=''; card.dataset.subject=j.subject||''; card.dataset.doctype=j.docType||type;
     document.getElementById('docsResult').innerHTML='';
-    msg.textContent='✓ Draft ready — review & edit below.';
+    msg.textContent=j.truncated?'⚠ Draft ran long and may be cut off at the end — check the closing and re-draft if needed.':'✓ Draft ready — review & edit below.';
     card.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){ msg.textContent='Draft failed: '+e.message; }
   btn.disabled=false;
