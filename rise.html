@@ -600,7 +600,8 @@ table.sched-tbl tr:last-child td{border-bottom:none}
         <div><div class="ct">Caregiver</div>
           <input list="docsCgList" id="docsCg" placeholder="Search caregiver…" oninput="ceOnCgPick()" onfocus="renderDocs(true)" style="width:100%;padding:7px 9px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
           <datalist id="docsCgList"></datalist>
-          <div id="docsCgMeta" class="stat-foot" style="margin-top:3px"></div></div>
+          <div id="docsCgMeta" class="stat-foot" style="margin-top:3px"></div>
+          <div id="docsSeBox" style="margin-top:8px"></div></div>
         <div><div class="ct">Document type</div>
           <select id="docsType" style="width:100%;padding:7px 9px;font-size:13px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
             <option value="pip">Development / Performance Improvement Plan</option>
@@ -2408,16 +2409,55 @@ function ceOnCgPick(){
   const meta=document.getElementById('docsCgMeta');
   if(_docsCg){ const v=_docsCg.viv||{}; meta.textContent=[_docsCg.title||v.title||'',_docsCg.market||'',_cgTenure(_docsCg)?'tenure '+_cgTenure(_docsCg):'',(v.email||'no email on file')].filter(Boolean).join(' · '); }
   else meta.textContent='';
+  ceRenderSeList();
+}
+// Service-exception checklist for the picked caregiver: the MCE selects which
+// incidents the document is about; those become the factual record the AI cites.
+let _docsSes=[];
+function ceRenderSeList(){
+  const box=document.getElementById('docsSeBox'); if(!box)return;
+  _docsSes=[];
+  if(!_docsCg){ box.innerHTML=''; return; }
+  const ses=((_docsCg.viv&&_docsCg.viv.exceptions)||[]).slice().filter(e=>e&&e.date)
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,40);
+  if(!ses.length){ box.innerHTML='<div class="stat-foot">No service exceptions on record for this caregiver (last 6 months).</div>'; return; }
+  _docsSes=ses;
+  let h='<div style="border:.5px solid var(--border2);border-radius:8px;background:var(--bg2);padding:8px 10px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px">'+
+      '<div class="ct" style="margin:0">Include these incidents ('+ses.length+' on record)</div>'+
+      '<div style="font-size:11px"><a class="card-link" style="cursor:pointer" onclick="ceSeAll(true)">select all</a> · <a class="card-link" style="cursor:pointer" onclick="ceSeAll(false)">none</a></div></div>'+
+    '<div style="max-height:220px;overflow:auto">';
+  ses.forEach((e,i)=>{
+    h+='<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-top:.5px solid var(--border);font-size:12px;cursor:pointer">'+
+      '<input type="checkbox" class="docsSe" data-i="'+i+'" style="margin-top:2px">'+
+      '<div style="min-width:0"><strong>'+escHtml(formatDate(parseDate(e.date)))+'</strong> · '+escHtml(e.type||'—')+
+      (e.desc?'<div style="color:var(--text2);margin-top:1px">'+escHtml(String(e.desc).slice(0,220))+(String(e.desc).length>220?'…':'')+'</div>':'')+
+      (e.resolution?'<div style="color:var(--text3);margin-top:1px">Resolution: '+escHtml(String(e.resolution).slice(0,160))+(String(e.resolution).length>160?'…':'')+'</div>':'')+
+      '</div></label>';
+  });
+  h+='</div><div class="stat-foot" style="margin-top:4px">Checked incidents are written into the document as the factual reasons (with dates). Leave all unchecked to draft from your notes only.</div></div>';
+  box.innerHTML=h;
+}
+function ceSeAll(on){ document.querySelectorAll('.docsSe').forEach(c=>{c.checked=on;}); }
+function ceSelectedSes(){
+  const out=[];
+  document.querySelectorAll('.docsSe:checked').forEach(c=>{ const e=_docsSes[+c.dataset.i]; if(e)out.push(e); });
+  return out;
 }
 async function ceDraft(){
   const sit=(document.getElementById('docsSituation').value||'').trim();
   const type=document.getElementById('docsType').value;
   const msg=document.getElementById('docsDraftMsg'), btn=document.getElementById('docsDraftBtn');
   if(!_docsCg&&type!=='letter'){ msg.textContent='Pick a caregiver first.'; return; }
-  if(sit.length<8){ msg.textContent='Add a few sentences about the situation first.'; return; }
+  const picked=ceSelectedSes();
+  if(sit.length<8&&!picked.length){ msg.textContent='Add a few sentences about the situation, or check the incidents to include.'; return; }
   btn.disabled=true; msg.textContent='Tribute Intelligence is drafting…';
+  const _seLine=e=>formatDate(parseDate(e.date))+' · '+(e.type||'')+(e.desc?' — '+e.desc:'')+(e.resolution?' [Resolution/follow-up: '+e.resolution+']':'');
   const cg=_docsCg?{ name:_docsCg.name, role:_docsCg.title||(_docsCg.viv&&_docsCg.viv.title)||'', market:_docsCg.market||'', tenure:_cgTenure(_docsCg),
-    recentSEs:((_docsCg.viv&&_docsCg.viv.exceptions)||[]).filter(e=>_withinDays(e.date,120)).slice(0,12).map(e=>e.date+' · '+(e.type||'')+(e.desc?' — '+e.desc:'')) }:{};
+    // Selected incidents = the factual record the document cites. Only fall back to
+    // loose recent-SE context when nothing was selected.
+    incidents:picked.map(_seLine),
+    recentSEs:picked.length?[]:((_docsCg.viv&&_docsCg.viv.exceptions)||[]).filter(e=>_withinDays(e.date,120)).slice(0,12).map(_seLine) }:{};
   try{
     const r=await fetch(CE_API+'/cedocdraft',{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),
       body:JSON.stringify({docType:type, caregiver:cg, situation:sit, mceName:(CURRENT_USER&&CURRENT_USER.name)||''})});
