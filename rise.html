@@ -620,6 +620,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     </div>
     <div class="fc" id="docsDraftCard" style="display:none;margin-bottom:14px">
       <div class="ct">Draft — review &amp; edit before sending</div>
+      <div id="docsNotes" style="display:none;margin:6px 0 8px;padding:8px 12px;border-left:3px solid var(--amber);background:var(--amber-bg,rgba(255,170,0,.08));border-radius:6px;font-size:12px;color:var(--text2)"></div>
       <input id="docsTitle" style="width:100%;font-size:15px;font-weight:700;margin:6px 0 8px;padding:6px 8px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">
       <div id="docsBody" contenteditable="true" style="min-height:220px;border:.5px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);padding:14px 16px;font-size:14px;line-height:1.55;overflow:auto"></div>
       <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -2486,6 +2487,10 @@ async function ceDraft(){
     const j=await r.json();
     document.getElementById('docsTitle').value=j.title||'';
     document.getElementById('docsBody').innerHTML=j.bodyHtml||'';
+    // Model's optional concerns — shown separately, NOT part of the document.
+    const nb=document.getElementById('docsNotes');
+    if(j.notes){ nb.innerHTML='<strong>Drafting notes from Tribute Intelligence</strong> <span style="color:var(--text3)">(for you — not included in the document)</span><div style="margin-top:4px;white-space:pre-wrap">'+escHtml(j.notes.replace(/^\s*[-•*]\s*/gm,'• '))+'</div>'; nb.style.display=''; }
+    else { nb.style.display='none'; nb.innerHTML=''; }
     const card=document.getElementById('docsDraftCard');
     card.style.display=''; card.dataset.subject=j.subject||''; card.dataset.doctype=j.docType||type;
     document.getElementById('docsResult').innerHTML='';
