@@ -327,7 +327,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
 
 <!-- HEADER -->
 <header class="hdr">
-  <a class="logo" href="https://tribute-home-care.github.io/TributeKSFs/index.html" title="Back to the Intelligence Hub">
+  <a class="logo" href="https://tribute-home-care.github.io/TributeKSFs/index.html" target="_top" title="Back to the Intelligence Hub">
     <span class="wordmark">Tribute<span class="wm-dot">.</span></span>
     <span class="pulse"></span>
     <span class="wordmark-sub">Rise Dashboard</span>
@@ -1471,7 +1471,7 @@ function renderTracker(){
     if(phoneFmt){
       const tel=(rawPhone.length===10?'+1':'+')+rawPhone;
       const callHref='https://teams.microsoft.com/l/call/0/0?users=4:'+encodeURIComponent(tel);
-      phoneIco='<a href="'+callHref+'" title="Call '+escHtml(phoneFmt)+' in Microsoft Teams" onclick="event.stopPropagation()" style="text-decoration:none;font-size:15px">📞</a>';
+      phoneIco='<a href="'+callHref+'" target="_blank" rel="noopener" title="Call '+escHtml(phoneFmt)+' in Microsoft Teams" onclick="event.stopPropagation()" style="text-decoration:none;font-size:15px">📞</a>';
     }
     const cgEmail=(cv&&cv.email)?String(cv.email).trim():'';
     const emailIco=cgEmail?'<a href="mailto:'+escHtml(cgEmail)+'" title="'+escHtml(cgEmail)+'" onclick="event.stopPropagation()" style="text-decoration:none;font-size:15px">✉️</a>':'';
@@ -1793,7 +1793,7 @@ function renderCaregiver(){
     // PSTN number; the +E.164 value is URL-encoded so the leading + survives.
     const tel=(rawPhone.length===10?'+1':'+')+rawPhone;
     const callHref='https://teams.microsoft.com/l/call/0/0?users=4:'+encodeURIComponent(tel);
-    contactBits.push('📞 <a href="'+callHref+'" title="Call in Microsoft Teams" style="color:var(--blue-text);text-decoration:none">'+escHtml(phoneFmt)+'</a>');
+    contactBits.push('📞 <a href="'+callHref+'" target="_blank" rel="noopener" title="Call in Microsoft Teams" style="color:var(--blue-text);text-decoration:none">'+escHtml(phoneFmt)+'</a>');
   }
   if(cgEmail)contactBits.push('✉ <a href="mailto:'+escHtml(cgEmail)+'" style="color:var(--blue-text);text-decoration:none">'+escHtml(cgEmail)+'</a>');
   const contactLine=contactBits.length?'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+contactBits.join(' &nbsp;·&nbsp; ')+'</div>':'';
