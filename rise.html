@@ -383,11 +383,9 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div class="ntab" id="tab-scoreboard" onclick="switchTab('scoreboard')">Performance</div>
   <div class="ntab" id="tab-dashboard" onclick="switchTab('dashboard')">Caregiver Dashboard</div>
   <div class="ntab" id="tab-summary" onclick="switchTab('summary')">Rise Summary</div>
-  <div class="ntab" id="tab-newhires" onclick="switchTab('newhires')">New Hires</div>
   <div class="ntab" id="tab-leave" onclick="switchTab('leave')">CAs on Leave</div>
   <div class="ntab" id="tab-certs" onclick="switchTab('certs')">Certifications</div>
   <div class="ntab" id="tab-referrals" onclick="switchTab('referrals')">Referrals</div>
-  <div class="ntab" id="tab-todo" onclick="switchTab('todo')">To Do</div>
   <div class="ntab" id="tab-hours" onclick="switchTab('hours')">Desired Hours</div>
   <div class="ntab" id="tab-f90d" onclick="switchTab('f90d')">First 90 Days</div>
   <div class="ntab" id="tab-docs" onclick="switchTab('docs')">DocuSign Assist</div>
@@ -512,25 +510,11 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <input type="date" id="sumFrom" onchange="renderSummary()" style="padding:6px 8px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
     <label>to</label>
     <input type="date" id="sumTo" onchange="renderSummary()" style="padding:6px 8px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
+    <button onclick="printNewHireSchedules()" title="Open a printable sheet of this week's client-visit schedules for every caregiver in their first 90 days, using the MCE and market filters above" style="border:1px solid var(--orange);background:var(--orange-bg);color:var(--orange-text);border-radius:9px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">📅 This Week's Schedules</button>
     <span class="count" id="sumCount"></span>
   </div>
   <div id="mceKsf" style="margin:0 14px 18px"></div>
   <div id="summary"></div>
-</div>
-
-<!-- PAGE: NEW HIRES -->
-<div id="page-newhires" style="display:none">
-  <div class="bar" style="flex-wrap:wrap">
-    <label>MCE</label>
-    <select id="nhMce" onchange="renderNewHires()"><option value="">All MCEs</option></select>
-    <label>State</label>
-    <select id="nhMarket" onchange="renderNewHires()"><option value="">All states</option></select>
-    <label>Status</label>
-    <select id="nhStatus" onchange="renderNewHires()"><option value="">All statuses</option><option value="Active">Active</option><option value="Retained">Retained (90+)</option><option value="Termed">Termed</option></select>
-    <button onclick="printNewHireSchedules()" title="Open a printable sheet of this week's client-visit schedules for all first-90-day caregivers in the current MCE/state filter" style="border:1px solid var(--orange);background:var(--orange-bg);color:var(--orange-text);border-radius:9px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">📅 This Week's Schedules</button>
-    <span class="count" id="nhCount"></span>
-  </div>
-  <div id="newhires"><div class="empty-state"><div class="big">🧭</div><div>Loading the 90-day new-hire tracker…</div></div></div>
 </div>
 
 <!-- PAGE: CERTIFICATIONS -->
@@ -562,31 +546,6 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <span class="count" id="refCount"></span>
   </div>
   <div id="referrals"><div class="empty-state"><div class="big">🤝</div><div>Loading caregiver referrals…</div></div></div>
-</div>
-
-<!-- PAGE: TO DO -->
-<div id="page-todo" style="display:none">
-  <div class="bar" style="flex-wrap:wrap">
-    <label style="display:inline-flex;align-items:center;gap:5px;font-weight:600"><input type="checkbox" id="todoShowDone" onchange="renderTodo()" style="margin:0"> Show completed</label>
-    <button class="rm-btn o" style="padding:6px 12px;font-size:12px" onclick="loadTodo(true)">↻ Refresh</button>
-    <span class="count" id="todoCount"></span>
-  </div>
-  <div style="margin:0 14px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-    <input type="text" id="todoAddText" placeholder="Add a to-do…" onkeydown="if(event.key==='Enter')todoAdd()" style="padding:7px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);flex:1;min-width:220px">
-    <select id="todoAddSection" style="padding:7px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
-      <option value="today">Today</option>
-      <option value="week" selected>This Week</option>
-      <option value="month">This Month</option>
-    </select>
-    <select id="todoAddRecurring" style="padding:7px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text)">
-      <option value="none" selected>One-time</option>
-      <option value="daily">Repeat daily</option>
-      <option value="weekly">Repeat weekly</option>
-      <option value="monthly">Repeat monthly</option>
-    </select>
-    <button class="rm-btn g" style="padding:7px 14px;font-size:13px" onclick="todoAdd()">+ Add item</button>
-  </div>
-  <div id="todo"><div class="empty-state"><div class="spin"></div>Loading your to-do list…</div></div>
 </div>
 
 <!-- PAGE: CAs ON LEAVE -->
@@ -835,7 +794,7 @@ function updateMyTeamBanner(){
 }
 
 // ── Admin-only "Preview as MCE" ────────────────────────────────────────────
-const PREVIEW_MCE_IDS=['managerFilter','sbMce','certMce','nhMce','leaveMce','sumMce','f90Mce'];
+const PREVIEW_MCE_IDS=['managerFilter','sbMce','certMce','leaveMce','sumMce','f90Mce'];
 let _previewMceBuilt=false;
 // Switch the whole UI into (or out of) previewing a given MCE's scope.
 function setPreviewMce(name){
@@ -2349,11 +2308,18 @@ async function renderCgSchedule(cgid){
 // for sending to Chantal & the CSMs). Joined by cgid so nicknames/Geos all appear.
 async function printNewHireSchedules(){
   const key=getKey(); if(!_hasAuth()){ showGate(); return; }
-  const mce=(document.getElementById('nhMce')||{}).value||'', state=(document.getElementById('nhMarket')||{}).value||'';
+  // Reads the RISE SUMMARY filters since the New Hires tab was removed
+  // (Charlotte, 2026-09-15). That also fixes a filter that never worked: the old
+  // nhMarket options were built from newHiresData.rows[].state (MA/MD/IL) while
+  // the line below filters on the spine's p.market, which is the iSolved
+  // Department Title — so picking a state silently matched nothing. sumMarket is
+  // built from spine p.market, the same field filtered here, so the two now
+  // agree by construction.
+  const mce=(document.getElementById('sumMce')||{}).value||'', state=(document.getElementById('sumMarket')||{}).value||'';
   const wk=_sundayStr(TODAY), wkEnd=_addDaysStr(wk,6);
   const nh=spine.filter(p=>p.viv&&p.viv.id&&p.hireDate&&((TODAY-p.hireDate)/86400000)<=90&&(!mce||p.manager===mce)&&(!state||p.market===state))
     .sort((a,b)=>a.name.localeCompare(b.name));
-  if(!nh.length){ alert('No new hires in their first 90 days match the current MCE/state filter.'); return; }
+  if(!nh.length){ alert('No caregivers in their first 90 days match the current MCE/market filter.'); return; }
   let data=schedCache[wk];
   if(!data){ try{ const r=await fetch(PROXY+'?endpoint=rise_week_schedule&week='+wk,{headers:await authHeaders()}); if(!r.ok)throw new Error('HTTP '+r.status); data=await r.json(); schedCache[wk]=data; }catch(e){ alert('Could not load schedules: '+e.message); return; } }
   const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -2396,18 +2362,16 @@ let _navReady=false, _curTab='tracker';
 function switchTab(tab,push){
   if(push===undefined)push=true;
   _curTab=tab;
-  ['tracker','scoreboard','dashboard','summary','newhires','leave','certs','referrals','todo','hours','docs','f90d'].forEach(t=>{
+  ['tracker','scoreboard','dashboard','summary','leave','certs','referrals','hours','docs','f90d'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
   });
   if(tab==='tracker')renderTracker();
   if(tab==='scoreboard')renderPerf();
   if(tab==='summary')renderSummary();
-  if(tab==='newhires')loadNewHires();
   if(tab==='leave')loadLeave();
   if(tab==='certs')renderCerts();
   if(tab==='referrals')loadReferrals();
-  if(tab==='todo')loadTodo();
   if(tab==='hours')loadHoursFrame();
   if(tab==='docs')renderDocs();
   if(tab==='f90d')loadF90D();
@@ -3883,221 +3847,27 @@ function todoAutoItems(){
   return items;
 }
 
+// The To Do TAB was removed (Charlotte, 2026-09-15) but the store is still read
+// by the Caregiver Dashboard's per-caregiver To-Do card, so this loader stays.
+// It no longer renders a page of its own or reports errors to a #todo element —
+// there is no such element now. A failure here must stay SILENT and leave
+// todoData null: the profile card reads that as "Loading to-do items…" rather
+// than claiming the caregiver has none, which is the wrong thing to tell an MCE.
 async function loadTodo(force){
   if(force)todoData=null;
-  if(todoData){ renderTodo(); return; }
+  if(todoData)return;
   if(todoLoading)return; todoLoading=true;
-  document.getElementById('todo').innerHTML='<div class="empty-state"><div class="spin"></div>Loading your to-do list…</div>';
   try{
     const r=await fetch(PROXY+'?endpoint=todo_list',{headers:await authHeaders()});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const j=await r.json();
     todoData={items:(j&&j.items)||[], done:(j&&j.done)||{}};
   }catch(e){
-    document.getElementById('todo').innerHTML='<div class="err" style="display:block">Couldn\'t load your to-do list: '+escHtml(e.message)+'. If the backend was just updated, give it a minute and hit Refresh.</div>';
+    console.warn('[todo] store unavailable, per-caregiver To-Do card will stay in its loading state:', e.message);
     todoLoading=false; return;
   }
-  todoLoading=false; renderTodo();
+  todoLoading=false;
   if(selectedKey)renderCaregiver();   // the dashboard's per-caregiver To-Do card reads this store (r14)
-}
-
-// POST an action, fold the returned {items,done} back into module state, re-render.
-async function todoPost(body){
-  if(!todoData)todoData={items:[],done:{}};
-  try{
-    const r=await fetch(PROXY+'?endpoint=todo_list',{method:'POST',
-      headers:await authHeaders({'Content-Type':'application/json'}),
-      body:JSON.stringify(body)});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const j=await r.json();
-    if(j&&j.items)todoData.items=j.items;
-    if(j&&j.done)todoData.done=j.done;
-  }catch(e){ showErr('To-do update failed: '+e.message+'. Try again in a moment.'); }
-  renderTodo();
-}
-function todoComplete(id){ todoPost({action:'complete', id}); }
-function todoRestore(id){ todoPost({action:'restore', id}); }
-function todoDelete(id){ if(confirm('Delete this to-do item?'))todoPost({action:'delete', id}); }
-function todoAdd(){
-  const t=document.getElementById('todoAddText');
-  const text=(t.value||'').trim(); if(!text)return;
-  const section=document.getElementById('todoAddSection').value;
-  const recurring=document.getElementById('todoAddRecurring').value;
-  t.value='';
-  todoPost({action:'add', item:{text, section, recurring}});
-}
-
-// One item row: complete/restore control + text (+ auto badge) + delete (user only).
-function todoRow(it,isDone){
-  const idAttr=escHtml(String(it.id).replace(/'/g,"\\'"));
-  const ctrl=isDone
-    ? '<button title="Restore" onclick="todoRestore(\''+idAttr+'\')" style="flex:none;width:22px;height:22px;border-radius:6px;border:1px solid var(--border2);background:var(--green);color:#fff;cursor:pointer;font-size:12px;line-height:1">↺</button>'
-    : '<button title="Mark done" onclick="todoComplete(\''+idAttr+'\')" style="flex:none;width:22px;height:22px;border-radius:6px;border:1px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer;font-size:12px;line-height:1">✓</button>';
-  const autoBadge=it.auto?' <span class="bdg bg-b" style="font-size:9px">auto</span>':'';
-  const recBadge=(!it.auto&&it.recurring&&it.recurring!=='none')?' <span class="bdg bg-n" style="font-size:9px">'+escHtml(it.recurring)+'</span>':'';
-  const del=it.auto?'':'<button title="Delete" onclick="todoDelete(\''+idAttr+'\')" style="flex:none;border:none;background:none;color:var(--text3);cursor:pointer;font-size:16px;line-height:1;padding:0 2px">×</button>';
-  const txt=it.auto&&it.key
-    ? '<span style="cursor:pointer" onclick="openCaregiver(\''+String(it.key).replace(/'/g,"\\'")+'\')">'+escHtml(it.text)+'</span>'
-    : escHtml(it.text);
-  return '<div style="display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-bottom:.5px solid var(--border2)'+(isDone?';opacity:.55':'')+'">'+
-    ctrl+
-    '<div style="flex:1;font-size:13px;line-height:1.4'+(isDone?';text-decoration:line-through':'')+'">'+txt+autoBadge+recBadge+'</div>'+
-    del+'</div>';
-}
-
-function todoSectionBlock(title,sub,list,done,showDone){
-  const open=list.filter(it=>!done[it.id]);
-  const closed=showDone?list.filter(it=>done[it.id]):[];
-  let body='';
-  if(!open.length&&!closed.length){
-    body='<div class="no-data" style="padding:12px">Nothing here'+(showDone?'':' — you\'re all caught up. 🎉')+'</div>';
-  }else{
-    body=open.map(it=>todoRow(it,false)).join('')+closed.map(it=>todoRow(it,true)).join('');
-  }
-  return '<div class="fc" style="padding:0;margin-bottom:14px;overflow:hidden">'+
-    '<div style="padding:12px 14px;border-bottom:1px solid var(--border)">'+
-      '<div class="ct" style="margin:0">'+escHtml(title)+' <span class="bdg bg-n" style="font-size:9px">'+open.length+'</span></div>'+
-      (sub?'<div class="stat-foot" style="margin-top:3px">'+escHtml(sub)+'</div>':'')+
-    '</div>'+body+'</div>';
-}
-
-function renderTodo(){
-  const el=document.getElementById('todo');
-  if(!todoData){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading your to-do list…</div>'; return; }
-  const showDone=!!(document.getElementById('todoShowDone')||{}).checked;
-  const done=todoData.done||{};
-  // Merge auto items with the user's stored items, de-duping by id (a stored item
-  // with the same id as an auto one — shouldn't happen, but be safe — wins).
-  const stored=(todoData.items||[]).map(it=>({id:it.id, text:it.text, section:it.section||'today', recurring:it.recurring||'none', auto:false}));
-  const storedIds=new Set(stored.map(it=>it.id));
-  const auto=todoAutoItems().filter(it=>!storedIds.has(it.id));
-  const all=auto.concat(stored);
-  const bySection=s=>all.filter(it=>it.section===s);
-  const today=bySection('today'), week=bySection('week'), month=bySection('month');
-  const openCount=list=>list.filter(it=>!done[it.id]).length;
-  const oT=openCount(today), oW=openCount(week), oM=openCount(month);
-  document.getElementById('todoCount').textContent=(oT+oW+oM)+' open item'+((oT+oW+oM)!==1?'s':'');
-  let h='<div class="grid three" style="margin-bottom:14px">'+
-    '<div class="fc"><div class="ct">Open — Today</div><div class="big-stat"><span class="v '+(oT?'a':'g')+'">'+oT+'</span></div><div class="stat-foot">due today</div></div>'+
-    '<div class="fc"><div class="ct">Open — This Week</div><div class="big-stat"><span class="v '+(oW?'a':'g')+'">'+oW+'</span></div><div class="stat-foot">next 7 days</div></div>'+
-    '<div class="fc"><div class="ct">Open — This Month</div><div class="big-stat"><span class="v '+(oM?'a':'g')+'">'+oM+'</span></div><div class="stat-foot">next 30 days</div></div>'+
-  '</div>';
-  h+=todoSectionBlock('Today','Your day-of items. '+(today.some(it=>it.auto)?'':'Form-triggered items coming soon.'),today,done,showDone);
-  h+=todoSectionBlock('This Week','Rise meetings overdue or due within 7 days, plus anything you add.',week,done,showDone);
-  h+=todoSectionBlock('This Month','Tracked documents expiring within 30 days, plus anything you add.',month,done,showDone);
-  el.innerHTML=h;
-}
-
-// ── NEW HIRES — 90-Day New-Hire Tracker (Charlotte 7/28) ──
-// Richer replacement for the old first-visit tab: pulls the 90-Day Tracker's
-// data (ninety_day multi-year + ninety_day_ats) and merges/adapts it the same
-// way ninety.html does (adaptRow), rendered in the Rise dashboard's own style.
-let newHiresData=null, newHiresLoading=false;
-const _nhST2AB={'Massachusetts':'MA','Maryland':'MD','Illinois':'IL','Virginia':'VA','New Jersey':'NJ'};
-function _nhSource(s){ s=String(s||'').toLowerCase(); if(!s)return '';
-  if(s.includes('indeed'))return 'Indeed'; if(s.includes('zip'))return 'ZipRecruiter';
-  if(s.includes('refer'))return 'Referral'; if(s.includes('school')||s.includes('community')||s.includes('college'))return 'School/Community';
-  return 'Other'; }
-function _nhAdapt(r,ats){
-  const a=Object.assign({},(r.email&&ats[String(r.email).toLowerCase()])||{},ats[String(r.mnum)]||{});
-  const los=Math.max(0,r.tenureDays||0);
-  const status=r.termDate?'Termed':(los>=90?'Retained':'Active');
-  let exit=r.termType||''; if(r.termType&&r.termDetail)exit=r.termType;
-  // Driver flag. The ATS 'driver' field is often "Unset"/"Nan"/"Pending" for
-  // recent hires, so only trust a clean yes/no; otherwise infer from the commute
-  // method ("Drive their own vehicle" etc.), which is populated far more often.
-  let drv='';
-  const dRaw=String(a.driver==null?'':a.driver).trim().toLowerCase();
-  if(dRaw==='yes'||dRaw==='y'||dRaw==='true')drv='Yes';
-  else if(dRaw==='no'||dRaw==='n'||dRaw==='false')drv='No';
-  else if(a.commuteMethod)drv=(/driv|own vehicle|\bcar\b/i.test(a.commuteMethod)?'Yes':'No');
-  return { name:r.name, state:r.state||'', st:_nhST2AB[r.state]||r.state||'?', mce:r.mce||'',
-    hireIso:r.hireDate||'', hireYear:+String(r.hireDate||'').slice(0,4)||0, termDate:r.termDate||null,
-    status, los, visitType:a.visit_type||String(r.jobTitle||'').replace(/caregiver/ig,'').replace(/\s+/g,' ').trim()||'—',
-    driver:drv, source:a.source_cat||_nhSource(a.referralSource)||'—', otherJob:a.other_job||'',
-    pctDesired:r.pctDesired!=null?Math.round(r.pctDesired*100):null,
-    firstVisit:r.firstVisit||null, daysToFirst:r.daysToFirstVisit,
-    exitReason:exit, exitFull:r.termDetail||'', preventable:r.termPreventable||'',
-    prn:!!r.prn, rehire:!!r.rehire, inViv:r.inViv!==false };
-}
-async function loadNewHires(){
-  if(newHiresData){ renderNewHires(); return; }
-  if(newHiresLoading)return; newHiresLoading=true;
-  const key=getKey(); if(!_hasAuth()){ showGate(); newHiresLoading=false; return; }
-  const hd=await authHeaders();
-  try{
-    const yrs=[]; for(let y=2025;y<=TODAY.getFullYear();y++)yrs.push(y);
-    const reqs=yrs.map(y=>fetch(PROXY+'?endpoint=ninety_day&year='+y,{headers:hd}).then(r=>r.ok?r.json():{rows:[]}));
-    reqs.push(fetch(PROXY+'?endpoint=ninety_day_ats',{headers:hd}).then(r=>r.ok?r.json():{records:{}}).catch(()=>({records:{}})));
-    const res=await Promise.all(reqs);
-    const ats=(res.pop()||{}).records||{};
-    let newest=null; const raw=[];
-    res.forEach(y=>{ (y.rows||[]).forEach(x=>raw.push(x)); if(y.generatedAt&&(!newest||y.generatedAt>newest))newest=y.generatedAt; });
-    newHiresData={ rows:raw.map(r=>_nhAdapt(r,ats)), generatedAt:newest };
-  }catch(e){
-    document.getElementById('newhires').innerHTML='<div class="err" style="display:block">Couldn\'t load the 90-day tracker: '+escHtml(e.message)+' — try reopening the tab.</div>';
-    newHiresLoading=false; return;
-  }
-  newHiresLoading=false; renderNewHires();
-}
-function _nhStatusBadge(s){
-  if(s==='Retained')return '<span class="bdg bg-g">✓ Retained</span>';
-  if(s==='Termed')return '<span class="bdg bg-r">Termed</span>';
-  return '<span class="bdg bg-b">Active</span>';
-}
-function renderNewHires(){
-  const el=document.getElementById('newhires');
-  if(!newHiresData){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading the 90-day new-hire tracker…</div>'; return; }
-  const mceSel=document.getElementById('nhMce'), mSel=document.getElementById('nhMarket'), stSel=document.getElementById('nhStatus');
-  const rows0=newHiresData.rows||[];
-  if(mceSel.options.length<=1){
-    const mces=[...new Set(rows0.map(r=>r.mce).filter(Boolean))].sort();
-    mceSel.innerHTML='<option value="">All MCEs</option>'+mces.map(m=>'<option>'+escHtml(m)+'</option>').join('');
-    defaultToMyTeam(mceSel);   // first-population default to the signed-in user's own team
-    const sts=[...new Set(rows0.map(r=>r.state).filter(Boolean))].sort();
-    mSel.innerHTML='<option value="">All states</option>'+sts.map(m=>'<option>'+escHtml(m)+'</option>').join('');
-  }
-  const mce=mceSel.value, state=mSel.value, st=stSel.value;
-  let rows=rows0.filter(r=>(!mce||r.mce===mce)&&(!state||r.state===state)&&(!st||r.status===st));
-  // KPIs
-  const termed=rows.filter(r=>r.status==='Termed');
-  const early=termed.filter(r=>r.los<=90);
-  const achieved=rows.filter(r=>r.los>=90).length;
-  const active=rows.filter(r=>r.status!=='Termed').length;
-  const avgLos=termed.length?Math.round(termed.reduce((a,r)=>a+r.los,0)/termed.length):null;
-  const tPct=rows.length?Math.round(termed.length/rows.length*100):0;
-  document.getElementById('nhCount').textContent=rows.length+' hires · 90-day cohorts 2025–'+TODAY.getFullYear()+(newHiresData.generatedAt?' · as of '+fmtTime(newHiresData.generatedAt):'');
-  let h='<div class="grid four" style="margin-bottom:14px">'+
-    '<div class="fc"><div class="ct">Total hires</div><div class="big-stat"><span class="v">'+rows.length+'</span></div><div class="stat-foot">2025–'+TODAY.getFullYear()+' cohorts</div></div>'+
-    '<div class="fc"><div class="ct">Achieved 90 days</div><div class="big-stat"><span class="v g">'+achieved+'</span></div><div class="stat-foot">'+(rows.length?Math.round(achieved/rows.length*100):0)+'% of hires</div></div>'+
-    '<div class="fc"><div class="ct">Active</div><div class="big-stat"><span class="v g">'+active+'</span></div><div class="stat-foot">'+(100-tPct)+'% still with us</div></div>'+
-    '<div class="fc"><div class="ct">Termed</div><div class="big-stat"><span class="v r">'+termed.length+'</span></div><div class="stat-foot">'+tPct+'% · '+early.length+' within 90d</div></div>'+
-  '</div>';
-  h+='<div class="grid four" style="margin-bottom:14px">'+
-    '<div class="fc"><div class="ct">0–30 day exits</div><div class="big-stat"><span class="v r">'+early.filter(r=>r.los<=30).length+'</span></div><div class="stat-foot">heaviest drop-off window</div></div>'+
-    '<div class="fc"><div class="ct">31–60 day exits</div><div class="big-stat"><span class="v a">'+early.filter(r=>r.los>30&&r.los<=60).length+'</span></div><div class="stat-foot"></div></div>'+
-    '<div class="fc"><div class="ct">61–90 day exits</div><div class="big-stat"><span class="v a">'+early.filter(r=>r.los>60&&r.los<=90).length+'</span></div><div class="stat-foot"></div></div>'+
-    '<div class="fc"><div class="ct">Avg LOS (termed)</div><div class="big-stat"><span class="v">'+(avgLos!=null?avgLos+'d':'—')+'</span></div><div class="stat-foot">days before exit</div></div>'+
-  '</div>';
-  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>St</th><th>MCE</th><th>Hire</th><th>Status</th><th>LOS</th><th>Visit type</th><th>Driver</th><th>Source</th><th>2nd job</th><th>% hrs</th><th>Exit reason</th></tr></thead><tbody>';
-  // active (recent hire) first, then termed by shortest LOS
-  rows.sort((a,b)=>{ if(a.status!=='Termed'&&b.status==='Termed')return -1; if(b.status!=='Termed'&&a.status==='Termed')return 1;
-    if(a.status==='Termed')return a.los-b.los; return (b.hireIso||'').localeCompare(a.hireIso||''); });
-  rows.forEach(r=>{
-    const drvChip=r.driver==='Yes'?'<span class="bdg bg-g">Yes</span>':r.driver==='No'?'<span class="bdg bg-r">No</span>':'—';
-    const jobChip=r.otherJob==='Yes'?'<span class="bdg bg-a">Yes</span>':r.otherJob==='No'?'<span class="bdg bg-n">No</span>':'—';
-    const pc=r.pctDesired!=null?(r.pctDesired>=80?'g':r.pctDesired>=50?'a':'r'):'';
-    h+='<tr><td class="td-name">'+escHtml(r.name)+(r.rehire?' <span class="bdg bg-n" title="rehire">↩</span>':'')+(r.inViv===false?' <span class="bdg bg-a" title="in iSolved but not activated in Viv">⚠</span>':'')+'</td>'+
-      '<td class="td-date">'+escHtml(r.st)+'</td><td class="td-date">'+escHtml(r.mce||'—')+'</td>'+
-      '<td class="td-date">'+(r.hireIso?formatDate(parseDate(r.hireIso)):'—')+'</td>'+
-      '<td>'+_nhStatusBadge(r.status)+'</td>'+
-      '<td style="font-weight:600">'+r.los+'d</td>'+
-      '<td style="font-size:12px">'+escHtml(r.visitType||'—')+'</td>'+
-      '<td>'+drvChip+'</td><td style="font-size:12px">'+escHtml(r.source||'—')+'</td><td>'+jobChip+'</td>'+
-      '<td'+(pc?' style="font-weight:600;color:var(--'+(pc==='g'?'green':pc==='a'?'amber':'red')+')"':'')+'>'+(r.pctDesired!=null?r.pctDesired+'%':'—')+'</td>'+
-      '<td style="font-size:11px;max-width:220px;white-space:normal;color:var(--text2)">'+escHtml(r.exitReason||'—')+'</td></tr>';
-  });
-  el.innerHTML=h+'</tbody></table></div>';
 }
 
 // ════════════════════════════════════════════════════════════════════════════
