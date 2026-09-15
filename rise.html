@@ -140,6 +140,37 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
 .big-stat .v{font-size:27px;font-weight:700;font-variant-numeric:tabular-nums}
 .v.g{color:var(--green)}.v.r{color:var(--red)}.v.a{color:var(--amber)}.v.n{color:var(--text3)}
 .stat-foot{font-size:11px;color:var(--text3)}
+.f90card{margin-bottom:12px}
+.f90top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.f90name{font-size:15px;font-weight:700}
+.f90muted{font-size:11.5px;color:var(--text3)}
+.f90warn{color:var(--red);font-weight:600}
+.f90right{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.f90chips{display:flex;gap:6px;flex-wrap:wrap}
+.f90chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:14px;font-size:11.5px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--bg2);color:var(--text2);line-height:1.2}
+.f90chip em{font-style:normal;font-weight:500;opacity:.8}
+.f90chip:hover{filter:brightness(.96)}
+.f90chip.st-overdue{background:#fdeceb;border-color:#f3b4ae;color:#a12b22}
+.f90chip.st-week{background:#fff1e3;border-color:#f6c79a;color:#9a4d00}
+.f90chip.st-waiting{background:#fff8dc;border-color:#ecd47f;color:#7a5a00}
+.f90chip.st-done,.f90chip.st-auto{background:#e7f6ec;border-color:#a9dcb8;color:#1d6b35}
+.f90chip.st-skipped{opacity:.6;text-decoration:line-through}
+.f90chip.st-pending{border-style:dashed}
+.f90chip.st-ck{background:var(--bg);border-color:var(--purple);color:var(--purple)}
+.f90field{margin-bottom:14px}
+.f90field>label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:6px}
+.f90field select,.f90field textarea{width:100%;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.f90seg{display:flex;gap:6px;flex-wrap:wrap}
+.f90seg label{padding:6px 12px;border:1px solid var(--border);border-radius:14px;font-size:12px;cursor:pointer;background:var(--bg2)}
+.f90seg label.on{background:var(--purple);color:#fff;border-color:var(--purple)}
+.f90seg input{display:none}
+.f90ck details{border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin-bottom:6px;background:var(--bg)}
+.f90ck summary{font-size:12.5px;font-weight:600;cursor:pointer}
+.f90ckitem{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;padding:5px 0 5px 6px;border-top:.5px solid var(--border)}
+.f90ckitem em{margin-left:auto;font-size:10.5px;color:var(--text3);white-space:nowrap}
+.f90hist{font-size:12px;padding:8px 10px;border-left:3px solid var(--border2);margin-bottom:6px;background:var(--bg2);border-radius:0 8px 8px 0}
+.f90hist div{margin-top:4px;white-space:pre-wrap;color:var(--text2)}
+
 .no-data{color:var(--text3);font-style:italic;font-size:12px;padding:6px 0}
 
 /* MONTH GRID */
@@ -358,6 +389,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div class="ntab" id="tab-referrals" onclick="switchTab('referrals')">Referrals</div>
   <div class="ntab" id="tab-todo" onclick="switchTab('todo')">To Do</div>
   <div class="ntab" id="tab-hours" onclick="switchTab('hours')">Desired Hours</div>
+  <div class="ntab" id="tab-f90d" onclick="switchTab('f90d')">First 90 Days</div>
   <div class="ntab" id="tab-docs" onclick="switchTab('docs')">DocuSign Assist</div>
 </div>
 
@@ -591,6 +623,34 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <iframe id="hoursFrame" title="Caregiver Hours &amp; Happiness" style="width:100%;height:calc(100vh - 190px);border:none;background:var(--bg)"></iframe>
 </div>
 
+<div id="page-f90d" style="display:none">
+  <div class="bar" style="flex-wrap:wrap">
+    <label>MCE</label>
+    <select id="f90Mce" onchange="renderF90D()"><option value="">All MCEs</option></select>
+    <label>Market</label>
+    <select id="f90Market" onchange="renderF90D()"><option value="">All markets</option></select>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="f90ShowDone" onchange="renderF90D()"> Show completed touchpoints</label>
+    <span class="count" id="f90Count"></span>
+  </div>
+  <div id="f90d" style="padding:0 14px 40px"></div>
+</div>
+
+<!-- F90D TOUCHPOINT DOCUMENTATION MODAL -->
+<div class="rm-overlay" id="f90Overlay" onclick="if(event.target===this)closeF90Modal()">
+  <div class="rm-modal" style="max-width:820px">
+    <div class="rm-head">
+      <div><h3 id="f90ModalName">Touchpoint</h3><div class="sub" id="f90ModalSub"></div></div>
+      <button class="rm-x" onclick="closeF90Modal()">✕</button>
+    </div>
+    <div class="rm-body" id="f90ModalBody"></div>
+    <div class="rm-foot">
+      <span id="f90SaveMsg" class="stat-foot" style="margin-right:auto"></span>
+      <button class="rm-btn o" onclick="closeF90Modal()">Cancel</button>
+      <button class="rm-btn g" onclick="saveF90Touchpoint()">Save touchpoint</button>
+    </div>
+  </div>
+</div>
+
 <div id="page-docs" style="display:none">
   <div style="max-width:920px;margin:0 auto;padding:0 14px 40px">
     <div style="font-family:'Space Grotesk',Inter,sans-serif;font-size:20px;font-weight:700;margin:6px 0 2px">📝 DocuSign Assist</div>
@@ -775,7 +835,7 @@ function updateMyTeamBanner(){
 }
 
 // ── Admin-only "Preview as MCE" ────────────────────────────────────────────
-const PREVIEW_MCE_IDS=['managerFilter','sbMce','certMce','nhMce','leaveMce','sumMce'];
+const PREVIEW_MCE_IDS=['managerFilter','sbMce','certMce','nhMce','leaveMce','sumMce','f90Mce'];
 let _previewMceBuilt=false;
 // Switch the whole UI into (or out of) previewing a given MCE's scope.
 function setPreviewMce(name){
@@ -2336,7 +2396,7 @@ let _navReady=false, _curTab='tracker';
 function switchTab(tab,push){
   if(push===undefined)push=true;
   _curTab=tab;
-  ['tracker','scoreboard','dashboard','summary','newhires','leave','certs','referrals','todo','hours','docs'].forEach(t=>{
+  ['tracker','scoreboard','dashboard','summary','newhires','leave','certs','referrals','todo','hours','docs','f90d'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
   });
@@ -2350,6 +2410,7 @@ function switchTab(tab,push){
   if(tab==='todo')loadTodo();
   if(tab==='hours')loadHoursFrame();
   if(tab==='docs')renderDocs();
+  if(tab==='f90d')loadF90D();
   // Push a history entry so the browser Back button steps between tabs instead
   // of leaving the app. popstate handler passes push=false to avoid re-pushing.
   if(push&&_navReady){ try{ history.pushState({riseTab:tab},''); }catch(e){} }
@@ -2370,6 +2431,184 @@ window.addEventListener('popstate',function(e){
   const tab=(e.state&&e.state.riseTab)||'tracker';
   if(tab!==_curTab)switchTab(tab,false);
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// FIRST 90 DAYS (F90D) — Phase 1: Support Touchpoints (Charlotte, CE workbook
+// F90D tab). Roster = current spine hired within the last 90 days. Touchpoints
+// are computed from hire date + first scheduled care visit (vivProxy
+// f90d_visits); documentation lives in the durable shared store f90d_store.
+// 45/90-day meetings auto-complete when the Viv form exists.
+// ════════════════════════════════════════════════════════════════════════════
+const F90_CHECKLIST=[
+ ['Office phone / Text line',['Office phone: press 1 to leave a message if it is after office hours','Text line: for non-urgent issues only, we respond within 24 business hours']],
+ ['VIV App',['Check in to visits on time','Check out of visits','Click "running late" for lateness of under 10 minutes','Submit quality visit notes','Apply to open visits','Check schedule','Read care plans','Submit Vacation Requests for time off','Reference the Knowledge Center']],
+ ['Uniform',['Wear Tribute Polo and black scrub pants or slacks to every visit','Wear close-toed shoes','In cold weather, wear the Tribute Jacket and/or layered long sleeve','Do not wear: head coverings (unless religious), perfumes, distracting accessories, long fingernails','Use the Tribute bag to bring any extra supplies, food, or personal items']],
+ ['Communication',['Call the office if running more than 10 minutes late','If you need to call out (within 7 days), call the office immediately','Use text messages appropriately (not for urgent needs or after hours)','When calling after office hours, press 1 to leave a message','Always pick up the return call from the after-hours team','Respond to all calls and texts within 24 hours','Respond within a few hours for urgent messages','Understand and follow client emergency protocols','Know who to call: MCE (call outs, time off, hardships, celebrations, support)','Know who to call: Client Solutions Manager (client updates, care questions, supplies)','Know who to call: Scheduler (coordinating visits)']],
+ ['Scheduling / Availability',['Maintain availability agreement for at least 60 days','Communicate with MCE immediately with a valid reason for any changes','Accept visits offered within availability','Accept visits offered within agreed travel radius','Uphold weekend commitment (long hour CAs)','When possible: fill in with late notice','Understand holiday requirement']],
+ ['Care Management',['Read the care plan immediately after being scheduled for a client','Ask questions when unsure about care','Call to report changes in client condition','Know how to respond to client falls and other incidents','Call to report necessary updates to the care plan']],
+ ['Pay and Benefits',['Hourly, per diem nature of the position (hours not guaranteed)','The 4 caregiver positions: Tribute Secure, long hours, short hour, PRN','Pay period structure','Overtime','PTO and how to use it','Timesheets and paystubs','Access iSolved','Tax forms','Direct deposit','Benefits offerings and enrollment (90 day waiting period)','Health insurance','Short term disability and life insurance','401(k)']],
+ ['Care Skills: Personal Care',['ADLs, including clients with limiting conditions (heavy care, bed bound, advanced dementia)','Safe transfers and ambulation','Light housekeeping']],
+ ['Care Skills: Behavioral Care',['Redirection strategies','Knowledge of dementia and other mental disorders','De-escalation strategies']],
+ ['Care Skills: Hospice and End of Life',['What to expect','Personal care at this stage']],
+ ['Care Skills: Auxiliary',['CPR and Heimlich maneuver','Durable Medical Equipment (DME)','Vital signs','Medication reminders']]
+];
+const F90_METHODS=['Call','Text','Emailed','Waiting for Response','Skipped'];
+let f90Store=null, f90Visits=null, f90Loading=false, f90Modal=null;
+const F90_DAY=86400000;
+function f90CgId(p){ return p.viv?String(p.viv.id):p.key; }
+function _f90Ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _f90Add(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); x.setHours(0,0,0,0); return x; }
+function _f90Short(d){ return d?d.toLocaleDateString('en-US',{weekday:'short',month:'numeric',day:'numeric'}):'—'; }
+function _f90WeekBounds(){ const dow=(TODAY.getDay()+6)%7; const mon=_f90Add(TODAY,-dow); return {mon, sun:_f90Add(mon,6)}; }
+async function loadF90D(){
+  const el=document.getElementById('f90d');
+  if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading caregivers…</div>'; setTimeout(loadF90D,1500); return; }
+  if(f90Store&&f90Visits){ renderF90D(); return; }
+  if(f90Loading)return; f90Loading=true;
+  el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading touchpoints and first scheduled visits…</div>';
+  try{
+    const h=await authHeaders();
+    const [s,v]=await Promise.all([
+      fetch(PROXY+'?endpoint=f90d_store',{headers:h}).then(r=>r.ok?r.json():{cg:{}}).catch(()=>({cg:{}})),
+      fetch(PROXY+'?endpoint=f90d_visits',{headers:h}).then(r=>r.ok?r.json():{firstVisit:{}}).catch(()=>({firstVisit:{}}))
+    ]);
+    f90Store=s.cg||{}; f90Visits=v.firstVisit||{};
+  }catch(e){ f90Store=f90Store||{}; f90Visits=f90Visits||{}; }
+  f90Loading=false; renderF90D();
+}
+// Roster: hired in the last 90 days (or hire date still ahead), active spine.
+function f90Roster(){
+  const from=_f90Add(TODAY,-90);
+  return spine.filter(p=>p.hireDate&&p.hireDate>=from).sort((a,b)=>b.hireDate-a.hireDate);
+}
+function f90Rec(p){ return f90Store[f90CgId(p)]||{touchpoints:{},checklist:{},oaVisits:[],training:{}}; }
+// Touchpoint plan for one caregiver: [{key,label,due,auto,status,kind}]
+function f90Plan(p){
+  const hd=new Date(p.hireDate); hd.setHours(0,0,0,0);
+  const fv=f90Visits[p.viv?String(p.viv.id):'']||null;
+  const fvDay=fv&&fv.day?parseDate(fv.day):null;
+  const rec=f90Rec(p), out=[];
+  const add=(key,label,due,kind,auto,note)=>{
+    const t=rec.touchpoints[key]||null;
+    let status=t&&t.status?t.status:(auto?'auto':'');
+    if(!status){ if(!due)status='pending'; else if(due<TODAY)status='overdue'; else { const w=_f90WeekBounds(); status=(due<=w.sun)?'week':'upcoming'; } }
+    out.push({key,label,due,kind,auto:!!auto,status,doc:t,note:note||''});
+  };
+  add('orient','Post-orientation call',_f90Add(hd,2),'orient');
+  if(fvDay){ add('prefirst','Pre-first-visit check-in',_f90Add(fvDay,-1),'first',false,'First visit '+_f90Short(fvDay)+(fv.client?' · '+fv.client:''));
+             add('postfirst','Post-first-visit call',_f90Add(fvDay,1),'first',false,'First visit '+_f90Short(fvDay)+(fv.client?' · '+fv.client:'')); }
+  else { add('prefirst','Pre-first-visit check-in',null,'first',false,'No care visit scheduled yet'); add('postfirst','Post-first-visit call',null,'first',false,'No care visit scheduled yet'); }
+  // Weekly communication: every Monday after hire through day 90.
+  const end=_f90Add(hd,90); let mon=_f90Add(hd,((8-hd.getDay())%7)||7);
+  for(;mon<=end;mon=_f90Add(mon,7)) add('wk:'+_f90Ymd(mon),'Weekly check-in',mon,'weekly');
+  add('d45','45-day meeting',_f90Add(hd,45),'meeting',fortyFiveFormsFor(p).length>0);
+  add('d90','90-day meeting',_f90Add(hd,90),'meeting',ninetyFormsFor(p).length>0);
+  out.sort((a,b)=>(a.due?a.due.getTime():9e15)-(b.due?b.due.getTime():9e15));
+  return out;
+}
+const F90_ST_LABEL={done:'Completed',waiting:'Waiting for response',skipped:'Skipped',auto:'Form on file',overdue:'Overdue',week:'Due this week',upcoming:'Upcoming',pending:'Needs a scheduled visit'};
+function renderF90D(){
+  const el=document.getElementById('f90d'); if(!el||!f90Store)return;
+  const roster=f90Roster();
+  const mceSel=document.getElementById('f90Mce'), mSel=document.getElementById('f90Market');
+  if(mceSel.options.length<=1){
+    const mces=[...new Set(roster.map(r=>r.manager).filter(Boolean))].sort();
+    mceSel.innerHTML='<option value="">All MCEs</option>'+mces.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+    defaultToMyTeam(mceSel);
+    const mk=[...new Set(roster.map(r=>r.market).filter(Boolean))].sort();
+    mSel.innerHTML='<option value="">All markets</option>'+mk.map(m=>'<option>'+escHtml(m)+'</option>').join('');
+  }
+  const mce=mceSel.value, mkt=mSel.value, showDone=document.getElementById('f90ShowDone').checked;
+  const rows=roster.filter(p=>(!mce||p.manager===mce)&&(!mkt||p.market===mkt));
+  const plans=rows.map(p=>({p,plan:f90Plan(p),rec:f90Rec(p)}));
+  const all=plans.flatMap(x=>x.plan);
+  const nOver=all.filter(t=>t.status==='overdue').length, nWeek=all.filter(t=>t.status==='week').length, nWait=all.filter(t=>t.status==='waiting').length, nDone=all.filter(t=>t.status==='done'||t.status==='auto').length;
+  document.getElementById('f90Count').textContent=rows.length+' caregiver'+(rows.length===1?'':'s')+' in their first 90 days';
+  const w=_f90WeekBounds();
+  let h='<div class="grid four" style="margin-bottom:14px">'+
+    '<div class="fc"><div class="ct">New hires (≤90 days)</div><div class="big-stat"><span class="v">'+rows.length+'</span></div><div class="stat-foot">active caregivers hired since '+formatDate(_f90Add(TODAY,-90))+'</div></div>'+
+    '<div class="fc"><div class="ct">Overdue touchpoints</div><div class="big-stat"><span class="v '+(nOver?'r':'g')+'">'+nOver+'</span></div><div class="stat-foot">due before today, not documented</div></div>'+
+    '<div class="fc"><div class="ct">Due this week</div><div class="big-stat"><span class="v a">'+nWeek+'</span></div><div class="stat-foot">'+formatDate(w.mon)+' – '+formatDate(w.sun)+'</div></div>'+
+    '<div class="fc"><div class="ct">Waiting for response</div><div class="big-stat"><span class="v">'+nWait+'</span></div><div class="stat-foot">'+nDone+' completed so far</div></div>'+
+  '</div>';
+  if(!rows.length){ h+='<div class="empty-state"><div class="big">🌱</div>No caregivers in their first 90 days for this filter.</div>'; el.innerHTML=h; return; }
+  const total=F90_CHECKLIST.reduce((a,c)=>a+c[1].length,0);
+  for(const {p,plan,rec} of plans){
+    const day=Math.max(0,Math.floor((TODAY-p.hireDate)/F90_DAY));
+    const fv=f90Visits[p.viv?String(p.viv.id):'']||null;
+    const ck=Object.keys(rec.checklist||{}).length;
+    const vis=plan.filter(t=>showDone||!(t.status==='done'||t.status==='auto'||t.status==='skipped'));
+    const over=plan.filter(t=>t.status==='overdue').length;
+    h+='<div class="fc f90card"><div class="f90top">'+
+      '<div><div class="f90name">'+escHtml(p.name)+(p.viv?' <span class="f90muted">'+escHtml(p.viv.id||'')+'</span>':'')+'</div>'+
+      '<div class="f90muted">'+escHtml(p.manager||'—')+' · '+escHtml(p.market||'—')+' · hired '+formatDate(p.hireDate)+' · <b>day '+day+' of 90</b>'+
+      (fv&&fv.day?' · first visit '+formatDate(fv.day)+(fv.client?' with '+escHtml(fv.client):''):' · <span class="f90warn">no care visit scheduled yet</span>')+'</div></div>'+
+      '<div class="f90right">'+(over?'<span class="f90chip st-overdue" style="cursor:default">'+over+' overdue</span>':'')+
+      '<span class="f90chip st-ck" onclick="openF90Modal(\''+escHtml(p.key)+'\',\'checklist\')" title="Operations checklist">Checklist '+ck+'/'+total+'</span></div></div>'+
+      '<div class="f90chips">'+(vis.length?vis.map(t=>{
+        const d=t.due?_f90Short(t.due):'';
+        const tip=F90_ST_LABEL[t.status]+(t.doc&&t.doc.method?' · '+t.doc.method:'')+(t.doc&&t.doc.by?' · '+t.doc.by:'')+(t.note?' · '+t.note:'');
+        return '<span class="f90chip st-'+t.status+'" title="'+escHtml(tip)+'" onclick="openF90Modal(\''+escHtml(p.key)+'\',\''+t.key+'\')">'+escHtml(t.label)+(d?' <em>'+d+'</em>':'')+(t.status==='done'||t.status==='auto'?' ✓':t.status==='waiting'?' ⏳':t.status==='skipped'?' ↷':'')+'</span>';
+      }).join(''):'<span class="f90muted">Everything documented. Turn on "Show completed touchpoints" to review.</span>')+'</div></div>';
+  }
+  el.innerHTML=h;
+}
+// ── Documentation modal ─────────────────────────────────────────────────────
+function openF90Modal(spineKey,tpKey){
+  const p=spine.find(x=>x.key===spineKey); if(!p)return;
+  const plan=f90Plan(p), rec=f90Rec(p);
+  const tp=tpKey==='checklist'?null:plan.find(t=>t.key===tpKey);
+  f90Modal={p,tp,rec,plan};
+  document.getElementById('f90ModalName').textContent=p.name;
+  document.getElementById('f90ModalSub').textContent=tp?(tp.label+(tp.due?' · due '+_f90Short(tp.due):'')+(tp.note?' · '+tp.note:'')):'Operations checklist · '+escHtml(p.manager||'');
+  document.getElementById('f90SaveMsg').textContent='';
+  const doc=tp&&tp.doc||{};
+  let h='';
+  if(tp){
+    const st=doc.status||(tp.auto?'done':'');
+    h+='<div class="f90field"><label>Status</label><div class="f90seg">'+[['done','Completed'],['waiting','Waiting for response'],['skipped','Skipped'],['','Not done yet']].map(([v,l])=>'<label class="'+(st===v?'on':'')+'"><input type="radio" name="f90st" value="'+v+'" '+(st===v?'checked':'')+' onchange="this.closest(\'.f90seg\').querySelectorAll(\'label\').forEach(x=>x.classList.remove(\'on\'));this.parentNode.classList.add(\'on\')"> '+l+'</label>').join('')+'</div>'+
+      (tp.auto&&!doc.status?'<div class="stat-foot">A '+escHtml(tp.label)+' form is already on file in Viv, so this shows as completed automatically.</div>':'')+'</div>';
+    h+='<div class="f90field"><label>Communication method</label><select id="f90Method"><option value="">—</option>'+F90_METHODS.map(m=>'<option '+(doc.method===m?'selected':'')+'>'+m+'</option>').join('')+'</select></div>';
+    h+='<div class="f90field"><label>Notes</label><textarea id="f90Notes" rows="4" placeholder="What did you cover? Anything to follow up on?">'+escHtml(doc.notes||'')+'</textarea></div>';
+    if(doc.at) h+='<div class="stat-foot" style="margin-bottom:12px">Last saved '+fmtTime(doc.at)+(doc.by?' by '+escHtml(doc.by):'')+'</div>';
+  }
+  // Checklist (shared across every touchpoint for this caregiver)
+  const ckd=rec.checklist||{}; const nck=Object.keys(ckd).length, total=F90_CHECKLIST.reduce((a,c)=>a+c[1].length,0);
+  h+='<div class="f90field"><label>Operations checklist <span class="f90muted">'+nck+'/'+total+' covered · checks carry across touchpoints</span></label><div class="f90ck">';
+  F90_CHECKLIST.forEach((cat,ci)=>{
+    const done=cat[1].filter((_,ii)=>ckd['c1:'+ci+'.'+ii]).length;
+    h+='<details'+(tp?'':' open')+'><summary>'+escHtml(cat[0])+' <span class="f90muted">'+done+'/'+cat[1].length+'</span></summary>'+
+      cat[1].map((it,ii)=>{ const k='c1:'+ci+'.'+ii; const c=ckd[k]; return '<label class="f90ckitem"><input type="checkbox" data-ck="'+k+'" '+(c?'checked':'')+'> <span>'+escHtml(it)+'</span>'+(c&&c.by?'<em>'+escHtml(c.by)+'</em>':'')+'</label>'; }).join('')+'</details>';
+  });
+  h+='</div></div>';
+  // History of documented touchpoints for context
+  const hist=plan.filter(t=>t.doc&&(t.doc.status||t.doc.notes)&&(!tp||t.key!==tp.key));
+  if(hist.length) h+='<div class="f90field"><label>Earlier touchpoints</label>'+hist.map(t=>'<div class="f90hist"><b>'+escHtml(t.label)+'</b> · '+(t.due?_f90Short(t.due):'')+' · '+escHtml(F90_ST_LABEL[t.doc.status]||'')+(t.doc.method?' via '+escHtml(t.doc.method):'')+(t.doc.notes?'<div>'+escHtml(t.doc.notes)+'</div>':'')+'</div>').join('')+'</div>';
+  document.getElementById('f90ModalBody').innerHTML=h;
+  document.getElementById('f90Overlay').style.display='flex';
+}
+function closeF90Modal(){ document.getElementById('f90Overlay').style.display='none'; f90Modal=null; }
+async function saveF90Touchpoint(){
+  if(!f90Modal)return;
+  const {p,tp,rec}=f90Modal; const msg=document.getElementById('f90SaveMsg');
+  const body={cgId:f90CgId(p),by:(CURRENT_USER&&CURRENT_USER.name)||''};
+  if(tp){
+    const st=(document.querySelector('input[name=f90st]:checked')||{}).value||'';
+    let method=document.getElementById('f90Method').value, notes=document.getElementById('f90Notes').value.trim();
+    // Method "Waiting for Response" implies waiting status; "Skipped" implies skipped.
+    let status=st; if(!status&&method==='Waiting for Response')status='waiting'; if(!status&&method==='Skipped')status='skipped';
+    body.touchpoint={key:tp.key,status,method,notes};
+  }
+  const ck={}; document.querySelectorAll('#f90ModalBody input[data-ck]').forEach(i=>{ const k=i.getAttribute('data-ck'); const was=!!(rec.checklist||{})[k]; if(i.checked!==was)ck[k]=i.checked; });
+  if(Object.keys(ck).length)body.checklist=ck;
+  msg.textContent='Saving…';
+  try{
+    const r=await fetch(PROXY+'?endpoint=f90d_store',{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||!j.ok)throw new Error(j.error||('HTTP '+r.status));
+    f90Store[body.cgId]=j.rec; closeF90Modal(); renderF90D();
+  }catch(e){ msg.textContent='Save failed: '+e.message; }
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // DOCUSIGN ASSIST — AI-drafted PIP/warning/corrective/letters → DocuSign.
