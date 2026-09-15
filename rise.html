@@ -157,6 +157,12 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
 .f90chip.st-skipped{opacity:.6;text-decoration:line-through}
 .f90chip.st-pending{border-style:dashed}
 .f90chip.st-ck{background:var(--bg);border-color:var(--purple);color:var(--purple)}
+.f90notes{margin-top:10px;padding-top:8px;border-top:.5px solid var(--border)}
+.f90notes label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:4px}
+.f90notes label .f90muted{text-transform:none;letter-spacing:0;font-weight:500}
+.f90notes textarea{width:100%;font:inherit;font-size:12.5px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--bg2);resize:vertical;min-height:38px}
+.f90notes textarea:focus{background:var(--bg);outline:2px solid var(--purple);outline-offset:-1px}
+.f90notes-meta{margin-top:3px;min-height:14px}
 .f90field{margin-bottom:14px}
 .f90field>label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:6px}
 .f90vtab{padding:7px 14px;border-radius:16px;border:1px solid var(--border);background:var(--bg2);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--text2)}
@@ -2582,9 +2588,22 @@ function renderF90Training(el,rows,showDone){
         const detail=s.skipped?'skipped (pretest ≥80%)':d.score!=null?d.score+'%':d.date?formatDate(d.date):'';
         const tip=F90_ST_LABEL[s.status]+(detail?' · '+detail:'')+(d.by?' · '+d.by:'')+(d.plan?' · plan: '+d.plan:'');
         return '<span class="f90chip st-'+s.status+'" title="'+escHtml(tip)+'" onclick="openF90Training(\''+_f90Key(p)+'\',\''+s.key+'\')">'+escHtml(s.label)+(detail?' <em>'+escHtml(detail)+'</em>':'')+(s.status==='done'?' ✓':s.status==='skipped'?' ↷':'')+'</span>';
-      }).join('')+'</div></div>';
+      }).join('')+'</div>'+
+      // Communication notes (Khadijah, 9/15): free text per caregiver, saved on blur, visible at a glance.
+      (function(){ const tn=f90Rec(p).trainingNotes||null; return '<div class="f90notes"><label>Communication notes <span class="f90muted">completion, due dates, who you spoke with · saves when you click away</span></label>'+
+        '<textarea rows="2" data-cg="'+_f90Key(p)+'" placeholder="e.g. 9/15 texted about Dementia PreTest, due by 9/22" onfocus="this.dataset.was=this.value" onblur="saveF90TrainingNotes(this)">'+escHtml(tn?tn.text:'')+'</textarea>'+
+        '<div class="f90muted f90notes-meta">'+(tn&&tn.at?'Last saved '+fmtTime(tn.at)+(tn.by?' by '+escHtml(tn.by):''):'')+'</div></div>'; })()+
+      '</div>';
   }
   el.innerHTML=h;
+}
+async function saveF90TrainingNotes(ta){
+  const p=spine.find(x=>x.key===ta.getAttribute('data-cg')); if(!p)return;
+  const txt=ta.value.trim(); if(txt===(ta.dataset.was||'').trim())return;   // unchanged
+  const meta=ta.parentNode.querySelector('.f90notes-meta'); if(meta)meta.textContent='Saving…';
+  try{ const rec=await _f90Post({cgId:f90CgId(p),by:(CURRENT_USER&&CURRENT_USER.name)||'',trainingNotes:txt});
+    const tn=rec.trainingNotes; if(meta)meta.textContent=tn?'Saved '+fmtTime(tn.at)+(tn.by?' by '+escHtml(tn.by):''):'Cleared'; }
+  catch(e){ if(meta)meta.textContent='Save failed: '+e.message; }
 }
 function renderF90Oa(el,rows,showDone){
   const items=rows.map(p=>({p,visits:(f90Rec(p).oaVisits||[])}));
@@ -2736,7 +2755,8 @@ function _f90TouchSummary(p,fromDay,toDay){
 }
 function _f90TrainingSummary(p){
   const st=f90TrainingState(p);
-  return st.steps.map(s=>{ const d=s.doc||{}; return s.label+': '+(s.skipped?'skipped (pretest ≥80%)':d.score!=null?d.score+'%'+(d.date?' on '+formatDate(d.date):''):d.date?'completed '+formatDate(d.date):'not yet completed')+(d.plan?' · plan: '+d.plan:''); }).join('\n')+(st.complete?'\nAll training steps complete.':'');
+  const tn=f90Rec(p).trainingNotes;
+  return st.steps.map(s=>{ const d=s.doc||{}; return s.label+': '+(s.skipped?'skipped (pretest ≥80%)':d.score!=null?d.score+'%'+(d.date?' on '+formatDate(d.date):''):d.date?'completed '+formatDate(d.date):'not yet completed')+(d.plan?' · plan: '+d.plan:''); }).join('\n')+(st.complete?'\nAll training steps complete.':'')+(tn&&tn.text?'\nCommunication notes: '+tn.text:'');
 }
 function _f90ChecklistGaps(p){
   const ckd=f90Rec(p).checklist||{}; const gaps=[];
