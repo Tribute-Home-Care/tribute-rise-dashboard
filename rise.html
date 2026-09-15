@@ -159,6 +159,11 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
 .f90chip.st-ck{background:var(--bg);border-color:var(--purple);color:var(--purple)}
 .f90field{margin-bottom:14px}
 .f90field>label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);margin-bottom:6px}
+.f90vtab{padding:7px 14px;border-radius:16px;border:1px solid var(--border);background:var(--bg2);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--text2)}
+.f90vtab.on{background:var(--purple);color:#fff;border-color:var(--purple)}
+.f90chip.st-next{background:#fff1e3;border-color:#f6c79a;color:#9a4d00}
+.f90chip.st-later{opacity:.7}
+.f90field input[type=number],.f90field input[type=date],.f90field input[type=text]{width:100%;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
 .f90field select,.f90field textarea{width:100%;font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
 .f90seg{display:flex;gap:6px;flex-wrap:wrap}
 .f90seg label{padding:6px 12px;border:1px solid var(--border);border-radius:14px;font-size:12px;cursor:pointer;background:var(--bg2)}
@@ -588,15 +593,20 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <select id="f90Mce" onchange="renderF90D()"><option value="">All MCEs</option></select>
     <label>Market</label>
     <select id="f90Market" onchange="renderF90D()"><option value="">All markets</option></select>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="f90ShowDone" onchange="renderF90D()"> Show completed touchpoints</label>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="f90ShowDone" onchange="renderF90D()"> <span id="f90ShowDoneLabel">Show completed touchpoints</span></label>
     <span class="count" id="f90Count"></span>
+  </div>
+  <div id="f90Views" style="display:flex;gap:6px;padding:0 14px 12px;flex-wrap:wrap">
+    <button class="f90vtab on" data-v="touch" onclick="f90SetView('touch')">Support Touchpoints</button>
+    <button class="f90vtab" data-v="training" onclick="f90SetView('training')">Training Tracker</button>
+    <button class="f90vtab" data-v="oa" onclick="f90SetView('oa')">OA In-person Visits</button>
   </div>
   <div id="f90d" style="padding:0 14px 40px"></div>
 </div>
 
 <!-- F90D TOUCHPOINT DOCUMENTATION MODAL -->
 <div class="rm-overlay" id="f90Overlay" onclick="if(event.target===this)closeF90Modal()">
-  <div class="rm-modal" style="max-width:820px">
+  <div class="rm-modal" style="max-width:900px">
     <div class="rm-head">
       <div><h3 id="f90ModalName">Touchpoint</h3><div class="sub" id="f90ModalSub"></div></div>
       <button class="rm-x" onclick="closeF90Modal()">✕</button>
@@ -605,7 +615,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <div class="rm-foot">
       <span id="f90SaveMsg" class="stat-foot" style="margin-right:auto"></span>
       <button class="rm-btn o" onclick="closeF90Modal()">Cancel</button>
-      <button class="rm-btn g" onclick="saveF90Touchpoint()">Save touchpoint</button>
+      <button class="rm-btn g" id="f90SaveBtn" onclick="saveF90Touchpoint()">Save touchpoint</button>
     </div>
   </div>
 </div>
@@ -2397,11 +2407,15 @@ window.addEventListener('popstate',function(e){
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-// FIRST 90 DAYS (F90D) — Phase 1: Support Touchpoints (Charlotte, CE workbook
-// F90D tab). Roster = current spine hired within the last 90 days. Touchpoints
-// are computed from hire date + first scheduled care visit (vivProxy
-// f90d_visits); documentation lives in the durable shared store f90d_store.
-// 45/90-day meetings auto-complete when the Viv form exists.
+// FIRST 90 DAYS (F90D) — Charlotte's CE workbook F90D tab. Three views:
+//  1 Support Touchpoints  — roster hired ≤90d; touchpoints computed from hire
+//    date + first scheduled care visit (vivProxy f90d_visits); documentation
+//    pop-up (method / notes / persistent Operations Checklist).
+//  2 Training Tracker     — CareAcademy dementia + hospice steps (IL: one step).
+//  3 OA In-person Visits  — names persist until an OA visit is documented.
+// Durable shared store: vivProxy f90d_store {touchpoints, checklist, oaVisits,
+// training}. 45/90-day meetings auto-complete when the Viv form exists and open
+// the First 90 Days meeting helper (AI prefill from notes / Zoom transcript).
 // ════════════════════════════════════════════════════════════════════════════
 const F90_CHECKLIST=[
  ['Office phone / Text line',['Office phone: press 1 to leave a message if it is after office hours','Text line: for non-urgent issues only, we respond within 24 business hours']],
@@ -2417,13 +2431,17 @@ const F90_CHECKLIST=[
  ['Care Skills: Auxiliary',['CPR and Heimlich maneuver','Durable Medical Equipment (DME)','Vital signs','Medication reminders']]
 ];
 const F90_METHODS=['Call','Text','Emailed','Waiting for Response','Skipped'];
-let f90Store=null, f90Visits=null, f90Loading=false, f90Modal=null;
+const F90_TOTAL_CK=F90_CHECKLIST.reduce((a,c)=>a+c[1].length,0);
+let f90Store=null, f90Visits=null, f90Loading=false, f90Modal=null, f90View='touch';
 const F90_DAY=86400000;
 function f90CgId(p){ return p.viv?String(p.viv.id):p.key; }
 function _f90Ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function _f90Add(d,n){ const x=new Date(d); x.setDate(x.getDate()+n); x.setHours(0,0,0,0); return x; }
 function _f90Short(d){ return d?d.toLocaleDateString('en-US',{weekday:'short',month:'numeric',day:'numeric'}):'—'; }
+function _f90Mdy(d){ return d?d.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'}):''; }
 function _f90WeekBounds(){ const dow=(TODAY.getDay()+6)%7; const mon=_f90Add(TODAY,-dow); return {mon, sun:_f90Add(mon,6)}; }
+function _f90IsIL(p){ const s=String((p.viv&&p.viv.state)||'')+' '+String(p.market||''); return /\bIL\b|illinois|chicago/i.test(s); }
+function _f90Key(p){ return String(p.key).replace(/'/g,''); }
 async function loadF90D(){
   const el=document.getElementById('f90d');
   if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading caregivers…</div>'; setTimeout(loadF90D,1500); return; }
@@ -2440,16 +2458,18 @@ async function loadF90D(){
   }catch(e){ f90Store=f90Store||{}; f90Visits=f90Visits||{}; }
   f90Loading=false; renderF90D();
 }
+function f90SetView(v){ f90View=v; document.querySelectorAll('#f90Views .f90vtab').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); renderF90D(); }
 // Roster: hired in the last 90 days (or hire date still ahead), active spine.
 function f90Roster(){
   const from=_f90Add(TODAY,-90);
   return spine.filter(p=>p.hireDate&&p.hireDate>=from).sort((a,b)=>b.hireDate-a.hireDate);
 }
 function f90Rec(p){ return f90Store[f90CgId(p)]||{touchpoints:{},checklist:{},oaVisits:[],training:{}}; }
-// Touchpoint plan for one caregiver: [{key,label,due,auto,status,kind}]
+function f90FirstVisit(p){ return f90Visits[p.viv?String(p.viv.id):'']||null; }
+// ── Support Touchpoints ─────────────────────────────────────────────────────
 function f90Plan(p){
   const hd=new Date(p.hireDate); hd.setHours(0,0,0,0);
-  const fv=f90Visits[p.viv?String(p.viv.id):'']||null;
+  const fv=f90FirstVisit(p);
   const fvDay=fv&&fv.day?parseDate(fv.day):null;
   const rec=f90Rec(p), out=[];
   const add=(key,label,due,kind,auto,note)=>{
@@ -2459,10 +2479,9 @@ function f90Plan(p){
     out.push({key,label,due,kind,auto:!!auto,status,doc:t,note:note||''});
   };
   add('orient','Post-orientation call',_f90Add(hd,2),'orient');
-  if(fvDay){ add('prefirst','Pre-first-visit check-in',_f90Add(fvDay,-1),'first',false,'First visit '+_f90Short(fvDay)+(fv.client?' · '+fv.client:''));
-             add('postfirst','Post-first-visit call',_f90Add(fvDay,1),'first',false,'First visit '+_f90Short(fvDay)+(fv.client?' · '+fv.client:'')); }
-  else { add('prefirst','Pre-first-visit check-in',null,'first',false,'No care visit scheduled yet'); add('postfirst','Post-first-visit call',null,'first',false,'No care visit scheduled yet'); }
-  // Weekly communication: every Monday after hire through day 90.
+  const fvNote=fvDay?'First visit '+_f90Short(fvDay)+(fv.client?' · '+fv.client:''):'No care visit scheduled yet';
+  add('prefirst','Pre-first-visit check-in',fvDay?_f90Add(fvDay,-1):null,'first',false,fvNote);
+  add('postfirst','Post-first-visit call',fvDay?_f90Add(fvDay,1):null,'first',false,fvNote);
   const end=_f90Add(hd,90); let mon=_f90Add(hd,((8-hd.getDay())%7)||7);
   for(;mon<=end;mon=_f90Add(mon,7)) add('wk:'+_f90Ymd(mon),'Weekly check-in',mon,'weekly');
   add('d45','45-day meeting',_f90Add(hd,45),'meeting',fortyFiveFormsFor(p).length>0);
@@ -2470,7 +2489,29 @@ function f90Plan(p){
   out.sort((a,b)=>(a.due?a.due.getTime():9e15)-(b.due?b.due.getTime():9e15));
   return out;
 }
-const F90_ST_LABEL={done:'Completed',waiting:'Waiting for response',skipped:'Skipped',auto:'Form on file',overdue:'Overdue',week:'Due this week',upcoming:'Upcoming',pending:'Needs a scheduled visit'};
+const F90_ST_LABEL={done:'Completed',waiting:'Waiting for response',skipped:'Skipped',auto:'Form on file',overdue:'Overdue',week:'Due this week',upcoming:'Upcoming',pending:'Needs a scheduled visit',next:'Next step',later:'Later'};
+// ── Training Tracker ────────────────────────────────────────────────────────
+// Non-IL: Dementia PreTest → (≥80 skips) Dementia Training → Dementia PostTest →
+// Hospice Training → Hospice PostTest. IL: one "Online Training" date step.
+function f90TrainingSteps(p){
+  const tr=f90Rec(p).training||{};
+  if(_f90IsIL(p)) return [{key:'il_online',label:'Online Training',kind:'date',src:'Caregiver University',doc:tr.il_online||null}];
+  const pre=tr.dem_pre, skipDem=pre&&pre.score!=null&&Number(pre.score)>=80;
+  return [
+    {key:'dem_pre',label:'Dementia PreTest',kind:'score',doc:pre||null},
+    {key:'dem_train',label:'Dementia Training',kind:'date',src:'CareAcademy',doc:tr.dem_train||null,skipped:skipDem},
+    {key:'dem_post',label:'Dementia PostTest',kind:'score',plan:'What is your plan for increasing this Caregiver\'s dementia skills?',doc:tr.dem_post||null,skipped:skipDem},
+    {key:'hosp_train',label:'Hospice Training',kind:'date',src:'CareAcademy',doc:tr.hosp_train||null},
+    {key:'hosp_post',label:'Hospice PostTest',kind:'score',plan:'What is your plan for increasing this Caregiver\'s hospice skills?',doc:tr.hosp_post||null}
+  ];
+}
+function _f90StepDone(s){ return s.skipped || (s.doc && (s.doc.score!=null || s.doc.date)); }
+function f90TrainingState(p){
+  const steps=f90TrainingSteps(p); let next=null;
+  steps.forEach(s=>{ s.status=_f90StepDone(s)?(s.skipped?'skipped':'done'):(next?'later':(next=s,'next')); });
+  return {steps,next,complete:!next};
+}
+// ── Render ──────────────────────────────────────────────────────────────────
 function renderF90D(){
   const el=document.getElementById('f90d'); if(!el||!f90Store)return;
   const roster=f90Roster();
@@ -2484,10 +2525,13 @@ function renderF90D(){
   }
   const mce=mceSel.value, mkt=mSel.value, showDone=document.getElementById('f90ShowDone').checked;
   const rows=roster.filter(p=>(!mce||p.manager===mce)&&(!mkt||p.market===mkt));
+  document.getElementById('f90Count').textContent=rows.length+' caregiver'+(rows.length===1?'':'s')+' in their first 90 days';
+  const lab=document.getElementById('f90ShowDoneLabel'); if(lab) lab.textContent=f90View==='touch'?'Show completed touchpoints':f90View==='training'?'Show caregivers who finished training':'Show caregivers with a documented visit';
+  if(f90View==='training') return renderF90Training(el,rows,showDone);
+  if(f90View==='oa') return renderF90Oa(el,rows,showDone);
   const plans=rows.map(p=>({p,plan:f90Plan(p),rec:f90Rec(p)}));
   const all=plans.flatMap(x=>x.plan);
   const nOver=all.filter(t=>t.status==='overdue').length, nWeek=all.filter(t=>t.status==='week').length, nWait=all.filter(t=>t.status==='waiting').length, nDone=all.filter(t=>t.status==='done'||t.status==='auto').length;
-  document.getElementById('f90Count').textContent=rows.length+' caregiver'+(rows.length===1?'':'s')+' in their first 90 days';
   const w=_f90WeekBounds();
   let h='<div class="grid four" style="margin-bottom:14px">'+
     '<div class="fc"><div class="ct">New hires (≤90 days)</div><div class="big-stat"><span class="v">'+rows.length+'</span></div><div class="stat-foot">active caregivers hired since '+formatDate(_f90Add(TODAY,-90))+'</div></div>'+
@@ -2495,37 +2539,99 @@ function renderF90D(){
     '<div class="fc"><div class="ct">Due this week</div><div class="big-stat"><span class="v a">'+nWeek+'</span></div><div class="stat-foot">'+formatDate(w.mon)+' – '+formatDate(w.sun)+'</div></div>'+
     '<div class="fc"><div class="ct">Waiting for response</div><div class="big-stat"><span class="v">'+nWait+'</span></div><div class="stat-foot">'+nDone+' completed so far</div></div>'+
   '</div>';
-  if(!rows.length){ h+='<div class="empty-state"><div class="big">🌱</div>No caregivers in their first 90 days for this filter.</div>'; el.innerHTML=h; return; }
-  const total=F90_CHECKLIST.reduce((a,c)=>a+c[1].length,0);
+  if(!rows.length){ el.innerHTML=h+'<div class="empty-state"><div class="big">🌱</div>No caregivers in their first 90 days for this filter.</div>'; return; }
   for(const {p,plan,rec} of plans){
     const day=Math.max(0,Math.floor((TODAY-p.hireDate)/F90_DAY));
-    const fv=f90Visits[p.viv?String(p.viv.id):'']||null;
+    const fv=f90FirstVisit(p);
     const ck=Object.keys(rec.checklist||{}).length;
     const vis=plan.filter(t=>showDone||!(t.status==='done'||t.status==='auto'||t.status==='skipped'));
     const over=plan.filter(t=>t.status==='overdue').length;
     h+='<div class="fc f90card"><div class="f90top">'+
-      '<div><div class="f90name">'+escHtml(p.name)+(p.viv?' <span class="f90muted">'+escHtml(p.viv.id||'')+'</span>':'')+'</div>'+
+      '<div><div class="f90name">'+escHtml(p.name)+'</div>'+
       '<div class="f90muted">'+escHtml(p.manager||'—')+' · '+escHtml(p.market||'—')+' · hired '+formatDate(p.hireDate)+' · <b>day '+day+' of 90</b>'+
       (fv&&fv.day?' · first visit '+formatDate(fv.day)+(fv.client?' with '+escHtml(fv.client):''):' · <span class="f90warn">no care visit scheduled yet</span>')+'</div></div>'+
       '<div class="f90right">'+(over?'<span class="f90chip st-overdue" style="cursor:default">'+over+' overdue</span>':'')+
-      '<span class="f90chip st-ck" onclick="openF90Modal(\''+escHtml(p.key)+'\',\'checklist\')" title="Operations checklist">Checklist '+ck+'/'+total+'</span></div></div>'+
+      '<span class="f90chip st-ck" onclick="openF90Modal(\''+_f90Key(p)+'\',\'checklist\')" title="Operations checklist">Checklist '+ck+'/'+F90_TOTAL_CK+'</span></div></div>'+
       '<div class="f90chips">'+(vis.length?vis.map(t=>{
         const d=t.due?_f90Short(t.due):'';
-        const tip=F90_ST_LABEL[t.status]+(t.doc&&t.doc.method?' · '+t.doc.method:'')+(t.doc&&t.doc.by?' · '+t.doc.by:'')+(t.note?' · '+t.note:'');
-        return '<span class="f90chip st-'+t.status+'" title="'+escHtml(tip)+'" onclick="openF90Modal(\''+escHtml(p.key)+'\',\''+t.key+'\')">'+escHtml(t.label)+(d?' <em>'+d+'</em>':'')+(t.status==='done'||t.status==='auto'?' ✓':t.status==='waiting'?' ⏳':t.status==='skipped'?' ↷':'')+'</span>';
+        const tip=F90_ST_LABEL[t.status]+(t.doc&&t.doc.method?' · '+t.doc.method:'')+(t.doc&&t.doc.by?' · '+t.doc.by:'')+(t.note?' · '+t.note:'')+(t.kind==='meeting'?' · opens the meeting helper':'');
+        const click=t.kind==='meeting'?'openF90Meeting(\''+_f90Key(p)+'\',\''+(t.key==='d45'?'45':'90')+'\')':'openF90Modal(\''+_f90Key(p)+'\',\''+t.key+'\')';
+        return '<span class="f90chip st-'+t.status+'" title="'+escHtml(tip)+'" onclick="'+click+'">'+(t.kind==='meeting'?'✨ ':'')+escHtml(t.label)+(d?' <em>'+d+'</em>':'')+(t.status==='done'||t.status==='auto'?' ✓':t.status==='waiting'?' ⏳':t.status==='skipped'?' ↷':'')+'</span>';
       }).join(''):'<span class="f90muted">Everything documented. Turn on "Show completed touchpoints" to review.</span>')+'</div></div>';
   }
   el.innerHTML=h;
 }
-// ── Documentation modal ─────────────────────────────────────────────────────
+function renderF90Training(el,rows,showDone){
+  const states=rows.map(p=>({p,st:f90TrainingState(p)}));
+  const done=states.filter(x=>x.st.complete).length;
+  const vis=states.filter(x=>showDone||!x.st.complete);
+  let h='<div class="grid four" style="margin-bottom:14px">'+
+    '<div class="fc"><div class="ct">In training</div><div class="big-stat"><span class="v">'+(states.length-done)+'</span></div><div class="stat-foot">caregivers with a step still open</div></div>'+
+    '<div class="fc"><div class="ct">Training complete</div><div class="big-stat"><span class="v g">'+done+'</span></div><div class="stat-foot">all steps documented</div></div>'+
+    '<div class="fc"><div class="ct">Past day 60, not done</div><div class="big-stat"><span class="v '+(states.some(x=>!x.st.complete&&(TODAY-x.p.hireDate)/F90_DAY>60)?'r':'g')+'">'+states.filter(x=>!x.st.complete&&(TODAY-x.p.hireDate)/F90_DAY>60).length+'</span></div><div class="stat-foot">needs a push before the 90-day meeting</div></div>'+
+    '<div class="fc"><div class="ct">Needs a skills plan</div><div class="big-stat"><span class="v a">'+states.filter(x=>x.st.steps.some(s=>s.doc&&s.doc.score!=null&&Number(s.doc.score)<=79&&s.kind==='score'&&s.key!=='dem_pre')).length+'</span></div><div class="stat-foot">post-test at 79% or lower</div></div>'+
+  '</div>';
+  if(!vis.length){ el.innerHTML=h+'<div class="empty-state"><div class="big">🎓</div>'+(states.length?'Everyone in this filter has finished their training.':'No caregivers in their first 90 days for this filter.')+'</div>'; return; }
+  for(const {p,st} of vis){
+    const day=Math.max(0,Math.floor((TODAY-p.hireDate)/F90_DAY));
+    h+='<div class="fc f90card"><div class="f90top"><div><div class="f90name">'+escHtml(p.name)+'</div>'+
+      '<div class="f90muted">'+escHtml(p.manager||'—')+' · '+escHtml(p.market||'—')+' · hired '+formatDate(p.hireDate)+' · <b>day '+day+' of 90</b>'+(_f90IsIL(p)?' · Illinois track':'')+'</div></div>'+
+      '<div class="f90right">'+(st.complete?'<span class="f90chip st-done" style="cursor:default">Training complete ✓</span>':'<span class="f90chip st-week" style="cursor:default">Next: '+escHtml(st.next.label)+'</span>')+'</div></div>'+
+      '<div class="f90chips">'+st.steps.map(s=>{
+        const d=s.doc||{};
+        const detail=s.skipped?'skipped (pretest ≥80%)':d.score!=null?d.score+'%':d.date?formatDate(d.date):'';
+        const tip=F90_ST_LABEL[s.status]+(detail?' · '+detail:'')+(d.by?' · '+d.by:'')+(d.plan?' · plan: '+d.plan:'');
+        return '<span class="f90chip st-'+s.status+'" title="'+escHtml(tip)+'" onclick="openF90Training(\''+_f90Key(p)+'\',\''+s.key+'\')">'+escHtml(s.label)+(detail?' <em>'+escHtml(detail)+'</em>':'')+(s.status==='done'?' ✓':s.status==='skipped'?' ↷':'')+'</span>';
+      }).join('')+'</div></div>';
+  }
+  el.innerHTML=h;
+}
+function renderF90Oa(el,rows,showDone){
+  const items=rows.map(p=>({p,visits:(f90Rec(p).oaVisits||[])}));
+  const pending=items.filter(x=>!x.visits.length);
+  const vis=items.filter(x=>showDone||!x.visits.length);
+  let h='<div class="grid four" style="margin-bottom:14px">'+
+    '<div class="fc"><div class="ct">Awaiting an OA visit</div><div class="big-stat"><span class="v '+(pending.length?'a':'g')+'">'+pending.length+'</span></div><div class="stat-foot">new hires with no in-person visit documented</div></div>'+
+    '<div class="fc"><div class="ct">Visited</div><div class="big-stat"><span class="v g">'+(items.length-pending.length)+'</span></div><div class="stat-foot">'+items.reduce((a,x)=>a+x.visits.length,0)+' visits documented</div></div>'+
+    '<div class="fc"><div class="ct">Past day 45, not visited</div><div class="big-stat"><span class="v '+(pending.some(x=>(TODAY-x.p.hireDate)/F90_DAY>45)?'r':'g')+'">'+pending.filter(x=>(TODAY-x.p.hireDate)/F90_DAY>45).length+'</span></div><div class="stat-foot">half-way through their first 90 days</div></div>'+
+    '<div class="fc"><div class="ct">Visited this month</div><div class="big-stat"><span class="v">'+items.reduce((a,x)=>a+x.visits.filter(v=>String(v.date||'').slice(0,7)===_f90Ymd(TODAY).slice(0,7)).length,0)+'</span></div><div class="stat-foot">'+TODAY.toLocaleDateString('en-US',{month:'long'})+'</div></div>'+
+  '</div>';
+  if(!vis.length){ el.innerHTML=h+'<div class="empty-state"><div class="big">🚗</div>'+(items.length?'Every new hire in this filter has had an OA visit.':'No caregivers in their first 90 days for this filter.')+'</div>'; return; }
+  for(const {p,visits} of vis){
+    const day=Math.max(0,Math.floor((TODAY-p.hireDate)/F90_DAY));
+    const fv=f90FirstVisit(p);
+    h+='<div class="fc f90card"><div class="f90top"><div><div class="f90name">'+escHtml(p.name)+'</div>'+
+      '<div class="f90muted">'+escHtml(p.manager||'—')+' · '+escHtml(p.market||'—')+' · hired '+formatDate(p.hireDate)+' · <b>day '+day+' of 90</b>'+(fv&&fv.day?' · first visit '+formatDate(fv.day)+(fv.client?' with '+escHtml(fv.client):''):'')+'</div></div>'+
+      '<div class="f90right"><span class="f90chip st-ck" onclick="openF90Oa(\''+_f90Key(p)+'\')">+ Document OA visit</span></div></div>'+
+      (visits.length?'<div class="f90chips">'+visits.map((v,i)=>'<span class="f90chip st-done" style="cursor:default" title="'+escHtml((v.notes||'')+(v.by?' · logged by '+v.by:''))+'">'+formatDate(v.date)+' · '+escHtml(v.visitor||'OA')+(v.notes?' <em>'+escHtml(v.notes.slice(0,60))+(v.notes.length>60?'…':'')+'</em>':'')+' <b style="cursor:pointer;margin-left:4px" title="Remove" onclick="removeF90Oa(\''+_f90Key(p)+'\','+i+')">✕</b></span>').join('')+'</div>':'<div class="f90muted">No OA visit documented yet.</div>')+
+    '</div>';
+  }
+  el.innerHTML=h;
+}
+// ── Modals (shared overlay; f90Modal.mode = touch | training | oa) ──────────
+function _f90Open(p,title,sub,body,saveLabel){
+  document.getElementById('f90ModalName').textContent=title;
+  document.getElementById('f90ModalSub').textContent=sub||'';
+  document.getElementById('f90SaveMsg').textContent='';
+  document.getElementById('f90ModalBody').innerHTML=body;
+  const sb=document.getElementById('f90SaveBtn'); if(sb){ sb.textContent=saveLabel||'Save'; sb.style.display=saveLabel===null?'none':''; }
+  document.getElementById('f90Overlay').style.display='flex';
+}
+function _f90ChecklistHtml(rec,openAll){
+  const ckd=rec.checklist||{}; const nck=Object.keys(ckd).length;
+  let h='<div class="f90field"><label>Operations checklist <span class="f90muted">'+nck+'/'+F90_TOTAL_CK+' covered · checks carry across touchpoints</span></label><div class="f90ck">';
+  F90_CHECKLIST.forEach((cat,ci)=>{
+    const done=cat[1].filter((_,ii)=>ckd['c1:'+ci+'.'+ii]).length;
+    h+='<details'+(openAll?' open':'')+'><summary>'+escHtml(cat[0])+' <span class="f90muted">'+done+'/'+cat[1].length+'</span></summary>'+
+      cat[1].map((it,ii)=>{ const k='c1:'+ci+'.'+ii; const c=ckd[k]; return '<label class="f90ckitem"><input type="checkbox" data-ck="'+k+'" '+(c?'checked':'')+'> <span>'+escHtml(it)+'</span>'+(c&&c.by?'<em>'+escHtml(c.by)+'</em>':'')+'</label>'; }).join('')+'</details>';
+  });
+  return h+'</div></div>';
+}
 function openF90Modal(spineKey,tpKey){
   const p=spine.find(x=>x.key===spineKey); if(!p)return;
   const plan=f90Plan(p), rec=f90Rec(p);
   const tp=tpKey==='checklist'?null:plan.find(t=>t.key===tpKey);
-  f90Modal={p,tp,rec,plan};
-  document.getElementById('f90ModalName').textContent=p.name;
-  document.getElementById('f90ModalSub').textContent=tp?(tp.label+(tp.due?' · due '+_f90Short(tp.due):'')+(tp.note?' · '+tp.note:'')):'Operations checklist · '+escHtml(p.manager||'');
-  document.getElementById('f90SaveMsg').textContent='';
+  f90Modal={mode:'touch',p,tp,rec,plan};
   const doc=tp&&tp.doc||{};
   let h='';
   if(tp){
@@ -2536,42 +2642,212 @@ function openF90Modal(spineKey,tpKey){
     h+='<div class="f90field"><label>Notes</label><textarea id="f90Notes" rows="4" placeholder="What did you cover? Anything to follow up on?">'+escHtml(doc.notes||'')+'</textarea></div>';
     if(doc.at) h+='<div class="stat-foot" style="margin-bottom:12px">Last saved '+fmtTime(doc.at)+(doc.by?' by '+escHtml(doc.by):'')+'</div>';
   }
-  // Checklist (shared across every touchpoint for this caregiver)
-  const ckd=rec.checklist||{}; const nck=Object.keys(ckd).length, total=F90_CHECKLIST.reduce((a,c)=>a+c[1].length,0);
-  h+='<div class="f90field"><label>Operations checklist <span class="f90muted">'+nck+'/'+total+' covered · checks carry across touchpoints</span></label><div class="f90ck">';
-  F90_CHECKLIST.forEach((cat,ci)=>{
-    const done=cat[1].filter((_,ii)=>ckd['c1:'+ci+'.'+ii]).length;
-    h+='<details'+(tp?'':' open')+'><summary>'+escHtml(cat[0])+' <span class="f90muted">'+done+'/'+cat[1].length+'</span></summary>'+
-      cat[1].map((it,ii)=>{ const k='c1:'+ci+'.'+ii; const c=ckd[k]; return '<label class="f90ckitem"><input type="checkbox" data-ck="'+k+'" '+(c?'checked':'')+'> <span>'+escHtml(it)+'</span>'+(c&&c.by?'<em>'+escHtml(c.by)+'</em>':'')+'</label>'; }).join('')+'</details>';
-  });
-  h+='</div></div>';
-  // History of documented touchpoints for context
+  h+=_f90ChecklistHtml(rec,!tp);
   const hist=plan.filter(t=>t.doc&&(t.doc.status||t.doc.notes)&&(!tp||t.key!==tp.key));
   if(hist.length) h+='<div class="f90field"><label>Earlier touchpoints</label>'+hist.map(t=>'<div class="f90hist"><b>'+escHtml(t.label)+'</b> · '+(t.due?_f90Short(t.due):'')+' · '+escHtml(F90_ST_LABEL[t.doc.status]||'')+(t.doc.method?' via '+escHtml(t.doc.method):'')+(t.doc.notes?'<div>'+escHtml(t.doc.notes)+'</div>':'')+'</div>').join('')+'</div>';
-  document.getElementById('f90ModalBody').innerHTML=h;
-  document.getElementById('f90Overlay').style.display='flex';
+  _f90Open(p,p.name,tp?(tp.label+(tp.due?' · due '+_f90Short(tp.due):'')+(tp.note?' · '+tp.note:'')):'Operations checklist · '+(p.manager||''),h,tp?'Save touchpoint':'Save checklist');
+}
+function openF90Training(spineKey,stepKey){
+  const p=spine.find(x=>x.key===spineKey); if(!p)return;
+  const st=f90TrainingState(p); const s=st.steps.find(x=>x.key===stepKey); if(!s)return;
+  f90Modal={mode:'training',p,step:s};
+  const d=s.doc||{};
+  let h='';
+  if(s.skipped) h+='<div class="f90hist" style="margin-bottom:12px">Skipped automatically because the Dementia PreTest score was 80% or higher. Clear the pretest score to un-skip.</div>';
+  if(s.kind==='score'){
+    h+='<div class="f90field"><label>Test score (%)</label><input type="number" id="f90Score" min="0" max="100" step="1" value="'+(d.score!=null?escHtml(d.score):'')+'" placeholder="e.g. 85" oninput="f90ScoreHint()"></div>';
+    h+='<div class="f90field"><label>Date taken</label><input type="date" id="f90Date" value="'+escHtml(d.date||_f90Ymd(TODAY))+'"></div>';
+    const showPlan=s.plan&&d.score!=null&&Number(d.score)<=79;
+    if(s.plan) h+='<div class="f90field" id="f90PlanWrap" style="'+(showPlan?'':'display:none')+'"><label>'+escHtml(s.plan)+'</label><textarea id="f90Plan" rows="3">'+escHtml(d.plan||'')+'</textarea></div>';
+    if(s.key==='dem_pre') h+='<div class="stat-foot" id="f90ScoreHintEl">80% or higher skips Dementia Training and the PostTest. 79% or lower goes to Dementia Training next.</div>';
+  } else {
+    h+='<div class="f90field"><label>Date completed in '+escHtml(s.src||'CareAcademy')+'</label><input type="date" id="f90Date" value="'+escHtml(d.date||_f90Ymd(TODAY))+'"></div>';
+  }
+  if(d.at) h+='<div class="stat-foot" style="margin-top:8px">Last saved '+fmtTime(d.at)+(d.by?' by '+escHtml(d.by):'')+'</div>';
+  if(d.score!=null||d.date) h+='<div style="margin-top:12px"><button class="rm-btn o" onclick="clearF90Training()">Clear this step</button></div>';
+  _f90Open(p,p.name+' · '+s.label,'Training step '+(st.steps.indexOf(s)+1)+' of '+st.steps.length,h,'Save step');
+}
+function f90ScoreHint(){ const v=Number((document.getElementById('f90Score')||{}).value); const w=document.getElementById('f90PlanWrap'); if(w) w.style.display=(v>0&&v<=79)?'':'none'; }
+function openF90Oa(spineKey){
+  const p=spine.find(x=>x.key===spineKey); if(!p)return;
+  f90Modal={mode:'oa',p};
+  const h='<div class="f90field"><label>Date of visit</label><input type="date" id="f90Date" value="'+_f90Ymd(TODAY)+'"></div>'+
+    '<div class="f90field"><label>Name of visitor</label><input type="text" id="f90Visitor" value="'+escHtml((CURRENT_USER&&CURRENT_USER.name)||'')+'" placeholder="Office Associate who visited"></div>'+
+    '<div class="f90field"><label>Notes</label><textarea id="f90Notes" rows="4" placeholder="How did the visit go? Anything to follow up on?"></textarea></div>';
+  _f90Open(p,p.name+' · OA in-person visit','Documenting removes them from the awaiting list',h,'Save visit');
 }
 function closeF90Modal(){ document.getElementById('f90Overlay').style.display='none'; f90Modal=null; }
+async function _f90Post(body){
+  const r=await fetch(PROXY+'?endpoint=f90d_store',{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok||!j.ok)throw new Error(j.error||('HTTP '+r.status));
+  f90Store[body.cgId]=j.rec; return j.rec;
+}
 async function saveF90Touchpoint(){
   if(!f90Modal)return;
-  const {p,tp,rec}=f90Modal; const msg=document.getElementById('f90SaveMsg');
+  const {mode,p}=f90Modal; const msg=document.getElementById('f90SaveMsg');
   const body={cgId:f90CgId(p),by:(CURRENT_USER&&CURRENT_USER.name)||''};
-  if(tp){
-    const st=(document.querySelector('input[name=f90st]:checked')||{}).value||'';
-    let method=document.getElementById('f90Method').value, notes=document.getElementById('f90Notes').value.trim();
-    // Method "Waiting for Response" implies waiting status; "Skipped" implies skipped.
-    let status=st; if(!status&&method==='Waiting for Response')status='waiting'; if(!status&&method==='Skipped')status='skipped';
-    body.touchpoint={key:tp.key,status,method,notes};
+  const val=id=>{ const e=document.getElementById(id); return e?e.value:''; };
+  if(mode==='touch'){
+    const {tp,rec}=f90Modal;
+    if(tp){
+      const st=(document.querySelector('input[name=f90st]:checked')||{}).value||'';
+      const method=val('f90Method'), notes=val('f90Notes').trim();
+      let status=st; if(!status&&method==='Waiting for Response')status='waiting'; if(!status&&method==='Skipped')status='skipped';
+      body.touchpoint={key:tp.key,status,method,notes};
+    }
+    const ck={}; document.querySelectorAll('#f90ModalBody input[data-ck]').forEach(i=>{ const k=i.getAttribute('data-ck'); const was=!!(rec.checklist||{})[k]; if(i.checked!==was)ck[k]=i.checked; });
+    if(Object.keys(ck).length)body.checklist=ck;
+  } else if(mode==='training'){
+    const s=f90Modal.step;
+    const score=s.kind==='score'?val('f90Score'):'';
+    if(s.kind==='score'&&(score===''||isNaN(Number(score)))){ msg.textContent='Enter the test score first.'; return; }
+    body.training={step:s.key,score:s.kind==='score'?Number(score):null,date:val('f90Date'),plan:val('f90Plan').trim()};
+  } else if(mode==='oa'){
+    if(!val('f90Date')){ msg.textContent='Enter the visit date.'; return; }
+    body.oaVisit={date:val('f90Date'),visitor:val('f90Visitor').trim(),notes:val('f90Notes').trim()};
   }
-  const ck={}; document.querySelectorAll('#f90ModalBody input[data-ck]').forEach(i=>{ const k=i.getAttribute('data-ck'); const was=!!(rec.checklist||{})[k]; if(i.checked!==was)ck[k]=i.checked; });
-  if(Object.keys(ck).length)body.checklist=ck;
   msg.textContent='Saving…';
+  try{ await _f90Post(body); closeF90Modal(); renderF90D(); }
+  catch(e){ msg.textContent='Save failed: '+e.message; }
+}
+async function clearF90Training(){
+  if(!f90Modal||f90Modal.mode!=='training')return;
+  const msg=document.getElementById('f90SaveMsg'); msg.textContent='Clearing…';
+  try{ await _f90Post({cgId:f90CgId(f90Modal.p),by:(CURRENT_USER&&CURRENT_USER.name)||'',training:{step:f90Modal.step.key,clear:true}}); closeF90Modal(); renderF90D(); }
+  catch(e){ msg.textContent='Clear failed: '+e.message; }
+}
+async function removeF90Oa(spineKey,i){
+  const p=spine.find(x=>x.key===spineKey); if(!p)return;
+  try{ await _f90Post({cgId:f90CgId(p),by:(CURRENT_USER&&CURRENT_USER.name)||'',oaVisit:{remove:i}}); renderF90D(); }catch(e){}
+}
+// ── 45 / 90-day meeting helper (F90D r14–r15) ───────────────────────────────
+// Mirrors the Viv 45-day / 90-day Rise meeting forms. Auto-fills what the
+// dashboard already knows (touchpoints in the window, training, checklist
+// gaps, live performance data); notes or a Zoom transcript → Tribute
+// Intelligence writes the narrative answers; one copy button for Viv AI fill.
+let f90mKey=null, f90mKind='45';
+function _f90TouchSummary(p,fromDay,toDay){
+  const hd=new Date(p.hireDate); const a=_f90Add(hd,fromDay), b=_f90Add(hd,toDay);
+  const rows=f90Plan(p).filter(t=>t.due&&t.due>=a&&t.due<=b&&t.kind!=='meeting');
+  if(!rows.length) return 'No touchpoints fell between day '+fromDay+' and day '+toDay+'.';
+  return rows.map(t=>{ const d=t.doc||{}; const st=d.status?F90_ST_LABEL[d.status]:(t.status==='overdue'?'Not documented':'Not yet due');
+    return _f90Mdy(t.due)+' '+t.label+' — '+st+(d.method?' via '+d.method:'')+(d.notes?': '+d.notes:''); }).join('\n');
+}
+function _f90TrainingSummary(p){
+  const st=f90TrainingState(p);
+  return st.steps.map(s=>{ const d=s.doc||{}; return s.label+': '+(s.skipped?'skipped (pretest ≥80%)':d.score!=null?d.score+'%'+(d.date?' on '+formatDate(d.date):''):d.date?'completed '+formatDate(d.date):'not yet completed')+(d.plan?' · plan: '+d.plan:''); }).join('\n')+(st.complete?'\nAll training steps complete.':'');
+}
+function _f90ChecklistGaps(p){
+  const ckd=f90Rec(p).checklist||{}; const gaps=[];
+  F90_CHECKLIST.forEach((cat,ci)=>cat[1].forEach((it,ii)=>{ if(!ckd['c1:'+ci+'.'+ii]) gaps.push(cat[0]+': '+it); }));
+  return gaps.length?gaps.join('\n'):'Every checklist item has been covered.';
+}
+function openF90Meeting(spineKey,kind){
+  const p=spine.find(x=>x.key===spineKey); if(!p)return;
+  f90mKey=spineKey; f90mKind=kind;
+  const d=p.viv?riseMeetingData(p):{};
+  const is45=kind==='45';
+  const forms=is45?fortyFiveFormsFor(p):ninetyFormsFor(p);
+  let b='';
+  if(forms.length) b+='<div class="f90hist" style="margin-bottom:12px">A '+(is45?'45':'90')+'-day form is already on file in Viv'+(forms[0].submittedAt?' (submitted '+formatDate(forms[0].submittedAt)+')':'')+'. Use this helper if you are updating it.</div>';
+  b+='<div class="rm-sec">Meeting Information</div><div class="rm-grid">'+
+    _rmField('f9m_name','Caregiver Name',p.name,'text')+
+    _rmField('f9m_title','Caregiver Title',d.title||'','text')+
+    _rmField('f9m_hire',is45?'Caregiver Original Hire Date':'Hired Date',_f90Mdy(p.hireDate),'text')+
+    _rmField('f9m_mdate','Meeting Date',_f90Mdy(TODAY),'text')+'</div>';
+  b+='<div class="rm-sec">First 90 Days · from the tracker</div><div class="rm-grid">'+
+    _rmField('f9m_touch',is45?'Support touchpoints, hire to day 45':'Support touchpoints, day 45 to day 90',_f90TouchSummary(p,is45?0:46,is45?45:90),'textarea')+
+    _rmField('f9m_train','Training completion',_f90TrainingSummary(p),'textarea')+
+    _rmField('f9m_gaps','Operations checklist items not yet addressed (review together, then check them off)',_f90ChecklistGaps(p),'textarea')+
+    (p.viv?_rmField('f9m_perf',is45?'Performance data (on-time, visit notes, call outs, compliments / SEs)':'Performance metrics for the past 3 months','On-time check-in: '+(d.onTime||'—')+' · Visit note completion: '+(d.task||'—')+' · Waived call-outs: '+(d.waived||'—')+' · SEs: '+(d.se||'none')+' · Weekend commitment: '+(d.weekend||'—')+' · Desired hours: '+(d.desired||'—'),'textarea'):'')+
+    (is45?'':_rmField('f9m_docs','Expiring documents (next 6 months)',d.expDocs||'None','textarea'))+
+  '</div>';
+  b+='<div class="rm-sec">✨ Meeting Notes → Tribute Intelligence</div>'+
+    '<div style="font-size:12px;color:var(--text3);margin-bottom:6px">Paste your notes or pick a Zoom transcript, then let Tribute Intelligence write the '+(is45?'Connect and Reflect':'Connect/Happiness and Transition')+' answers in your voice. Review and edit before copying.</div>'+
+    '<div id="f9mZoom" style="margin-bottom:8px"></div>'+
+    '<textarea class="rm-notes" id="f9m_rawnotes" placeholder="Paste raw meeting notes / transcript here…"></textarea>'+
+    '<div style="margin:8px 0"><button class="rm-btn p" id="f9mParseBtn" onclick="parseF90Meeting()">✨ Prefill with Tribute Intelligence</button> <span id="f9mParseMsg" style="font-size:12px;color:var(--text3)"></span></div>';
+  if(is45){
+    b+='<div class="rm-sec">Connect and Reflect</div><div class="rm-grid">'+
+      _rmField('f9m_q1','How have things been going so far? Is the role what you expected?','','textarea')+
+      _rmField('f9m_q2','Are you receiving the hours, clients, and locations you want?','','textarea')+
+      _rmField('f9m_q3','Tell me about your experience at Tribute so far (the good and the not so good)','','textarea')+
+      _rmField('f9m_q4','Is there anything you would like more guidance or support with?','','textarea')+
+      _rmField('f9m_q5','Do you feel connected to the team and know who to go to for different needs?','','textarea')+
+    '</div><div class="rm-sec">Operations and Next Steps</div><div class="rm-grid">'+
+      _rmField('f9m_perfsum','Summarize performance data and your discussion','','textarea')+
+      _rmField('f9m_next','What does support for the next month look like?','','textarea')+
+    '</div>';
+  } else {
+    b+='<div class="rm-sec">Connect / Happiness</div><div class="rm-grid">'+
+      _rmField('f9m_q1','Looking back on their 90 days, how are they feeling overall?','','textarea')+
+      _rmField('f9m_q2','Are they getting the hours, clients, and locations they want?','','textarea')+
+      _rmField('f9m_q3','Were they supported by a Caregiver Partner? What was that experience like?','','textarea')+
+    '</div><div class="rm-sec">First 90 Days Checklist</div><div class="rm-grid">'+
+      _rmField('f9m_ck_ok','Confident the caregiver understands the full checklist?',_f90ChecklistGaps(p).startsWith('Every')?'Yes':'No','select',['Yes','No'])+
+      _rmField('f9m_training_ok','Hospice and dementia CareAcademy training complete?',f90TrainingState(p).complete?'Yes':'No','select',['Yes','No'])+
+      _rmField('f9m_trainplan','Plan to complete the training (if not complete)','','textarea')+
+      _rmField('f9m_ref','Referrals made or ideas for new referrals','','textarea')+
+    '</div><div class="rm-sec">Transition to Rise</div><div class="rm-grid">'+
+      _rmField('f9m_segment','Which segment will the caregiver be going into?','','select',['','Performance Support','Professional Development','PRN'])+
+      _rmField('f9m_trends','Concerning performance trends, your discussion, and the improvement plan','','textarea')+
+      _rmField('f9m_handoff','Anything else helpful if they have a new Manager','','textarea')+
+    '</div>';
+  }
+  b+='<div style="margin-top:10px"><button class="rm-btn g" onclick="copyF90Meeting()">📋 Copy everything for Viv AI</button> <button class="rm-btn o" onclick="markF90MeetingDone()">Mark '+(is45?'45':'90')+'-day meeting completed</button> <span id="f9mCopyMsg" style="font-size:12px;color:var(--text3)"></span></div>';
+  f90Modal={mode:'meeting',p};
+  _f90Open(p,(is45?'45-Day':'90-Day')+' Meeting Prep — '+p.name,'Mirrors the Viv '+(is45?'45 Day':'90 Days')+' Meeting form · '+(p.manager||''),b,null);
+  loadF90Zoom(p);
+}
+async function loadF90Zoom(p){
+  const box=document.getElementById('f9mZoom'); if(!box)return;
+  box.innerHTML='<div style="font-size:12px;color:var(--text3)">🎥 Checking for a Zoom recording…</div>';
+  let rows=[]; try{ rows=await _fetchZoomRise(); }catch(e){}
+  const mine=String(CURRENT_USER&&CURRENT_USER.email||'').toLowerCase();
+  const cgMce=_mceEmailGuess(p&&(p.manager||p.mce));
+  const wanted=new Set([mine,cgMce].filter(Boolean));
+  const cands=rows.filter(r=>r.hostEmail&&wanted.has(String(r.hostEmail).toLowerCase())).sort((a,b)=>String(b.startTime||'').localeCompare(String(a.startTime||''))).slice(0,4);
+  if(!cands.length){ box.innerHTML='<div style="font-size:12px;color:var(--text3)">🎥 No Zoom meeting transcript found for you in the last 45 days. Cloud-recorded meetings appear here automatically.</div>'; return; }
+  let h='<div style="border:.5px solid var(--border2);border-radius:8px;padding:10px;background:var(--bg2)"><div style="font-size:12px;font-weight:600;margin-bottom:6px">🎥 Zoom transcript found — use it?</div>';
+  cands.forEach(c=>{ const dt=c.startTime?new Date(c.startTime):null; const when=dt&&!isNaN(dt)?dt.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'(unknown date)';
+    h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0"><div style="font-size:12px;min-width:0">📄 <strong>'+when+'</strong> · '+escHtml(c.topic||'Zoom meeting')+'</div><button class="rm-btn p" style="padding:4px 10px;font-size:12px;white-space:nowrap" onclick="useF90Zoom(\''+String(c.safeUuid).replace(/'/g,'')+'\',this)">Use this</button></div>'; });
+  box.innerHTML=h+'</div>';
+}
+async function useF90Zoom(safeUuid,btn){
+  const ta=document.getElementById('f9m_rawnotes'); if(!ta)return;
+  btn.disabled=true; btn.textContent='Loading…';
+  try{ const r=await fetch(PROXY+'?endpoint=zoom_rise_text&safeUuid='+encodeURIComponent(safeUuid),{headers:await authHeaders()}); if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json(); ta.value=(j.text||'').trim(); btn.textContent='✓ Loaded'; parseF90Meeting(); }
+  catch(e){ btn.textContent='Failed — paste manually'; btn.disabled=false; }
+}
+async function parseF90Meeting(){
+  const notes=(document.getElementById('f9m_rawnotes').value||'').trim();
+  const msg=document.getElementById('f9mParseMsg'), btn=document.getElementById('f9mParseBtn');
+  if(notes.length<5){ msg.textContent='Add some notes first.'; return; }
+  const p=spine.find(x=>x.key===f90mKey);
+  btn.disabled=true; msg.textContent='Tribute Intelligence is reading your notes…';
   try{
-    const r=await fetch(PROXY+'?endpoint=f90d_store',{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(body)});
-    const j=await r.json().catch(()=>({}));
-    if(!r.ok||!j.ok)throw new Error(j.error||('HTTP '+r.status));
-    f90Store[body.cgId]=j.rec; closeF90Modal(); renderF90D();
-  }catch(e){ msg.textContent='Save failed: '+e.message; }
+    const r=await fetch(PROXY+'?endpoint=f90d_meeting_parse',{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({caregiverName:p?p.name:'',kind:f90mKind,notes})});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const j=await r.json(); const f=j.fields||{};
+    const set=(id,val)=>{ const el=document.getElementById(id); if(el&&val&&val!=='N/A'){ el.value=val; el.classList.add('rm-parsed'); } };
+    ['q1','q2','q3','q4','q5','perfsum','next','trainplan','ref','trends','handoff'].forEach(k=>set('f9m_'+k,f[k]));
+    if(f.segment){ const el=document.getElementById('f9m_segment'); if(el&&[...el.options].some(o=>o.value===f.segment)){ el.value=f.segment; el.classList.add('rm-parsed'); } }
+    msg.textContent='✓ Filled the narrative answers — review and edit.'+(Array.isArray(f.followUps)&&f.followUps.length?' Suggested follow-ups: '+f.followUps.join('; '):'');
+  }catch(e){ msg.textContent='Prefill failed: '+e.message; }
+  btn.disabled=false;
+}
+function copyF90Meeting(){
+  const parts=[]; document.querySelectorAll('#f90ModalBody .rm-f').forEach(f=>{ const lab=f.querySelector('label'), inp=f.querySelector('input,select,textarea'); if(!lab||!inp||inp.id==='f9m_rawnotes')return; const v=(inp.value||'').trim(); if(v) parts.push(lab.textContent.trim()+': '+v); });
+  const txt=parts.join('\n\n'); const msg=document.getElementById('f9mCopyMsg');
+  navigator.clipboard.writeText(txt).then(()=>{ msg.textContent='✓ Copied — paste into the Viv form\'s AI fill.'; }).catch(()=>{ msg.textContent='Copy blocked — select the text manually.'; });
+}
+async function markF90MeetingDone(){
+  const p=spine.find(x=>x.key===f90mKey); if(!p)return;
+  const msg=document.getElementById('f9mCopyMsg'); msg.textContent='Saving…';
+  try{ await _f90Post({cgId:f90CgId(p),by:(CURRENT_USER&&CURRENT_USER.name)||'',touchpoint:{key:f90mKind==='45'?'d45':'d90',status:'done',method:'Call',notes:'Meeting held '+_f90Mdy(TODAY)}}); msg.textContent='✓ Marked completed.'; renderF90D(); }
+  catch(e){ msg.textContent='Save failed: '+e.message; }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -3824,6 +4100,12 @@ function todoAutoItems(){
     // ── This Month: tracked certification/document expiring within 30 days ──
     // (mirrors renderCerts: skip terminated / inactive caregivers + excluded/
     //  un-dated cert types + MA CPR/CNA which MA doesn't renewal-track.)
+    // ── This Week: back from leave within 5 days — confirm the return (CAs on Leave r9) ──
+    if(leaveData&&leaveData.rows){
+      const lr=leaveData.rows.find(r=>(p.viv&&String(p.viv.id)===String(r.id))||_normNm(r.name||'')===_normNm(p.name||''));
+      const a=lr&&_leaveReturnAlert(lr);
+      if(a) items.push({id:'auto:leave:'+p.key, section:'week', auto:true, key:p.key, text:p.name+' is due back from leave '+formatDate(a.rtw)+' ('+a.label.toLowerCase()+') — confirm the return on the CAs on Leave tab'});
+    }
     if(mceNames.has((p.name||'').toLowerCase().trim()))return;                          // OA / MCE own profile
     if(p.viv&&(p.viv.termDate||(p.viv.status&&!/hired|active/i.test(p.viv.status))))return; // terminated/non-hired
     if(p.viv&&!p.viv.prn&&(p.viv.careVisits||0)===0&&((p.viv.monthsWithVisit||[]).length)===0){
@@ -3896,6 +4178,27 @@ async function loadLeave(force){
   leaveLoading=false; renderLeave();
 }
 function _leaveStatusOf(id){ return (leaveStatusStore&&leaveStatusStore[id])?'closed':'open'; }
+function _leaveReturned(id){ return !!(leaveStatusStore&&leaveStatusStore[id]&&leaveStatusStore[id].returned); }
+// Return-to-work = day after the last day on leave; alert when within 5 days (r9).
+function _leaveRtw(r){ if(!r||!r.leave||!r.leave.until)return null; const u=parseDate(r.leave.until); if(!u)return null; const d=new Date(u); d.setDate(d.getDate()+1); d.setHours(0,0,0,0); return d; }
+function _leaveReturnAlert(r){
+  if(_leaveStatusOf(r.id)==='closed')return null;
+  const rtw=_leaveRtw(r); if(!rtw)return null;
+  const days=Math.round((rtw-TODAY)/86400000);
+  if(days>5)return null;
+  return {rtw,days,label:days<0?'Return overdue '+(-days)+'d':days===0?'Due back today':'Returns in '+days+' day'+(days===1?'':'s'),cls:days<=0?'bg-r':'bg-a'};
+}
+async function confirmLeaveReturn(id,ev){
+  if(ev)ev.stopPropagation();
+  if(!leaveStatusStore)leaveStatusStore={};
+  leaveStatusStore[id]={status:'closed',returned:true};
+  renderLeave();
+  try{
+    await fetch(PROXY+'?endpoint=cas_leave_status',{method:'POST',
+      headers:await authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify({id,status:'closed',returned:true,by:(CURRENT_USER&&CURRENT_USER.name)||undefined})});
+  }catch(e){}
+}
 async function toggleLeaveStatus(id,ev){
   if(ev)ev.stopPropagation();
   const next=_leaveStatusOf(id)==='closed'?'open':'closed';
@@ -3987,14 +4290,25 @@ function renderLeave(){
   '</div>';
   document.getElementById('leaveCount').textContent=rows.length+' shown'+(leaveData.generatedAt?' · as of '+fmtTime(leaveData.generatedAt):'');
   if(!rows.length){ el.innerHTML='<div class="empty-state"><div class="big">✅</div><div>No caregivers match — nobody currently flagged on leave for this view.</div></div>'; return; }
-  let h='<div class="tbl-wrap"><table><thead><tr>'+
+  // Returning soon (r9): every open case due back within 5 days (or overdue), in the current filter.
+  const soon=rows.map(r=>({r,a:_leaveReturnAlert(r)})).filter(x=>x.a).sort((x,y)=>x.a.days-y.a.days);
+  let h='';
+  if(soon.length){
+    h+='<div class="fc" style="margin-bottom:12px;border-color:#f6c79a;background:#fff8f0"><div class="ct" style="color:#9a4d00">⏰ Returning soon — confirm each return when the caregiver is back</div><div style="display:flex;gap:8px;flex-wrap:wrap">'+
+      soon.map(({r,a})=>'<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);font-size:12px"><b>'+escHtml(r.name)+'</b> <span class="bdg '+a.cls+'">'+a.label+'</span> <span class="muted">'+formatDate(a.rtw)+' · '+escHtml(r.manager||'')+'</span> <button class="bdg bg-g" style="cursor:pointer;border:none" onclick="confirmLeaveReturn(\''+String(r.id).replace(/'/g,"\\'")+'\',event)">Return confirmed</button></div>').join('')+
+    '</div></div>';
+  }
+  h+='<div class="tbl-wrap"><table><thead><tr>'+
     '<th>Caregiver</th><th>Market</th><th>Manager</th><th>Dates on leave</th><th>Return to Work</th><th>HR form</th><th>Submitted</th><th>Updated</th><th>Status</th></tr></thead><tbody>';
   rows.forEach(r=>{
     const st=_leaveStatusOf(r.id);
+    const alert=_leaveReturnAlert(r);
     const primaryForm=(r.forms&&r.forms[0])||null;
     // Return-to-work = the day AFTER the last day on leave.
     let rtwCell='<span style="color:var(--text2)">—</span>';
     if(r.leave&&r.leave.until){ const _u=parseDate(r.leave.until); if(_u){ const _rtw=new Date(_u); _rtw.setDate(_rtw.getDate()+1); rtwCell=formatDate(_rtw); } }
+    if(alert) rtwCell+=' <span class="bdg '+alert.cls+'">'+alert.label+'</span>';
+    else if(_leaveReturned(r.id)) rtwCell+=' <span class="bdg bg-g">Returned ✓</span>';
     const formCell=primaryForm
       ? escHtml(primaryForm.title)+(r.forms.length>1?' <span class="bdg bg-n">+'+(r.forms.length-1)+'</span>':'')
       : (r.needsForm?'<span class="bdg bg-r">⚠ Needs HR form</span>':'<span style="color:var(--text2)">—</span>');
@@ -4007,7 +4321,8 @@ function renderLeave(){
       '<td style="font-size:12px;max-width:220px;white-space:normal">'+formCell+'</td>'+
       '<td class="td-date">'+(primaryForm&&primaryForm.submittedAt?formatDate(parseDate(primaryForm.submittedAt)):'—')+'</td>'+
       '<td class="td-date">'+(primaryForm&&primaryForm.updatedAt?formatDate(parseDate(primaryForm.updatedAt)):'—')+'</td>'+
-      '<td><button class="bdg '+(st==='closed'?'bg-n':'bg-g')+'" style="cursor:pointer;border:none" onclick="toggleLeaveStatus(\''+String(r.id).replace(/'/g,"\\'")+'\',event)">'+(st==='closed'?'Closed':'Open')+'</button></td>'+
+      '<td style="white-space:nowrap">'+(alert?'<button class="bdg bg-g" style="cursor:pointer;border:none;margin-right:4px" onclick="confirmLeaveReturn(\''+String(r.id).replace(/'/g,"\\'")+'\',event)">Return confirmed</button>':'')+
+        '<button class="bdg '+(st==='closed'?'bg-n':'bg-g')+'" style="cursor:pointer;border:none" onclick="toggleLeaveStatus(\''+String(r.id).replace(/'/g,"\\'")+'\',event)">'+(st==='closed'?(_leaveReturned(r.id)?'Returned':'Closed'):'Open')+'</button></td>'+
     '</tr>';
   });
   el.innerHTML=h+'</tbody></table></div>';
@@ -4035,18 +4350,26 @@ function segmentHistory(p){
     .filter(x=>x.date&&x.seg)
     .sort((a,b)=>a.date-b.date);
 }
+// Header-tolerant: iSolved exports vary between "Date Of Occurrence", "Date of
+// Occurrence" and camelCase dateOfOccurrence — the exact-title lookups used to
+// leave the Issued column blank (Rise Summary r15). Keys are matched with
+// case/space/punctuation ignored.
+function _pwNorm(k){ return String(k||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
 function parsePipww(rows){
   const out=[];
   rows.forEach(r=>{
-    const empNum=(r['Employee Number']||'').toString().trim();
+    const m={}; Object.keys(r||{}).forEach(k=>{ m[_pwNorm(k)]=r[k]; });
+    const g=(...names)=>{ for(const nm of names){ const v=m[_pwNorm(nm)]; if(v!=null&&String(v).trim()!=='')return v; } return ''; };
+    const empNum=String(g('Employee Number','employeeNumber','Emp Number','Employee #','Employee ID')).trim();
     if(!empNum)return;   // market header rows have no employee number
-    const action=(r['Action Taken']||'').trim();
+    const action=String(g('Action Taken','actionTaken','Action','actionNormalized')).trim();
+    const notes=String(g('Notes','notes')).trim();
     out.push({
-      name:(r['Employee Name']||'').trim(), empNum,
-      type:(r['Occurrence Type']||'').trim(), action,
-      isPip:/pip/i.test(action), isWW:/written warning|ww/i.test(action),
-      date:parseDate(r['Date Of Occurrence']||r['Date Action Taken']),
-      endDate:parseDate(r['Notes']), notes:(r['Notes']||'').trim()
+      name:String(g('Employee Name','employeeName','Name')).trim(), empNum,
+      type:String(g('Occurrence Type','occurrenceType','Type')).trim(), action,
+      isPip:/pip|performance improvement/i.test(action), isWW:/written warning|\bww\b/i.test(action),
+      date:parseDate(g('Date Of Occurrence','dateOfOccurrence','Occurrence Date','Date Action Taken','dateActionTaken','Action Date','Date')),
+      endDate:parseDate(g('End Date','endDate','Ends'))||parseDate(notes), notes
     });
   });
   return out;
@@ -4061,11 +4384,24 @@ function pipwwUpload(input){
     pipww=parsePipww(data);
     try{ localStorage.setItem(PIPWW_LS,JSON.stringify({rows:data,at:new Date().toISOString()})); }catch(_){}
     renderSummary();
+    // Share with every MCE (was browser-only): same upload store as roster/certs.
+    (async()=>{ try{ await fetch(PROXY+'?endpoint=rise_uploads',{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({kind:'pipww',rows:data,fileName:f.name})}); }catch(_){} })();
   };
   if(f.name.toLowerCase().endsWith('.csv'))rd.readAsText(f); else rd.readAsBinaryString(f);
 }
 function restorePipww(){
-  try{ const raw=localStorage.getItem(PIPWW_LS); if(raw){ const j=JSON.parse(raw); if(j&&j.rows)pipww=parsePipww(j.rows); } }catch(_){}
+  let localAt='';
+  try{ const raw=localStorage.getItem(PIPWW_LS); if(raw){ const j=JSON.parse(raw); if(j&&j.rows){ pipww=parsePipww(j.rows); localAt=j.at||''; } } }catch(_){}
+  // Then the shared server copy (newer wins) so every MCE sees the same report.
+  (async()=>{ try{
+    const r=await fetch(PROXY+'?endpoint=rise_uploads',{headers:await authHeaders()}); if(!r.ok)return;
+    const j=await r.json(); const u=j.uploads&&j.uploads.pipww;
+    if(u&&u.rows&&u.rows.length&&(!localAt||String(u.savedAt||'')>localAt)){
+      pipww=parsePipww(u.rows);
+      try{ localStorage.setItem(PIPWW_LS,JSON.stringify({rows:u.rows,at:u.savedAt||new Date().toISOString()})); }catch(_){}
+      const pg=document.getElementById('page-summary'); if(pg&&pg.style.display!=='none')renderSummary();
+    }
+  }catch(_){} })();
 }
 function fillSummaryFilters(){
   const mceSel=document.getElementById('sumMce'), mSel=document.getElementById('sumMarket');
@@ -4277,7 +4613,7 @@ function renderSummary(){
 
   // PIP/WW section
   h+='<div class="fc" style="margin-top:14px"><div class="ct">PIPs &amp; Written Warnings</div>';
-  h+='<div style="margin-bottom:10px"><label class="pw-upload" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:1px solid var(--blue);color:var(--blue);cursor:pointer;font-size:12px;font-weight:600">Upload corrective-action report (.xlsx)<input type="file" accept=".xlsx,.xls,.csv" onchange="pipwwUpload(this)" style="display:none"></label> <span class="muted">Notes column = end date. Persists in this browser.</span></div>';
+  h+='<div style="margin-bottom:10px"><label class="pw-upload" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:1px solid var(--blue);color:var(--blue);cursor:pointer;font-size:12px;font-weight:600">Upload corrective-action report (.xlsx)<input type="file" accept=".xlsx,.xls,.csv" onchange="pipwwUpload(this)" style="display:none"></label> <span class="muted">Notes or End Date column = end date. Shared with every MCE.</span></div>';
   if(pipww&&pipRows.length){
     h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Type</th><th>Action</th><th>Issued</th><th>Ends</th></tr></thead><tbody>';
     pipRows.sort((a,b)=>(b.date||0)-(a.date||0)).forEach(r=>{
@@ -4437,6 +4773,7 @@ function formatDate(val){
 })();
 restoreLocalUploads();   // restore this browser's saved certs/roster before anything else
 restorePipww();          // restore uploaded PIP/WW report for the Program Summary
+setTimeout(()=>{ try{ if(!leaveData)loadLeave(); }catch(e){} },6000);   // leave feed feeds the To Do card's return alerts
 renderLiveChips();
 // Seed the initial history entry so tab navigation (pushState) has a base to
 // return to, and Back retraces tabs instead of exiting on the first press.
