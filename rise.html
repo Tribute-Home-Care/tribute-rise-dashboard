@@ -600,6 +600,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <label>Market</label>
     <select id="f90Market" onchange="renderF90D()"><option value="">All markets</option></select>
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="f90ShowDone" onchange="renderF90D()"> <span id="f90ShowDoneLabel">Show completed touchpoints</span></label>
+    <input type="search" id="f90Search" placeholder="Find any caregiver…" oninput="renderF90D()" style="padding:6px 10px;font-size:13px;border:.5px solid var(--border2);border-radius:var(--r);background:var(--bg);color:var(--text);min-width:180px" title="Searches every active caregiver, not just the first-90-day roster">
     <span class="count" id="f90Count"></span>
   </div>
   <div id="f90Views" style="display:flex;gap:6px;padding:0 14px 12px;flex-wrap:wrap">
@@ -2466,9 +2467,15 @@ async function loadF90D(){
 }
 function f90SetView(v){ f90View=v; document.querySelectorAll('#f90Views .f90vtab').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); renderF90D(); }
 // Roster: hired in the last 90 days (or hire date still ahead), active spine.
+// Training Tracker keeps caregivers through day 180 while a step is still open
+// (Khadijah 9/15: a caregiver at day 167 with CareAcademy incomplete had aged
+// out). A name search overrides the window entirely so anyone can be found.
 function f90Roster(){
-  const from=_f90Add(TODAY,-90);
-  return spine.filter(p=>p.hireDate&&p.hireDate>=from).sort((a,b)=>b.hireDate-a.hireDate);
+  const q=((document.getElementById('f90Search')||{}).value||'').trim().toLowerCase();
+  if(q) return spine.filter(p=>p.hireDate&&(p.name||'').toLowerCase().includes(q)).sort((a,b)=>b.hireDate-a.hireDate);
+  const days=f90View==='training'?180:90;
+  const from=_f90Add(TODAY,-days);
+  return spine.filter(p=>p.hireDate&&p.hireDate>=from&&(f90View!=='training'||((TODAY-p.hireDate)/F90_DAY)<=90||!f90TrainingState(p).complete)).sort((a,b)=>b.hireDate-a.hireDate);
 }
 function f90Rec(p){ return f90Store[f90CgId(p)]||{touchpoints:{},checklist:{},oaVisits:[],training:{}}; }
 function f90FirstVisit(p){ return f90Visits[p.viv?String(p.viv.id):'']||null; }
@@ -2531,7 +2538,8 @@ function renderF90D(){
   }
   const mce=mceSel.value, mkt=mSel.value, showDone=document.getElementById('f90ShowDone').checked;
   const rows=roster.filter(p=>(!mce||p.manager===mce)&&(!mkt||p.market===mkt));
-  document.getElementById('f90Count').textContent=rows.length+' caregiver'+(rows.length===1?'':'s')+' in their first 90 days';
+  const _q=((document.getElementById('f90Search')||{}).value||'').trim();
+  document.getElementById('f90Count').textContent=rows.length+' caregiver'+(rows.length===1?'':'s')+(_q?' matching "'+_q+'"':f90View==='training'?' in training (first 180 days)':' in their first 90 days');
   const lab=document.getElementById('f90ShowDoneLabel'); if(lab) lab.textContent=f90View==='touch'?'Show completed touchpoints':f90View==='training'?'Show caregivers who finished training':'Show caregivers with a documented visit';
   if(f90View==='training') return renderF90Training(el,rows,showDone);
   if(f90View==='oa') return renderF90Oa(el,rows,showDone);
@@ -2581,7 +2589,7 @@ function renderF90Training(el,rows,showDone){
   for(const {p,st} of vis){
     const day=Math.max(0,Math.floor((TODAY-p.hireDate)/F90_DAY));
     h+='<div class="fc f90card"><div class="f90top"><div><div class="f90name">'+escHtml(p.name)+'</div>'+
-      '<div class="f90muted">'+escHtml(p.manager||'—')+' · '+escHtml(p.market||'—')+' · hired '+formatDate(p.hireDate)+' · <b>day '+day+' of 90</b>'+(_f90IsIL(p)?' · Illinois track':'')+'</div></div>'+
+      '<div class="f90muted">'+escHtml(p.manager||'—')+' · '+escHtml(p.market||'—')+' · hired '+formatDate(p.hireDate)+' · <b>day '+day+(day>90?'</b> · <span class="f90warn">past day 90, training still open</span>':' of 90</b>')+(_f90IsIL(p)?' · Illinois track':'')+'</div></div>'+
       '<div class="f90right">'+(st.complete?'<span class="f90chip st-done" style="cursor:default">Training complete ✓</span>':'<span class="f90chip st-week" style="cursor:default">Next: '+escHtml(st.next.label)+'</span>')+'</div></div>'+
       '<div class="f90chips">'+st.steps.map(s=>{
         const d=s.doc||{};
