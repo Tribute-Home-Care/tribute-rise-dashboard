@@ -2867,7 +2867,9 @@ async function parseF90Meeting(){
   btn.disabled=false;
 }
 function copyF90Meeting(){
-  const parts=[]; document.querySelectorAll('#f90ModalBody .rm-f').forEach(f=>{ const lab=f.querySelector('label'), inp=f.querySelector('input,select,textarea'); if(!lab||!inp||inp.id==='f9m_rawnotes')return; const v=(inp.value||'').trim(); if(v) parts.push(lab.textContent.trim()+': '+v); });
+  const parts=[]; document.querySelectorAll('#f90ModalBody .rm-f').forEach(f=>{ const lab=f.querySelector('label'), inp=f.querySelector('input,select,textarea'); if(!lab||!inp||inp.id==='f9m_rawnotes')return; let v=(inp.value||'').trim(); if(!v)return;
+    if(inp.id==='f9m_hire'||inp.id==='f9m_mdate') v=_vivDateWords(v,'12:00 PM');   // dates in words + zone so Viv's AI keeps the right day for Central users
+    parts.push(lab.textContent.trim()+': '+v); });
   const txt=parts.join('\n\n'); const msg=document.getElementById('f9mCopyMsg');
   navigator.clipboard.writeText(txt).then(()=>{ msg.textContent='✓ Copied — paste into the Viv form\'s AI fill.'; }).catch(()=>{ msg.textContent='Copy blocked — select the text manually.'; });
 }
@@ -3949,6 +3951,11 @@ async function parseRiseMeeting(){
   btn.disabled=false;
 }
 function _rmVal(id){ const el=document.getElementById(id); return el?(el.value||'').trim():''; }
+// Human timezone words for the Viv AI prefill ("Central Time"), from the IANA zone.
+function _vivTzWords(tz){ tz=String(tz||''); if(/Chicago|Central/i.test(tz))return 'Central Time'; if(/New_York|Detroit|Eastern/i.test(tz))return 'Eastern Time'; if(/Denver|Mountain|Phoenix/i.test(tz))return 'Mountain Time'; if(/Los_Angeles|Pacific/i.test(tz))return 'Pacific Time'; return tz?tz.replace(/_/g,' ')+' time':''; }
+function _vivDateWords(mdy,hhmm){ const m=String(mdy||'').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if(!m)return mdy; let h=12,mi=0; const t=String(hhmm||'').trim().toLowerCase().match(/^(\d{1,2})(?::?(\d{2}))?\s*(a|p)?/); if(t){ h=+t[1]; mi=t[2]?+t[2]:0; if(t[3]==='p'&&h<12)h+=12; if(t[3]==='a'&&h===12)h=0; }
+  const d=new Date(+m[3],+m[1]-1,+m[2],h,mi); let tz=''; try{ tz=_vivTzWords(Intl.DateTimeFormat().resolvedOptions().timeZone); }catch(e){}
+  return d.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})+' at '+String(h%12||12)+':'+String(mi).padStart(2,'0')+' '+(h>=12?'PM':'AM')+(tz?' '+tz:''); }
 function copyRiseMeetingForViv(){
   const L=[];
   L.push('RISE MEETING (every 6 months) — '+_rmVal('rm_name'));
@@ -3970,12 +3977,19 @@ function copyRiseMeetingForViv(){
   const _rmLocalDate=v=>{ v=String(v||'').trim(); let m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); if(m)return {y:+m[3],mo:+m[1],d:+m[2]};
     m=v.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m)return {y:+m[1],mo:+m[2],d:+m[3]}; return null; };
   const _tzName=(()=>{ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone||''; }catch(e){ return ''; } })();
+  const _tzWords=_vivTzWords(_tzName);
+  // 9/16 (Dova, third attempt): the ISO instant did not survive Viv's AI either.
+  // Her own 9/15 90-day form is the clue: the one AI-modified date that kept its
+  // time (2026-09-15T19:30Z = 2:30 PM Central) was given to the AI in WORDS with a
+  // time. So emit plain English with an explicit time and the MCE's zone name:
+  // "September 10, 2026 at 10:30 AM Central Time". Date-only fields get 12:00 PM
+  // so a midnight-Eastern default can never roll the day back in Chicago.
   const _rmDateViv=(v,t)=>{ v=(v||'').trim(); if(!v)return v;
     const ld=_rmLocalDate(v); const tm=_rmParseTime(t)||{h:12,mi:0};
-    if(!ld)return v+' '+((t||'').trim()||'12:00 PM');
+    if(!ld)return v+' at '+((t||'').trim()||'12:00 PM')+(_tzWords?' '+_tzWords:'');
     const local=new Date(ld.y,ld.mo-1,ld.d,tm.h,tm.mi,0,0);   // MCE's own timezone
     const hh=String(tm.h%12||12), ap=tm.h>=12?'PM':'AM';
-    return local.toISOString()+' ('+String(ld.mo).padStart(2,'0')+'/'+String(ld.d).padStart(2,'0')+'/'+ld.y+' '+hh+':'+String(tm.mi).padStart(2,'0')+' '+ap+(_tzName?' '+_tzName:'')+')'; };
+    return local.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})+' at '+hh+':'+String(tm.mi).padStart(2,'0')+' '+ap+(_tzWords?' '+_tzWords:''); };
   L.push('Hired Date: '+_rmDateViv(_rmVal('rm_hire')));
   L.push('Meeting Date: '+_rmDateViv(_rmVal('rm_mdate'), _rmVal('rm_mtime')));
   if(_rmVal('rm_mtime'))L.push('Meeting Time: '+_rmVal('rm_mtime'));
