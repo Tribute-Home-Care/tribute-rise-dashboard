@@ -2824,6 +2824,7 @@ function openF90Meeting(spineKey,kind){
     '</div>';
   }
   b+='<div style="margin-top:10px"><button class="rm-btn g" onclick="copyF90Meeting()">📋 Copy everything for Viv AI</button> <button class="rm-btn o" onclick="markF90MeetingDone()">Mark '+(is45?'45':'90')+'-day meeting completed</button> <span id="f9mCopyMsg" style="font-size:12px;color:var(--text3)"></span></div>';
+  try{ const tzw=_vivTzWords(Intl.DateTimeFormat().resolvedOptions().timeZone); if(tzw&&tzw!=='Eastern Time') b='<div class="f90hist" style="margin-bottom:10px;border-left-color:#f6c79a;background:#fff8f0">📅 '+tzw+' note: Viv\'s AI saves dates as midnight Eastern, which shows a day early in your office. The copy leaves the hire date and Meeting Date for you to enter in Viv\'s date field. Everything else transfers.</div>'+b; }catch(e){}
   f90Modal={mode:'meeting',p};
   _f90Open(p,(is45?'45-Day':'90-Day')+' Meeting Prep — '+p.name,'Mirrors the Viv '+(is45?'45 Day':'90 Days')+' Meeting form · '+(p.manager||''),b,null);
   loadF90Zoom(p);
@@ -2868,7 +2869,11 @@ async function parseF90Meeting(){
 }
 function copyF90Meeting(){
   const parts=[]; document.querySelectorAll('#f90ModalBody .rm-f').forEach(f=>{ const lab=f.querySelector('label'), inp=f.querySelector('input,select,textarea'); if(!lab||!inp||inp.id==='f9m_rawnotes')return; let v=(inp.value||'').trim(); if(!v)return;
-    if(inp.id==='f9m_hire'||inp.id==='f9m_mdate') v=_vivDateWords(v,'12:00 PM');   // dates in words + zone so Viv's AI keeps the right day for Central users
+    if(inp.id==='f9m_hire'||inp.id==='f9m_mdate'){   // Viv's AI stores dates as midnight Eastern; non-Eastern MCEs enter them in Viv's date picker instead
+      let tz=''; try{ tz=_vivTzWords(Intl.DateTimeFormat().resolvedOptions().timeZone); }catch(e){}
+      if(tz&&tz!=='Eastern Time'){ parts.push(lab.textContent.trim()+': (leave blank here and enter '+v+' directly in the Viv date field; AI-filled dates shift a day for '+tz+' users)'); return; }
+      v=_vivDateWords(v,'12:00 PM');
+    }
     parts.push(lab.textContent.trim()+': '+v); });
   const txt=parts.join('\n\n'); const msg=document.getElementById('f9mCopyMsg');
   navigator.clipboard.writeText(txt).then(()=>{ msg.textContent='✓ Copied — paste into the Viv form\'s AI fill.'; }).catch(()=>{ msg.textContent='Copy blocked — select the text manually.'; });
@@ -3862,6 +3867,7 @@ function openRiseMeeting(key){
     _rmField('rm_nextgoal','Goal for next 6 months + your plan','','textarea')+
     _rmField('rm_sched','Between meetings: scheduling notes','','textarea')+
   '</div>';
+  try{ const tzw=_vivTzWords(Intl.DateTimeFormat().resolvedOptions().timeZone); if(tzw&&tzw!=='Eastern Time') b='<div class="f90hist" style="margin-bottom:10px;border-left-color:#f6c79a;background:#fff8f0">📅 '+tzw+' note: Viv\'s AI saves dates as midnight Eastern, which shows a day early in your office. The copy leaves Hired Date and Meeting Date for you to enter in Viv\'s date field. Everything else transfers.</div>'+b; }catch(e){}
   document.getElementById('rmBody').innerHTML=b;
   document.getElementById('rmCopyMsg').textContent='';
   document.getElementById('rmOverlay').classList.add('open');
@@ -3990,9 +3996,20 @@ function copyRiseMeetingForViv(){
     const local=new Date(ld.y,ld.mo-1,ld.d,tm.h,tm.mi,0,0);   // MCE's own timezone
     const hh=String(tm.h%12||12), ap=tm.h>=12?'PM':'AM';
     return local.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})+' at '+hh+':'+String(tm.mi).padStart(2,'0')+' '+ap+(_tzWords?' '+_tzWords:''); };
-  L.push('Hired Date: '+_rmDateViv(_rmVal('rm_hire')));
-  L.push('Meeting Date: '+_rmDateViv(_rmVal('rm_mdate'), _rmVal('rm_mtime')));
-  if(_rmVal('rm_mtime'))L.push('Meeting Time: '+_rmVal('rm_mtime'));
+  // 9/16: Viv's AI stores every date it is handed as midnight EASTERN, whatever
+  // the wording (plain, noon-anchored, ISO, and words all failed for Dova). For a
+  // non-Eastern MCE that lands as the previous day at 11:00 PM, so we no longer
+  // hand the AI those dates at all: the MCE types them into Viv's own date picker,
+  // which stores them correctly. Eastern MCEs are unaffected and keep the prefill.
+  const _nonEastern=_tzWords&&_tzWords!=='Eastern Time';
+  if(_nonEastern){
+    L.push('Hired Date: (leave blank here and enter '+_rmVal('rm_hire')+' directly in the Viv date field; AI-filled dates shift a day for '+_tzWords+' users)');
+    L.push('Meeting Date: (leave blank here and enter '+_rmVal('rm_mdate')+(_rmVal('rm_mtime')?' '+_rmVal('rm_mtime'):'')+' directly in the Viv date field)');
+  } else {
+    L.push('Hired Date: '+_rmDateViv(_rmVal('rm_hire')));
+    L.push('Meeting Date: '+_rmDateViv(_rmVal('rm_mdate'), _rmVal('rm_mtime')));
+    if(_rmVal('rm_mtime'))L.push('Meeting Time: '+_rmVal('rm_mtime'));
+  }
   L.push('Is this meeting for an anniversary?: '+_rmVal('rm_anniv'));
   if(_rmVal('rm_bonus'))L.push('Anniversary bonus (amount + paycheck date): '+_rmVal('rm_bonus'));
   L.push('');
