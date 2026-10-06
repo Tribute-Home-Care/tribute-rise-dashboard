@@ -632,6 +632,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <div style="font-family:'Space Grotesk',Inter,sans-serif;font-size:20px;font-weight:700;margin:6px 0 2px">📝 DocuSign Assist</div>
     <div class="stat-foot" style="margin-bottom:12px">Draft a PIP, written warning, corrective action, or letter in Tribute's voice with AI, review and edit it, then send it for signature in DocuSign — in one place. Sensitive HR documents: you always review before it sends; nothing goes out automatically.</div>
     <div id="dsConn" style="margin-bottom:14px"></div>
+    <div id="dsAiTrain" class="fc" style="margin-bottom:14px;padding:10px 14px"></div>
     <div class="fc" style="margin-bottom:14px">
       <div class="grid two" style="gap:10px">
         <div><div class="ct">Caregiver</div>
@@ -2865,7 +2866,7 @@ async function parseF90Meeting(){
     const set=(id,val)=>{ const el=document.getElementById(id); if(el&&val&&val!=='N/A'){ el.value=val; el.classList.add('rm-parsed'); } };
     ['q1','q2','q3','q4','q5','perfsum','next','trainplan','ref','trends','handoff'].forEach(k=>set('f9m_'+k,f[k]));
     if(f.segment){ const el=document.getElementById('f9m_segment'); if(el&&[...el.options].some(o=>o.value===f.segment)){ el.value=f.segment; el.classList.add('rm-parsed'); } }
-    msg.textContent='✓ Filled the narrative answers — review and edit.'+(Array.isArray(f.followUps)&&f.followUps.length?' Suggested follow-ups: '+f.followUps.join('; '):'');
+    msg.textContent='✓ Filled the narrative answers, review and edit.'+(Array.isArray(f.followUps)&&f.followUps.length?' Suggested follow-ups: '+f.followUps.join('; '):'')+_aiGuidedLine(j.aiTraining);
   }catch(e){ msg.textContent='Prefill failed: '+e.message; }
   btn.disabled=false;
 }
@@ -2896,7 +2897,39 @@ const CE_API=PROXY.replace(/\/vivProxy$/i,'');
 let _docsCg=null, _docsDsConnected=false;
 function _mceSid(){ return String((CURRENT_USER&&CURRENT_USER.email)||'').toLowerCase(); }
 function _cgTenure(p){ const hd=p&&parseDate(p.hireDate); if(!hd)return ''; const days=Math.floor((TODAY-hd)/86400000); if(days<0)return ''; const y=Math.floor(days/365),m=Math.floor((days%365)/30); return (y?y+' yr ':'')+(m?m+' mo':(y?'':days+' days')); }
-async function renderDocs(){ ceCheckDs(); }
+async function renderDocs(){ ceCheckDs(); renderAiTrain(); }
+// ── AI Training visibility (Khadijah 10/6): which process documents from the
+//    CE workbook's "AI Training" tab the AI is currently following, when they
+//    were last read, and a Refresh so a link added today is used today.
+const AI_TRAIN_WB='https://tributehomecare.sharepoint.com/sites/Shared/_layouts/15/Doc.aspx?sourcedoc=%7BE7944390-1288-4239-84AA-C2F5991602FD%7D&file=CE%20Intelligence%20Suite%20Needs.xlsx&action=default';
+let _aiTrainCache=null;
+async function renderAiTrain(force){
+  const el=document.getElementById('dsAiTrain'); if(!el)return;
+  if(!_aiTrainCache||force){
+    el.innerHTML='<div class="stat-foot">'+(force?'Re-reading the AI Training tab and its documents…':'Checking AI Training sources…')+'</div>';
+    try{ const r=await fetch(PROXY+'?endpoint=ai_training'+(force?'&force=1':''),{headers:await authHeaders()}); _aiTrainCache=r.ok?await r.json():{items:[]}; }
+    catch(e){ _aiTrainCache={items:[],error:e.message}; }
+  }
+  const c=_aiTrainCache, items=(c.items||[]);
+  const ok=items.filter(i=>(i.chars>0||i.notes)&&!i.error), bad=items.filter(i=>i.error);
+  let h='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="ct" style="margin:0">🎓 AI Training sources '+(ok.length?'<span class="bdg bg-g">'+ok.length+' in use</span>':'<span class="bdg bg-n">none yet</span>')+'</div>'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="stat-foot">'+(c.generatedAt?'read '+fmtTime(c.generatedAt):'')+'</span>'+
+    '<a href="'+AI_TRAIN_WB+'" target="_blank" rel="noopener" class="rm-btn o" style="padding:5px 10px;font-size:12px;text-decoration:none">Open the AI Training tab</a>'+
+    '<button class="rm-btn o" style="padding:5px 10px;font-size:12px" onclick="renderAiTrain(true)">↻ Refresh now</button></div></div>';
+  if(!items.length){
+    h+='<div class="stat-foot" style="margin-top:6px">No process documents yet. Paste a SharePoint link in column A of the AI Training tab and your notes in column B; drafts here, the Rise prefill, and the 45/90-day helper will follow it within the hour (or press Refresh now).</div>';
+  } else {
+    h+='<div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">'+items.map(i=>'<div style="font-size:12.5px">'+(i.error?'⚠️ ':'📄 ')+(i.url?'<a href="'+escHtml(i.url)+'" target="_blank" rel="noopener">'+escHtml(i.title||i.url)+'</a>':'<b>'+escHtml(i.title||'Guidance')+'</b>')+
+      (i.chars?' <span class="f90muted">'+Math.round(i.chars/1000)+'k characters read</span>':'')+(i.notes?'<div class="f90muted" style="margin-left:22px">Notes: '+escHtml(i.notes)+'</div>':'')+(i.error?'<div class="f90warn" style="margin-left:22px">Could not read: '+escHtml(i.error)+'</div>':'')+'</div>').join('')+'</div>'+
+      '<div class="stat-foot" style="margin-top:6px">Every draft below says which of these guided it.</div>';
+  }
+  el.innerHTML=h;
+}
+function _aiGuidedLine(at){
+  if(!at) return '';
+  const src=(at.sources||[]).filter(s=>!s.error&&(s.chars>0||s.notes));
+  return src.length?' · Guided by: '+src.map(s=>s.title).join(', '):' · No AI Training documents yet (drafted from Tribute\'s voice guide only).';
+}
 // Custom caregiver search dropdown (native <datalist> was unreliable across browsers).
 function ceFilterCg(q){
   const dd=document.getElementById('docsCgDrop'); if(!dd)return;
@@ -3011,7 +3044,7 @@ async function ceDraft(){
     const card=document.getElementById('docsDraftCard');
     card.style.display=''; card.dataset.subject=j.subject||''; card.dataset.doctype=j.docType||type;
     document.getElementById('docsResult').innerHTML='';
-    msg.textContent=j.truncated?'⚠ Draft ran long and may be cut off at the end — check the closing and re-draft if needed.':'✓ Draft ready — review & edit below.';
+    msg.textContent=(j.truncated?'⚠ Draft ran long and may be cut off at the end, check the closing and re-draft if needed.':'✓ Draft ready, review and edit below.')+_aiGuidedLine(j.aiTraining);
     card.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){ msg.textContent='Draft failed: '+e.message; }
   btn.disabled=false;
@@ -3983,7 +4016,7 @@ async function parseRiseMeeting(){
     if(f.referralNotes&&f.referralNotes!=='N/A')set('rm_ref',f.referralNotes);
     let extra='';
     if(Array.isArray(f.followUps)&&f.followUps.length)extra=' · Suggested follow-ups: '+f.followUps.join('; ');
-    msg.textContent='✓ Filled the Connect section — review & edit.'+extra;
+    msg.textContent='✓ Filled the Connect section, review and edit.'+extra+_aiGuidedLine(j.aiTraining);
   }catch(e){ msg.textContent='Parse failed: '+e.message; }
   btn.disabled=false;
 }
