@@ -1115,7 +1115,7 @@ function buildSpine(){
         name:cg.name, market:cg.market||cg.state||'', manager:cg.mce||'',
         title:'', hireDate:parseDate(cg.hireDate),
         pto:cg.ptoHrs!=null?cg.ptoHrs:0, sick:cg.sickHrs!=null?cg.sickHrs:0,
-        ptoBank:cg.pto||null, sickBank:cg.sick||null, isoCerts:cg.certs||null,
+        ptoBank:cg.pto||null, sickBank:cg.sick||null, isoCerts:cg.certs||null, i9:cg.i9||null,
         hasBalances:hasBal, balancesSource:'iSolved'
       });
     }
@@ -2568,9 +2568,10 @@ function renderF90D(){
       '<span class="f90chip st-ck" onclick="openF90Modal(\''+_f90Key(p)+'\',\'checklist\')" title="Operations checklist">Checklist '+ck+'/'+F90_TOTAL_CK+'</span></div></div>'+
       '<div class="f90chips">'+(vis.length?vis.map(t=>{
         const d=t.due?_f90Short(t.due):'';
-        const tip=F90_ST_LABEL[t.status]+(t.doc&&t.doc.method?' · '+t.doc.method:'')+(t.doc&&t.doc.by?' · '+t.doc.by:'')+(t.note?' · '+t.note:'')+(t.kind==='meeting'?' · opens the meeting helper':'');
+        const tip=F90_ST_LABEL[t.status]+(t.doc&&t.doc.date?' on '+formatDate(t.doc.date):'')+(t.doc&&t.doc.method?' · '+t.doc.method:'')+(t.doc&&t.doc.by?' · '+t.doc.by:'')+(t.note?' · '+t.note:'')+(t.kind==='meeting'?' · opens the meeting helper':'');
         const click=t.kind==='meeting'?'openF90Meeting(\''+_f90Key(p)+'\',\''+(t.key==='d45'?'45':'90')+'\')':'openF90Modal(\''+_f90Key(p)+'\',\''+t.key+'\')';
-        return '<span class="f90chip st-'+t.status+'" title="'+escHtml(tip)+'" onclick="'+click+'">'+(t.kind==='meeting'?'✨ ':'')+escHtml(t.label)+(d?' <em>'+d+'</em>':'')+(t.status==='done'||t.status==='auto'?' ✓':t.status==='waiting'?' ⏳':t.status==='skipped'?' ↷':'')+'</span>';
+        const dd=(t.status==='done'&&t.doc&&t.doc.date)?_f90Short(parseDate(t.doc.date)):'';
+        return '<span class="f90chip st-'+t.status+'" title="'+escHtml(tip)+'" onclick="'+click+'">'+(t.kind==='meeting'?'✨ ':'')+escHtml(t.label)+(dd?' <em>done '+dd+'</em>':(d?' <em>'+d+'</em>':''))+(t.status==='done'||t.status==='auto'?' ✓':t.status==='waiting'?' ⏳':t.status==='skipped'?' ↷':'')+'</span>';
       }).join(''):'<span class="f90muted">Everything documented. Turn on "Show completed touchpoints" to review.</span>')+'</div></div>';
   }
   el.innerHTML=h;
@@ -2665,13 +2666,14 @@ function openF90Modal(spineKey,tpKey){
     const st=doc.status||(tp.auto?'done':'');
     h+='<div class="f90field"><label>Status</label><div class="f90seg">'+[['done','Completed'],['waiting','Waiting for response'],['skipped','Skipped'],['','Not done yet']].map(([v,l])=>'<label class="'+(st===v?'on':'')+'"><input type="radio" name="f90st" value="'+v+'" '+(st===v?'checked':'')+' onchange="this.closest(\'.f90seg\').querySelectorAll(\'label\').forEach(x=>x.classList.remove(\'on\'));this.parentNode.classList.add(\'on\')"> '+l+'</label>').join('')+'</div>'+
       (tp.auto&&!doc.status?'<div class="stat-foot">A '+escHtml(tp.label)+' form is already on file in Viv, so this shows as completed automatically.</div>':'')+'</div>';
+    h+='<div class="f90field"><label>Date completed <span class="f90muted">the day the touchpoint actually happened</span></label><input type="date" id="f90DoneDate" value="'+escHtml(doc.date||(doc.status==='done'?'':_f90Ymd(TODAY)))+'"></div>';
     h+='<div class="f90field"><label>Communication method</label><select id="f90Method"><option value="">—</option>'+F90_METHODS.map(m=>'<option '+(doc.method===m?'selected':'')+'>'+m+'</option>').join('')+'</select></div>';
     h+='<div class="f90field"><label>Notes</label><textarea id="f90Notes" rows="4" placeholder="What did you cover? Anything to follow up on?">'+escHtml(doc.notes||'')+'</textarea></div>';
     if(doc.at) h+='<div class="stat-foot" style="margin-bottom:12px">Last saved '+fmtTime(doc.at)+(doc.by?' by '+escHtml(doc.by):'')+'</div>';
   }
   h+=_f90ChecklistHtml(rec,!tp);
   const hist=plan.filter(t=>t.doc&&(t.doc.status||t.doc.notes)&&(!tp||t.key!==tp.key));
-  if(hist.length) h+='<div class="f90field"><label>Earlier touchpoints</label>'+hist.map(t=>'<div class="f90hist"><b>'+escHtml(t.label)+'</b> · '+(t.due?_f90Short(t.due):'')+' · '+escHtml(F90_ST_LABEL[t.doc.status]||'')+(t.doc.method?' via '+escHtml(t.doc.method):'')+(t.doc.notes?'<div>'+escHtml(t.doc.notes)+'</div>':'')+'</div>').join('')+'</div>';
+  if(hist.length) h+='<div class="f90field"><label>Earlier touchpoints</label>'+hist.map(t=>'<div class="f90hist"><b>'+escHtml(t.label)+'</b> · '+(t.due?_f90Short(t.due):'')+' · '+escHtml(F90_ST_LABEL[t.doc.status]||'')+(t.doc.date&&t.doc.status==='done'?' on '+formatDate(t.doc.date):'')+(t.doc.method?' via '+escHtml(t.doc.method):'')+(t.doc.notes?'<div>'+escHtml(t.doc.notes)+'</div>':'')+'</div>').join('')+'</div>';
   _f90Open(p,p.name,tp?(tp.label+(tp.due?' · due '+_f90Short(tp.due):'')+(tp.note?' · '+tp.note:'')):'Operations checklist · '+(p.manager||''),h,tp?'Save touchpoint':'Save checklist');
 }
 function openF90Training(spineKey,stepKey){
@@ -2721,7 +2723,7 @@ async function saveF90Touchpoint(){
       const st=(document.querySelector('input[name=f90st]:checked')||{}).value||'';
       const method=val('f90Method'), notes=val('f90Notes').trim();
       let status=st; if(!status&&method==='Waiting for Response')status='waiting'; if(!status&&method==='Skipped')status='skipped';
-      body.touchpoint={key:tp.key,status,method,notes};
+      body.touchpoint={key:tp.key,status,method,notes,date:val('f90DoneDate')};
     }
     const ck={}; document.querySelectorAll('#f90ModalBody input[data-ck]').forEach(i=>{ const k=i.getAttribute('data-ck'); const was=!!(rec.checklist||{})[k]; if(i.checked!==was)ck[k]=i.checked; });
     if(Object.keys(ck).length)body.checklist=ck;
@@ -2759,7 +2761,7 @@ function _f90TouchSummary(p,fromDay,toDay){
   const rows=f90Plan(p).filter(t=>t.due&&t.due>=a&&t.due<=b&&t.kind!=='meeting');
   if(!rows.length) return 'No touchpoints fell between day '+fromDay+' and day '+toDay+'.';
   return rows.map(t=>{ const d=t.doc||{}; const st=d.status?F90_ST_LABEL[d.status]:(t.status==='overdue'?'Not documented':'Not yet due');
-    return _f90Mdy(t.due)+' '+t.label+' — '+st+(d.method?' via '+d.method:'')+(d.notes?': '+d.notes:''); }).join('\n');
+    return _f90Mdy(t.due)+' '+t.label+' — '+st+(d.date&&d.status==='done'?' on '+_f90Mdy(parseDate(d.date)):'')+(d.method?' via '+d.method:'')+(d.notes?': '+d.notes:''); }).join('\n');
 }
 function _f90TrainingSummary(p){
   const st=f90TrainingState(p);
@@ -3643,6 +3645,34 @@ function certSortBy(col){
   else { certSort.col=col; certSort.dir=1; }  // new column → ascending
   renderCerts();
 }
+// I-9 tracker (Certifications r9, 2026-10-06). iSolved reports i9Completed +
+// i9CompletedDate per employee; it only began tracking I-9s in iSolved around
+// March 2026, so older hires read "not completed" with no date and are shown
+// as "not tracked in iSolved" rather than as a compliance failure. Federal
+// rule: Section 2 within 3 business days of the first day of work.
+const I9_TRACKED_SINCE='2026-03-01';
+function _i9Block(mce,market,mceNames){
+  const rows=[]; let onFile=0, missingRecent=0, untracked=0, pending=0;
+  spine.forEach(p=>{
+    if((p.market||'').toLowerCase().includes('virginia'))return;
+    if(mceNames.has((p.name||'').toLowerCase().trim()))return;
+    if(p.viv&&(p.viv.termDate||(p.viv.status&&!/hired|active/i.test(p.viv.status))))return;
+    if(mce&&p.manager!==mce)return; if(market&&p.market!==market)return;
+    if(p.i9===null||p.i9===undefined){ pending++; return; }           // iSolved not synced for this caregiver yet
+    const hd=p.hireDate?p.hireDate.toLocaleDateString('en-CA'):'';
+    if(p.i9.completed){ onFile++; return; }
+    if(hd&&hd>=I9_TRACKED_SINCE){ missingRecent++; const days=p.hireDate?Math.floor((TODAY-p.hireDate)/86400000):null; rows.push({p,days}); }
+    else untracked++;
+  });
+  rows.sort((a,b)=>(a.days??0)-(b.days??0));
+  let h='<div class="fc" style="margin-bottom:14px;border-left:3px solid '+(missingRecent?'var(--red)':'var(--green)')+'"><div class="ct" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span>🪪 I-9 tracker <span style="font-weight:500;text-transform:none;color:var(--text3)">live from iSolved</span></span>'+
+    '<span style="font-weight:500;text-transform:none;color:var(--text3)">'+onFile+' on file · <b style="color:'+(missingRecent?'var(--red)':'var(--green)')+'">'+missingRecent+' missing</b>'+(untracked?' · '+untracked+' hired before iSolved I-9 tracking':'')+(pending?' · '+pending+' not synced yet':'')+'</span></div>';
+  if(!rows.length){ h+='<div class="stat-foot">Every caregiver hired since '+formatDate(I9_TRACKED_SINCE)+' in this view has a completed I-9 in iSolved.</div>'; return h+'</div>'; }
+  h+='<div class="tbl-wrap" style="margin-top:6px"><table class="tbl"><thead><tr><th>Caregiver</th><th>MCE</th><th>Market</th><th>Hired</th><th>Days since hire</th><th>I-9</th></tr></thead><tbody>'+
+    rows.map(({p,days})=>'<tr><td class="td-name">'+escHtml(p.name)+'</td><td style="font-size:12px">'+escHtml(p.manager||'—')+'</td><td style="font-size:12px">'+escHtml(p.market||'—')+'</td><td class="td-date">'+formatDate(p.hireDate)+'</td><td>'+(days!=null?days:'—')+'</td><td><span class="bdg '+((days??0)>3?'bg-r':'bg-a')+'">'+((days??0)>3?'Missing · past 3-day window':'Due within 3 business days')+'</span></td></tr>').join('')+
+    '</tbody></table></div><div class="stat-foot" style="margin-top:6px">Section 2 of the I-9 must be completed within 3 business days of the first day of work. Complete it in iSolved and it clears here on the next sync.</div>';
+  return h+'</div>';
+}
 function renderCerts(){
   const el=document.getElementById('certs');
   if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading certifications live from iSolved…</div>'; return; }
@@ -3742,7 +3772,8 @@ function renderCerts(){
     '<div class="fc"><div class="ct">Expiring ≤ 90 days</div><div class="big-stat"><span class="v '+(in90?'a':'g')+'">'+in90+'</span></div><div class="stat-foot">plan ahead</div></div>'+
     '<div class="fc"><div class="ct">Documents shown</div><div class="big-stat"><span class="v b">'+rows.length+'</span></div><div class="stat-foot">'+cgs+' caregivers</div></div>'+
   '</div>';
-  if(!rows.length){ el.innerHTML=h+'<div class="no-data">No certifications match the current filters. 🎉</div>'; return; }
+  const i9Html=_i9Block(mce,market,mceNames);
+  if(!rows.length){ el.innerHTML=i9Html+h+'<div class="no-data">No certifications match the current filters. 🎉</div>'; return; }
   const arrow=c=>certSort.col===c?(certSort.dir>0?' ▲':' ▼'):(!certSort.col&&c==='exp'?' ▲':'');
   const th=(c,label)=>'<th onclick="certSortBy(\''+c+'\')" style="cursor:pointer;user-select:none" title="Sort by '+label+'">'+label+'<span style="color:var(--orange)">'+arrow(c)+'</span></th>';
   h+='<div class="tbl-wrap"><table class="tbl"><thead><tr>'+
@@ -3763,7 +3794,7 @@ function renderCerts(){
       '<td style="font-size:12px">'+escHtml(r.mce)+'</td>'+
       '<td class="td-date">'+escHtml(r.market)+'</td></tr>';
   });
-  el.innerHTML=h+'</tbody></table></div>';
+  el.innerHTML=i9Html+h+'</tbody></table></div>';
 }
 
 // ════════════════════════════════════════════════════════════════════════════
