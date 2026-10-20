@@ -607,6 +607,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <button class="f90vtab on" data-v="touch" onclick="f90SetView('touch')">Support Touchpoints</button>
     <button class="f90vtab" data-v="training" onclick="f90SetView('training')">Training Tracker</button>
     <button class="f90vtab" data-v="oa" onclick="f90SetView('oa')">OA In-person Visits</button>
+    <button class="f90vtab" data-v="sched" onclick="f90SetView('sched')">📅 This Week's Schedules</button>
   </div>
   <div id="f90d" style="padding:0 14px 40px"></div>
 </div>
@@ -2324,8 +2325,9 @@ async function renderCgSchedule(cgid){
 // One-click pull: printable sheet of this week's CLIENT-visit schedules for every
 // first-90-day caregiver in the current New Hires MCE/state filter (Jillian 7/30 —
 // for sending to Chantal & the CSMs). Joined by cgid so nicknames/Geos all appear.
-async function printNewHireSchedules(){
+async function printNewHireSchedules(src){
   const key=getKey(); if(!_hasAuth()){ showGate(); return; }
+  const _mceEl=src==='f90'?'f90Mce':'sumMce', _mktEl=src==='f90'?'f90Market':'sumMarket';
   // Reads the RISE SUMMARY filters since the New Hires tab was removed
   // (Charlotte, 2026-09-15). That also fixes a filter that never worked: the old
   // nhMarket options were built from newHiresData.rows[].state (MA/MD/IL) while
@@ -2333,7 +2335,7 @@ async function printNewHireSchedules(){
   // Department Title — so picking a state silently matched nothing. sumMarket is
   // built from spine p.market, the same field filtered here, so the two now
   // agree by construction.
-  const mce=(document.getElementById('sumMce')||{}).value||'', state=(document.getElementById('sumMarket')||{}).value||'';
+  const mce=(document.getElementById(_mceEl)||{}).value||'', state=(document.getElementById(_mktEl)||{}).value||'';
   const wk=_sundayStr(TODAY), wkEnd=_addDaysStr(wk,6);
   const nh=spine.filter(p=>p.viv&&p.viv.id&&p.hireDate&&((TODAY-p.hireDate)/86400000)<=90&&(!mce||p.manager===mce)&&(!state||p.market===state))
     .sort((a,b)=>a.name.localeCompare(b.name));
@@ -2544,6 +2546,7 @@ function renderF90D(){
   const lab=document.getElementById('f90ShowDoneLabel'); if(lab) lab.textContent=f90View==='touch'?'Show completed touchpoints':f90View==='training'?'Show caregivers who finished training':'Show caregivers with a documented visit';
   if(f90View==='training') return renderF90Training(el,rows,showDone);
   if(f90View==='oa') return renderF90Oa(el,rows,showDone);
+  if(f90View==='sched') return renderF90Sched(el,rows);
   const plans=rows.map(p=>({p,plan:f90Plan(p),rec:f90Rec(p)}));
   const all=plans.flatMap(x=>x.plan);
   const nOver=all.filter(t=>t.status==='overdue').length, nWeek=all.filter(t=>t.status==='week').length, nWait=all.filter(t=>t.status==='waiting').length, nDone=all.filter(t=>t.status==='done'||t.status==='auto').length;
@@ -2636,6 +2639,46 @@ function renderF90Oa(el,rows,showDone){
     '</div>';
   }
   el.innerHTML=h;
+}
+// ── This Week's Schedules (Dova 10/14): the first-90-day caregivers' client
+//    visits for the current week, inline, with the printable sheet one click away.
+//    Same data as the Rise Summary button (rise_week_schedule), same filters as
+//    this tab. The Rise Summary button stays for anyone used to it there.
+let _f90SchedLoading=false;
+async function renderF90Sched(el,rows){
+  const wk=_sundayStr(TODAY), wkEnd=_addDaysStr(wk,6);
+  const nh=rows.filter(p=>p.viv&&p.viv.id).sort((a,b)=>a.name.localeCompare(b.name));
+  let data=schedCache[wk];
+  if(!data){
+    if(_f90SchedLoading){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading this week\'s client visits…</div>'; return; }
+    _f90SchedLoading=true; el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading this week\'s client visits…</div>';
+    try{ const r=await fetch(PROXY+'?endpoint=rise_week_schedule&week='+wk,{headers:await authHeaders()}); if(!r.ok)throw new Error('HTTP '+r.status); data=await r.json(); schedCache[wk]=data; }
+    catch(e){ _f90SchedLoading=false; el.innerHTML='<div class="no-data">Could not load schedules: '+escHtml(e.message)+'</div>'; return; }
+    _f90SchedLoading=false;
+    if(f90View!=='sched')return;
+  }
+  const fmtT=ts=>{ if(!ts)return''; const d=new Date(ts); return isNaN(d)?'':d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); };
+  const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const usd=ds=>{ const q=ds.split('-'); return (+q[1])+'/'+(+q[2]); };
+  let withVisits=0, totalVisits=0;
+  const cards=nh.map(p=>{
+    const vis=(data.byCg&&data.byCg[p.viv.id])||[];
+    if(vis.length)withVisits++; totalVisits+=vis.length;
+    const day=Math.max(0,Math.floor((TODAY-p.hireDate)/F90_DAY));
+    let rowsH='';
+    for(let i=0;i<7;i++){ const dayStr=_addDaysStr(wk,i); const dv=vis.filter(x=>x.day===dayStr).sort((a,b)=>String(a.start||'').localeCompare(String(b.start||''))); if(!dv.length)continue;
+      rowsH+='<tr><td style="width:84px;font-weight:600;white-space:nowrap;color:var(--text2)">'+DOW[i]+' '+usd(dayStr)+'</td><td>'+dv.map(x=>{ const isLI=/live[- ]?in/i.test(x.type); const t=isLI?'Live-In':((fmtT(x.start)&&fmtT(x.end))?fmtT(x.start)+'–'+fmtT(x.end):fmtT(x.start)); return '<b>'+escHtml(t||'—')+'</b> '+escHtml(x.client||'')+(x.type&&!isLI?' <span class="f90muted">'+escHtml(x.type)+'</span>':''); }).join('<br>')+'</td></tr>'; }
+    return '<div class="fc f90card"><div class="f90top"><div><div class="f90name">'+escHtml(p.name)+'</div><div class="f90muted">'+escHtml(p.manager||'—')+' · '+escHtml(p.market||'—')+' · hired '+formatDate(p.hireDate)+' · <b>day '+day+' of 90</b></div></div>'+
+      '<div class="f90right"><span class="f90chip '+(vis.length?'st-done':'st-overdue')+'" style="cursor:default">'+(vis.length?vis.length+' visit'+(vis.length===1?'':'s')+' this week':'No visits this week')+'</span></div></div>'+
+      (rowsH?'<table class="tbl" style="font-size:12.5px"><tbody>'+rowsH+'</tbody></table>':'<div class="f90warn" style="font-size:12.5px">No client visits scheduled this week</div>')+'</div>';
+  });
+  let h='<div class="grid four" style="margin-bottom:14px">'+
+    '<div class="fc"><div class="ct">Week</div><div class="big-stat"><span class="v" style="font-size:18px">'+usd(wk)+' – '+usd(wkEnd)+'</span></div><div class="stat-foot">client visits, from Viv</div></div>'+
+    '<div class="fc"><div class="ct">New hires scheduled</div><div class="big-stat"><span class="v g">'+withVisits+'</span></div><div class="stat-foot">of '+nh.length+' in their first 90 days</div></div>'+
+    '<div class="fc"><div class="ct">Without a visit this week</div><div class="big-stat"><span class="v '+(nh.length-withVisits?'r':'g')+'">'+(nh.length-withVisits)+'</span></div><div class="stat-foot">worth a call to Scheduling</div></div>'+
+    '<div class="fc"><div class="ct">Visits</div><div class="big-stat"><span class="v">'+totalVisits+'</span></div><div class="stat-foot"><button class="rm-btn o" style="padding:4px 10px;font-size:12px" onclick="printNewHireSchedules(\'f90\')">🖨 Printable sheet</button></div></div>'+
+  '</div>';
+  el.innerHTML=h+(cards.length?cards.join(''):'<div class="empty-state"><div class="big">📅</div>No caregivers in their first 90 days for this filter.</div>');
 }
 // ── Modals (shared overlay; f90Modal.mode = touch | training | oa) ──────────
 function _f90Open(p,title,sub,body,saveLabel){
@@ -3532,7 +3575,46 @@ function shortListTriggers(p){
     trig.push({t:'New SE during active '+((activeCA[0].type||'WW/PIP').toString().toUpperCase()),sev:'r'});
   }
   if(v.sundayRemoved && _withinDays(v.sundayRemoved.date,35)) trig.push({t:'Removed Sunday availability ('+formatDate(v.sundayRemoved.date)+')',sev:'warn'});
+  // r14 (Khadijah): SEs that relate to the caregiver's documented Rise goal. The
+  // goal is free text on the Rise / 90-day form, so we read which performance
+  // standard it targets (riseGoalStandard) and flag 2+ SEs in that standard
+  // since the meeting where the goal was set.
+  const rg=riseGoalFor(p);
+  if(rg&&rg.standard){
+    const since=rg.date?rg.date.toLocaleDateString('en-CA'):null;
+    const hits=(v.exceptions||[]).filter(inc=>(!since||String(inc.date||'').slice(0,10)>=since)&&_seStandard(inc.type)===rg.standard);
+    if(hits.length>=2) trig.push({t:hits.length+' '+rg.standard+' SEs since their Rise goal'+(rg.date?' ('+formatDate(rg.date)+')':'')+': "'+rg.goal.slice(0,70)+(rg.goal.length>70?'…':'')+'"',sev:'r'});
+  }
   return trig;
+}
+// Which performance standard a free-text Rise goal targets. Keyword map built
+// from the Operations Checklist / Performance Standards wording; returns
+// 'Reliability' | 'Communication' | 'Connection' | 'Flexibility' | null.
+function riseGoalStandard(goal){
+  const g=String(goal||'').toLowerCase(); if(g.length<4)return null;
+  const R=/\b(on[- ]?time|late|lateness|punctual|check[- ]?in|call[- ]?out|callout|no[- ]call|ncns|attendance|availability|notice|uniform|reliab|show up|shows up|arriv)/;
+  const C=/\b(visit note|notes?|respond|responsive|communicat|text(s|ing)?|call(s|ing)? (the )?office|report(ing)? (changes|client)|update(s)? (the )?office|answer)/;
+  const N=/\b(warm|engag|connect|phone use|cell phone|care plan|professional|rapport|attentive|compassion|relationship)/;
+  const F=/\b(flexib|swap|travel|fill[- ]?in|last[- ]?minute|holiday|weekend|pick up|open visit|coverage)/;
+  const scores=[['Reliability',(g.match(R)||[]).length],['Communication',(g.match(C)||[]).length],['Connection',(g.match(N)||[]).length],['Flexibility',(g.match(F)||[]).length]].sort((a,b)=>b[1]-a[1]);
+  return scores[0][1]?scores[0][0]:null;
+}
+function _seStandard(type){
+  const tl=String(type||'').toLowerCase();
+  if(tl.includes('reliability complaint')||/client complaint:\s*reliability/.test(tl)||/\blateness\b/.test(tl)||tl.includes('no complaint: call out'))return 'Reliability';
+  if(tl.includes('communication complaint')||/client complaint:\s*communication/.test(tl))return 'Communication';
+  if(tl.includes('connection complaint')||/client complaint:\s*connection/.test(tl)||tl.includes('match fail'))return 'Connection';
+  if(tl.includes('flexibility complaint')||/client complaint:\s*flexibility/.test(tl))return 'Flexibility';
+  return null;
+}
+// Latest documented Rise goal for a caregiver (Rise or 90-day form), with the
+// meeting date and the standard it targets.
+function riseGoalFor(p){
+  const forms=[...riseFormsFor(p),...ninetyFormsFor(p)].filter(f=>f.goal&&String(f.goal).trim().length>3&&!/^(no goal|none|n\/a)\.?$/i.test(String(f.goal).trim()));
+  if(!forms.length)return null;
+  forms.sort((a,b)=>{const da=parseDate(a.meetingDate||a.submittedAt),db=parseDate(b.meetingDate||b.submittedAt);return (db?db.getTime():0)-(da?da.getTime():0);});
+  const f=forms[0]; const goal=String(f.goal).trim();
+  return {goal, date:parseDate(f.meetingDate||f.submittedAt), standard:riseGoalStandard(goal)};
 }
 function renderShortList(){
   const el=document.getElementById('scoreboard');
@@ -3546,7 +3628,7 @@ function renderShortList(){
   });
   flagged.sort((a,b)=>(b.trig.some(t=>t.sev==='r')?1:0)-(a.trig.some(t=>t.sev==='r')?1:0)||b.trig.length-a.trig.length||a.p.name.localeCompare(b.p.name));
   document.getElementById('sbCount').textContent=flagged.length+' on the short list · '+scope.length+' caregivers';
-  let h='<div class="sb-note">Short List criteria (past 2 weeks / past month, from live Viv data): OTP &lt;80% (2 wks) · &gt;15 min late more than twice · &gt;1 preventable call-out · &gt;3 emergency call-outs · any missing visit note · &gt;1 connection complaint (incl. match failures) · &gt;1 communication complaint · 3+ complaint/lateness SEs in 8 wks · new SE during an active WW/PIP · removed Sunday availability.</div>';
+  let h='<div class="sb-note">Short List criteria (past 2 weeks / past month, from live Viv data): OTP &lt;80% (2 wks) · &gt;15 min late more than twice · &gt;1 preventable call-out · &gt;3 emergency call-outs · any missing visit note · &gt;1 connection complaint (incl. match failures) · &gt;1 communication complaint · 3+ complaint/lateness SEs in 8 wks · new SE during an active WW/PIP · 2+ SEs on the standard their Rise goal targets · removed Sunday availability.</div>';
   h+='<div class="sl-gro01">⚠️ Needs attention <span style="color:var(--text3);font-weight:600">· '+flagged.length+' caregiver'+(flagged.length!==1?'s':'')+'</span></div>';
   if(!flagged.length){ h+='<div class="sb-allgood">🎉 Nobody trips a Short List criterion right now — great work across the board!</div>'; }
   else h+=flagged.map(x=>{
