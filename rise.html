@@ -2379,9 +2379,11 @@ function toggleSe(id){ const el=document.getElementById(id); if(el)el.classList.
 // TABS / UTILITIES
 // ════════════════════════════════════════════════════════════════════════════
 let _navReady=false, _curTab='tracker';
+const _tabLabel=(t)=>((document.getElementById('tab-'+t)||{}).textContent||t).trim();
 function switchTab(tab,push){
   if(push===undefined)push=true;
   _curTab=tab;
+  if(window.TributeUsage)TributeUsage.setView(_tabLabel(tab));   // active time by tab (tribute-usage.js)
   ['tracker','scoreboard','dashboard','summary','leave','certs','referrals','hours','docs','f90d'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
@@ -4994,6 +4996,10 @@ ensureCurrentUser();   // start decoding the signed-in identity early
   try{ token=(window.tributeKsfGate&&window.tributeKsfGate.getToken)?await window.tributeKsfGate.getToken():null; }catch(e){}
   if(token||getKey()) syncViv(false); else showGate();
 })();
+</script>
+<script src="./tribute-usage.js?v=2026-10-21a"></script>
+<script>/* Active time on Rise, by tab. getToken waits for sign-in; nothing is counted before someone uses the page. */
+try{ TributeUsage.start({ app:'rise', getToken:()=>window.tributeKsfGate.getToken(), view:_tabLabel(_curTab) }); }catch(e){}
 </script>
 </body>
 </html>
