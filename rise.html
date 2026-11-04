@@ -525,6 +525,8 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <span class="count" id="sumCount"></span>
   </div>
   <div id="mceKsf" style="margin:0 14px 18px"></div>
+  <div id="mceScore" style="margin:0 14px 18px"></div>
+  <div id="retentionHeat" style="margin:0 14px 18px"></div>
   <div id="summary"></div>
 </div>
 
@@ -4766,6 +4768,91 @@ function _ksfSvg(lines,periods,kpi,kind){
   }
   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" preserveAspectRatio="none" style="max-height:260px;display:block">'+g+xl+body+'</svg>';
 }
+// ════════════════════════════════════════════════════════════════════════════
+// MCE SCORECARD (Tory, Rise Summary r18): one row per MCE from live Viv + Rise
+// data, plus an on-demand AI summary of what each MCE is working on. Call
+// Intelligence phone time is not wired yet (needs a JSON feed from the call app).
+// ════════════════════════════════════════════════════════════════════════════
+let _mceScoreAi={};
+function _mceFacts(mceName){
+  const team=spine.filter(p=>p.viv&&p.viv.status==='hired'&&p.manager===mceName);
+  const d90=new Date(TODAY); d90.setDate(d90.getDate()-90); const d90s=d90.toLocaleDateString('en-CA');
+  const allEx=[]; spine.forEach(p=>{ if(!p.viv)return; (p.viv.exceptions||[]).forEach(e=>{ if(e.assignee===mceName) allEx.push({...e,cg:p.name}); }); });
+  const open=allEx.filter(e=>!_seResolved(e)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const resolved90=allEx.filter(e=>e.resolvedAt&&String(e.resolvedAt).slice(0,10)>=d90s&&e.date);
+  const days=resolved90.map(e=>(parseDate(e.resolvedAt)-parseDate(e.date))/86400000).filter(x=>x>=0).sort((a,b)=>a-b);
+  const medRes=days.length?days[Math.floor(days.length/2)]:null;
+  const oldestOpen=open.length?Math.round((TODAY-parseDate(open[0].date))/86400000):null;
+  let meetings=0; team.forEach(p=>{ [...riseFormsFor(p),...ninetyFormsFor(p),...fortyFiveFormsFor(p)].forEach(f=>{ const d=String(f.meetingDate||f.submittedAt||'').slice(0,10); if(d>=d90s)meetings++; }); });
+  let overdue=0; team.forEach(p=>{ const m=meetingDueFor(p); if(m&&m.daysUntil!=null&&m.daysUntil<0&&!_leaveNowFor(p))overdue++; });
+  let c=0,o=0,nt=0,nc=0; team.forEach(p=>{ const k=p.viv.checkin; if(k){c+=k.checked||0;o+=k.onTime1||0;} const t=p.viv.tasks; if(t){nt+=t.total||0;nc+=t.completed||0;} });
+  const shortList=team.filter(p=>shortListTriggers(p).length).length;
+  const newHires=team.filter(p=>p.hireDate&&((TODAY-p.hireDate)/86400000)<=90).length;
+  const goals=[]; team.forEach(p=>{ const g=riseGoalFor(p); if(g&&g.goal)goals.push(g.goal.slice(0,120)); });
+  return {mce:mceName, team:team.length, newHires, openSes:open.length, oldestOpenDays:oldestOpen, resolved90:resolved90.length, medianResolveDays:medRes!=null?Math.round(medRes*10)/10:null,
+    meetings90:meetings, overdue, onTime:c?Math.round(o/c*1000)/10:null, notes:nt?Math.round(nc/nt*1000)/10:null, shortList, goals:goals.slice(0,25),
+    openList:open.slice(0,20).map(e=>({date:String(e.date).slice(0,10),type:e.type,desc:String(e.desc||'').slice(0,160),cg:e.cg})),
+    resolvedList:resolved90.slice(-12).map(e=>({date:String(e.date).slice(0,10),type:e.type,resolution:String(e.resolution||'').slice(0,160)}))};
+}
+function renderMceScore(){
+  const el=document.getElementById('mceScore'); if(!el||!viv)return;
+  const sel=(document.getElementById('sumMce')||{}).value||'';
+  const mces=[...new Set(spine.filter(p=>p.viv&&p.viv.status==='hired').map(p=>p.manager).filter(Boolean))].filter(m=>!sel||m===sel).sort();
+  const rows=mces.map(_mceFacts);
+  const pct=(v,goal)=>v==null?'—':'<span class="bdg '+(v>=goal?'bg-g':v>=goal-5?'bg-a':'bg-r')+'">'+v+'%</span>';
+  let h='<div class="fc"><div class="ct" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><span>MCE scorecard <span style="font-weight:500;text-transform:none;color:var(--text3)">· live Viv + Rise data · last 90 days where dated</span></span><span style="font-weight:500;text-transform:none;color:var(--text3)">Phone time and call counts arrive once the call app feed is connected</span></div>'+
+    '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>MCE</th><th>Team</th><th>New hires (≤90d)</th><th>Open SEs</th><th>Oldest open</th><th>Resolved (90d)</th><th>Median days to resolve</th><th>Rise/45/90 meetings (90d)</th><th>Meetings overdue</th><th>On-time</th><th>Visit notes</th><th>On Short List</th><th></th></tr></thead><tbody>'+
+    rows.map(r=>'<tr><td class="td-name">'+escHtml(r.mce)+'</td><td>'+r.team+'</td><td>'+r.newHires+'</td><td>'+(r.openSes?'<span class="bdg '+(r.openSes>20?'bg-r':r.openSes>8?'bg-a':'bg-n')+'">'+r.openSes+'</span>':'0')+'</td><td>'+(r.oldestOpenDays!=null?r.oldestOpenDays+'d':'—')+'</td><td>'+r.resolved90+'</td><td>'+(r.medianResolveDays!=null?r.medianResolveDays:'—')+'</td><td>'+r.meetings90+'</td><td>'+(r.overdue?'<span class="bdg bg-r">'+r.overdue+'</span>':'0')+'</td><td>'+pct(r.onTime,92)+'</td><td>'+pct(r.notes,95)+'</td><td>'+r.shortList+'</td>'+
+      '<td><button class="rm-btn o" style="padding:3px 9px;font-size:11.5px" onclick="mceAiSummary(\''+escHtml(r.mce).replace(/'/g,'')+'\')">✨ Summary</button></td></tr>'+
+      (_mceScoreAi[r.mce]?'<tr><td colspan="13" style="background:var(--bg2);white-space:pre-wrap;font-size:12.5px;line-height:1.5">'+escHtml(_mceScoreAi[r.mce])+'</td></tr>':'')).join('')+
+    '</tbody></table></div><div class="stat-foot">Open SEs = service exceptions assigned to the MCE in Viv without a resolution. Resolve time = resolution date minus incident date for SEs resolved in the last 90 days. On-time and notes are the team\'s 6-month figures. Summary reads the open and recently resolved SEs, the team\'s Rise goals, and these numbers.</div></div>';
+  el.innerHTML=h;
+}
+async function mceAiSummary(mceName){
+  _mceScoreAi[mceName]='Reading '+mceName+'\'s open items…'; renderMceScore();
+  try{
+    const r=await fetch(PROXY+'?endpoint=mce_ai_summary',{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(_mceFacts(mceName))});
+    const j=await r.json().catch(()=>({})); if(!r.ok||!j.summary)throw new Error(j.error||('HTTP '+r.status));
+    _mceScoreAi[mceName]=j.summary;
+  }catch(e){ _mceScoreAi[mceName]='Summary failed: '+e.message; }
+  renderMceScore();
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// RETENTION HEAT MAP (Tory, "Retention Tracker" sheet): recent hires who left,
+// by market and termination type, from the Caregiver Termination forms.
+// ════════════════════════════════════════════════════════════════════════════
+let _termForms=null, _termLoading=false, _heatMonths=12;
+async function renderRetentionHeat(){
+  const el=document.getElementById('retentionHeat'); if(!el)return;
+  if(!_termForms){
+    if(_termLoading)return; _termLoading=true;
+    el.innerHTML='<div class="fc"><div class="ct">Retention heat map</div><div class="stat-foot">Loading termination forms…</div></div>';
+    try{ const r=await fetch(PROXY+'?endpoint=termination_forms',{headers:await authHeaders()}); const j=r.ok?await r.json():{forms:[]}; _termForms=[].concat(...((j.forms||[]).map(f=>f.submissions||[]))).filter(x=>!x._test); }
+    catch(e){ _termForms=[]; }
+    _termLoading=false;
+  }
+  const since=new Date(TODAY); since.setMonth(since.getMonth()-_heatMonths); const sinceS=since.toLocaleDateString('en-CA');
+  const mkt=(document.getElementById('sumMarket')||{}).value||'', mce=(document.getElementById('sumMce')||{}).value||'';
+  const rows=_termForms.filter(t=>{ const hd=String(t.hiredDate||'').slice(0,10), td=String(t.termDate||t.submittedAt||'').slice(0,10); return hd&&hd>=sinceS&&td&&(!mkt||t.market===mkt)&&(!mce||t.mce===mce); });
+  const reason=t=>String(t.termType||'Not recorded').replace(/\s+/g,' ').trim()||'Not recorded';
+  const markets=[...new Set(rows.map(t=>t.market||t.state||'Unknown'))].sort();
+  const reasons=[...new Set(rows.map(reason))].sort((a,b)=>rows.filter(t=>reason(t)===b).length-rows.filter(t=>reason(t)===a).length);
+  const grid={}; rows.forEach(t=>{ const m=t.market||t.state||'Unknown', r=reason(t); (grid[m]||(grid[m]={}))[r]=(grid[m][r]||0)+1; });
+  const max=Math.max(1,...rows.length?Object.values(grid).flatMap(o=>Object.values(o)):[1]);
+  const cell=v=>{ if(!v)return '<td style="text-align:center;color:var(--text3)">·</td>'; const a=0.15+0.85*(v/max); return '<td style="text-align:center;font-weight:700;background:rgba(192,57,43,'+a.toFixed(2)+');color:'+(a>0.55?'#fff':'var(--text)')+'">'+v+'</td>'; };
+  let h='<div class="fc"><div class="ct" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><span>Retention heat map <span style="font-weight:500;text-transform:none;color:var(--text3)">· caregivers hired in the last '+_heatMonths+' months who have left, by market and termination type</span></span>'+
+    '<span style="font-weight:500;text-transform:none">Hired in the last <select onchange="_heatMonths=+this.value;renderRetentionHeat()" style="font:inherit;font-size:12px">'+[6,12,18,24].map(m=>'<option value="'+m+'"'+(m===_heatMonths?' selected':'')+'>'+m+' months</option>').join('')+'</select></span></div>';
+  if(!rows.length){ el.innerHTML=h+'<div class="stat-foot">No termination forms for caregivers hired in this window'+(mkt||mce?' with the current filter':'')+'.</div></div>'; return; }
+  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Market</th>'+reasons.map(r=>'<th style="text-align:center">'+escHtml(r)+'</th>').join('')+'<th style="text-align:center">Total</th></tr></thead><tbody>'+
+    markets.map(m=>'<tr><td class="td-name">'+escHtml(m)+'</td>'+reasons.map(r=>cell((grid[m]||{})[r]||0)).join('')+'<td style="text-align:center;font-weight:700">'+Object.values(grid[m]||{}).reduce((a,v)=>a+v,0)+'</td></tr>').join('')+
+    '<tr><td><b>Total</b></td>'+reasons.map(r=>'<td style="text-align:center;font-weight:700">'+rows.filter(t=>reason(t)===r).length+'</td>').join('')+'<td style="text-align:center;font-weight:700">'+rows.length+'</td></tr></tbody></table></div>';
+  const std={}; rows.forEach(t=>{ const k=String(t.standardViolated||'').trim(); if(k)std[k]=(std[k]||0)+1; });
+  const topStd=Object.entries(std).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  if(topStd.length) h+='<div class="stat-foot" style="margin-top:8px"><b>Standards cited most:</b> '+topStd.map(([k,v])=>escHtml(k)+' ('+v+')').join(' · ')+'</div>';
+  h+='<div class="stat-foot">Source: Caregiver Termination forms in Viv (hire date and termination type as entered). Follows the MCE and market filters above.</div></div>';
+  el.innerHTML=h;
+}
 function renderMceKsf(){
   const host=document.getElementById('mceKsf'); if(!host)return;
   if(!_ksf){ host.innerHTML='<div class="fc"><div class="ct">MCE KSF</div><div class="stat-foot">Loading KSF history…</div></div>'; loadMceKsf(); return; }
@@ -4791,6 +4878,7 @@ function renderMceKsf(){
     '<div><div class="ct" style="margin:0">MCE KSF</div><div class="stat-foot">Charlotte\'s KSF metrics by MCE'+(_ksf.importedAt?' · history through '+escHtml(String(_ksf.importedAt).slice(0,10)):'')+(_ksf.snapshotAt?' · live snapshots to '+escHtml(String(_ksf.snapshotAt).slice(0,10)):'')+'</div></div>'+
     '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+
       sel('ksfKpi',[{v:'',t:'— Monthly —'}].concat(monthlyK.map(k=>({v:k,t:k}))).concat([{v:'',t:'— Weekly —'}]).concat(weeklyK.map(k=>({v:k,t:k}))).filter(o=>o.v||true),_ksfKpi,"if(this.value){_ksfKpi=this.value;renderMceKsf();}")+
+      '<button class="rm-btn o" style="padding:4px 10px;font-size:12px" title="Tory: caregivers by MCE, weekly" onclick="_ksfKpi=\'Active Caregivers for the week (Excluding PTO, Sick, Time Off)\';_ksfRoll=\'month\';renderMceKsf()">Caregivers by MCE, weekly</button>'+
       sel('ksfRoll',[{v:'quarter',t:'Quarterly'},{v:'year',t:'Annually'},{v:'month',t:isWeekly?'Weekly (raw)':'Monthly'}],_ksfRoll,"_ksfRoll=this.value;renderMceKsf()")+
       sel('ksfKind',[{v:'line',t:'Line'},{v:'bar',t:'Bar'}],_ksfKind,"_ksfKind=this.value;renderMceKsf()")+
     '</div></div>';
@@ -4815,6 +4903,8 @@ function renderSummary(){
   if(!viv){ el.innerHTML='<div class="empty-state"><div class="big">📊</div><div>Sync Viv data to see the Rise program summary.</div></div>'; return; }
   fillSummaryFilters();
   renderMceKsf();
+  try{ renderMceScore(); }catch(e){ console.warn('mceScore',e); }
+  try{ renderRetentionHeat(); }catch(e){ console.warn('retentionHeat',e); }
   const mce=document.getElementById('sumMce').value;
   const market=document.getElementById('sumMarket').value;
   const from=parseDate(document.getElementById('sumFrom').value);
