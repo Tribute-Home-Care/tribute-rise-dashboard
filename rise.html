@@ -891,6 +891,11 @@ async function syncViv(manual){
     }
     if(!r.ok) throw new Error('Viv proxy returned HTTP '+r.status);
     viv=await r.json();
+    // A Rise / 90-day form submitted 120+ days after its own Meeting Date carries a
+    // stale prefilled date (Shaina 10/22: Remy Muyanja's August meeting was filed
+    // with February's date, so the tracker showed him 85 days overdue). Treat the
+    // submission date as the meeting date and keep the original for reference.
+    try{ ['rise','early'].forEach(k=>((viv.forms||{})[k]||[]).forEach(f=>{ const md=parseDate(f.meetingDate), sd=parseDate(f.submittedAt); if(md&&sd&&(sd-md)>120*86400000){ f.meetingDateRaw=f.meetingDate; f.meetingDate=sd.toLocaleDateString('en-CA'); f.dateCorrected=true; } })); }catch(e){}
     setSyncLine('<span class="dot"></span>Live · '+viv.counts.caregivers+' caregivers · '+viv.counts.riseForms+' Rise forms · data as of '+fmtTime(viv.generatedAt),'');
     buildSpine(); await ensureCurrentUser(); updateMyTeamBanner(); setupPreviewMce(); buildManagerFilter(); buildSearchIndex(); renderTracker(); renderLiveChips();
     if(selectedKey)renderCaregiver();
@@ -1447,7 +1452,9 @@ function renderTracker(){
   const autoClear=[];
   tbody.innerHTML=rows.map(row=>{
     let chip='<span class="bdg bg-g">—</span>';
-    if(row.daysUntil!==null){
+    const _lv=_leaveNowFor(row.p);
+    if(_lv){ chip='<span class="bdg bg-n" title="On the CAs on Leave list; the meeting is not counted overdue while they are out">On leave '+formatDate(_lv.from)+' – '+formatDate(_lv.until)+'</span>'; }
+    else if(row.daysUntil!==null){
       if(row.daysUntil<=0)chip='<span class="bdg bg-r">'+(row.daysUntil===0?'Due Today':Math.abs(row.daysUntil)+' days overdue')+'</span>';
       else if(row.daysUntil<=14)chip='<span class="bdg bg-a">'+row.daysUntil+' day'+(row.daysUntil!==1?'s':'')+'</span>';
       else chip='<span class="bdg bg-g">'+row.daysUntil+' days</span>';
@@ -1480,10 +1487,13 @@ function renderTracker(){
     let dueCell=(row.activeDueDate?formatDate(row.activeDueDate):'—');
     if(row.skipCgId){
       const escSkipId=String(row.skipCgId).replace(/'/g,"\\'");
-      if(row.skippedTo){
+      if(row.skippedTo && row.skippedTo>=TODAY){
         dueCell+=' <span class="bdg bg-n" title="Next Rise meeting skipped — due date advanced one cycle">Skipped → '+formatDate(row.skippedTo)+
           ' <span onclick="event.stopPropagation();unskipMeeting(\''+escSkipId+'\')" style="cursor:pointer;margin-left:2px" title="Undo skip">✕</span></span>';
       } else if(row.activeDueDate){
+        // A skip whose date has passed no longer hides the Skip button (Shaina 10/22:
+        // eleven old skips from last fall left rows overdue with no way to skip again).
+        if(row.skippedTo) dueCell+=' <span class="bdg bg-n" title="Earlier skip, now past">skipped to '+formatDate(row.skippedTo)+'</span>';
         // Skip steps to the NEXT meeting in the cadence 45 → 90 → 6-month → +6mo.
         let adv;
         if(row.dueKind==='45-day' && row.hireDate){
@@ -1491,7 +1501,8 @@ function renderTracker(){
         } else if(row.dueKind==='90-day' && row.hireDate){
           adv=new Date(row.hireDate.getFullYear(),row.hireDate.getMonth()+6,row.hireDate.getDate()); // 90-day → first 6-month
         } else {
-          adv=new Date(row.activeDueDate.getFullYear(),row.activeDueDate.getMonth()+6,row.activeDueDate.getDate()); // Rise → next 6-month cycle
+          const base=(row.skippedTo&&row.skippedTo>row.activeDueDate)?row.skippedTo:row.activeDueDate;
+          adv=new Date(base.getFullYear(),base.getMonth()+6,base.getDate()); // Rise → next 6-month cycle (from the later of due date / past skip)
         }
         const advVal=adv.toLocaleDateString('en-CA');
         dueCell+=' <button class="bdg bg-b" style="cursor:pointer;border:none;font-size:9px;margin-left:6px" onclick="event.stopPropagation();skipMeeting(\''+escSkipId+'\',\''+advVal+'\')" title="Skip this meeting — advances the due date to the next meeting in the cadence">Skip</button>';
@@ -1513,10 +1524,15 @@ function renderTracker(){
     }
     const cgEmail=(cv&&cv.email)?String(cv.email).trim():'';
     const emailIco=cgEmail?'<a href="mailto:'+escHtml(cgEmail)+'" title="'+escHtml(cgEmail)+'" onclick="event.stopPropagation()" style="text-decoration:none;font-size:15px">✉️</a>':'';
-    const contactCell=(phoneIco||emailIco)?('<span style="white-space:nowrap;display:inline-flex;gap:10px;align-items:center">'+phoneIco+emailIco+'</span>'):'—';
+    // Khadijah 10/27: write the number and email out (stacked), keep the Teams
+    // call link on the number, mailto on the email, and a copy button for each.
+    const _cp=v=>'<span title="Copy" onclick="event.stopPropagation();navigator.clipboard.writeText(\''+escHtml(v).replace(/'/g,'')+'\');this.textContent=\'✓\';setTimeout(()=>this.textContent=\'⧉\',1200)" style="cursor:pointer;color:var(--text3);font-size:11px;margin-left:4px">⧉</span>';
+    const phoneLine=phoneFmt?('<a href="https://teams.microsoft.com/l/call/0/0?users=4:'+encodeURIComponent((rawPhone.length===10?'+1':'+')+rawPhone)+'" target="_blank" rel="noopener" title="Call in Microsoft Teams" onclick="event.stopPropagation()" style="color:var(--blue-text);text-decoration:none">'+escHtml(phoneFmt)+'</a>'+_cp(phoneFmt)):'';
+    const emailLine=cgEmail?('<a href="mailto:'+escHtml(cgEmail)+'" title="Email in Outlook" onclick="event.stopPropagation()" style="color:var(--blue-text);text-decoration:none">'+escHtml(cgEmail)+'</a>'+_cp(cgEmail)):'';
+    const contactCell=(phoneLine||emailLine)?('<div style="font-size:11.5px;line-height:1.5;white-space:nowrap">'+phoneLine+(phoneLine&&emailLine?'<br>':'')+emailLine+'</div>'):'—';
     return '<tr data-nk="'+nkAttr+'">'+
       '<td class="td-name"><span class="cg-link clickable" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')" style="cursor:pointer;color:var(--blue-text);font-weight:600">'+escHtml(row.p.name)+'</span>'+cycleBadge+pipwwBadge+'</td>'+
-      '<td class="td-date" style="text-align:center">'+contactCell+'</td>'+
+      '<td style="text-align:left">'+contactCell+'</td>'+
       '<td class="td-date">'+escHtml(row.p.market||'—')+'</td>'+
       '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
       '<td class="td-date" style="font-weight:600">'+dueCell+'</td>'+
@@ -2328,6 +2344,7 @@ async function renderCgSchedule(cgid){
 async function printNewHireSchedules(src){
   const key=getKey(); if(!_hasAuth()){ showGate(); return; }
   const _mceEl=src==='f90'?'f90Mce':'sumMce', _mktEl=src==='f90'?'f90Market':'sumMarket';
+  const _wk=(src==='f90'&&f90SchedWeek)?f90SchedWeek:_sundayStr(TODAY);
   // Reads the RISE SUMMARY filters since the New Hires tab was removed
   // (Charlotte, 2026-09-15). That also fixes a filter that never worked: the old
   // nhMarket options were built from newHiresData.rows[].state (MA/MD/IL) while
@@ -2336,7 +2353,7 @@ async function printNewHireSchedules(src){
   // built from spine p.market, the same field filtered here, so the two now
   // agree by construction.
   const mce=(document.getElementById(_mceEl)||{}).value||'', state=(document.getElementById(_mktEl)||{}).value||'';
-  const wk=_sundayStr(TODAY), wkEnd=_addDaysStr(wk,6);
+  const wk=_wk, wkEnd=_addDaysStr(wk,6);
   const nh=spine.filter(p=>p.viv&&p.viv.id&&p.hireDate&&((TODAY-p.hireDate)/86400000)<=90&&(!mce||p.manager===mce)&&(!state||p.market===state))
     .sort((a,b)=>a.name.localeCompare(b.name));
   if(!nh.length){ alert('No caregivers in their first 90 days match the current MCE/market filter.'); return; }
@@ -2442,7 +2459,7 @@ const F90_CHECKLIST=[
  ['Care Skills: Hospice and End of Life',['What to expect','Personal care at this stage']],
  ['Care Skills: Auxiliary',['CPR and Heimlich maneuver','Durable Medical Equipment (DME)','Vital signs','Medication reminders']]
 ];
-const F90_METHODS=['Call','Text','Emailed','Waiting for Response','Skipped'];
+const F90_METHODS=['Call','Text','Emailed','Waiting for Response'];
 const F90_TOTAL_CK=F90_CHECKLIST.reduce((a,c)=>a+c[1].length,0);
 let f90Store=null, f90Visits=null, f90Loading=false, f90Modal=null, f90View='touch';
 const F90_DAY=86400000;
@@ -2535,10 +2552,12 @@ function renderF90D(){
   const roster=f90Roster();
   const mceSel=document.getElementById('f90Mce'), mSel=document.getElementById('f90Market');
   if(mceSel.options.length<=1){
-    const mces=[...new Set(roster.map(r=>r.manager).filter(Boolean))].sort();
+    // Every MCE on the roster (Khadijah 10/28: an MCE with no new hire this
+    // quarter vanished from the filter, so she could not scope the tab to her team).
+    const mces=[...new Set(spine.map(r=>r.manager).filter(Boolean))].sort();
     mceSel.innerHTML='<option value="">All MCEs</option>'+mces.map(m=>'<option>'+escHtml(m)+'</option>').join('');
     defaultToMyTeam(mceSel);
-    const mk=[...new Set(roster.map(r=>r.market).filter(Boolean))].sort();
+    const mk=[...new Set(spine.map(r=>r.market).filter(Boolean))].sort();
     mSel.innerHTML='<option value="">All markets</option>'+mk.map(m=>'<option>'+escHtml(m)+'</option>').join('');
   }
   const mce=mceSel.value, mkt=mSel.value, showDone=document.getElementById('f90ShowDone').checked;
@@ -2646,9 +2665,11 @@ function renderF90Oa(el,rows,showDone){
 //    visits for the current week, inline, with the printable sheet one click away.
 //    Same data as the Rise Summary button (rise_week_schedule), same filters as
 //    this tab. The Rise Summary button stays for anyone used to it there.
-let _f90SchedLoading=false;
+let _f90SchedLoading=false, f90SchedWeek=null;   // Sunday of the week shown (Dova 10/28: any week, not just this one)
+function f90SchedShift(n){ f90SchedWeek=_addDaysStr(f90SchedWeek||_sundayStr(TODAY),n*7); renderF90D(); }
+function f90SchedPick(v){ if(!v)return; f90SchedWeek=_sundayStr(new Date(v+'T12:00:00')); renderF90D(); }
 async function renderF90Sched(el,rows){
-  const wk=_sundayStr(TODAY), wkEnd=_addDaysStr(wk,6);
+  const wk=f90SchedWeek||_sundayStr(TODAY), wkEnd=_addDaysStr(wk,6);
   const nh=rows.filter(p=>p.viv&&p.viv.id).sort((a,b)=>a.name.localeCompare(b.name));
   let data=schedCache[wk];
   if(!data){
@@ -2675,7 +2696,7 @@ async function renderF90Sched(el,rows){
       (rowsH?'<table class="tbl" style="font-size:12.5px"><tbody>'+rowsH+'</tbody></table>':'<div class="f90warn" style="font-size:12.5px">No client visits scheduled this week</div>')+'</div>';
   });
   let h='<div class="grid four" style="margin-bottom:14px">'+
-    '<div class="fc"><div class="ct">Week</div><div class="big-stat"><span class="v" style="font-size:18px">'+usd(wk)+' – '+usd(wkEnd)+'</span></div><div class="stat-foot">client visits, from Viv</div></div>'+
+    '<div class="fc"><div class="ct">Week</div><div class="big-stat"><span class="v" style="font-size:18px">'+usd(wk)+' – '+usd(wkEnd)+'</span></div><div class="stat-foot" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><button class="rm-btn o" style="padding:3px 9px;font-size:12px" onclick="f90SchedShift(-1)">‹ Prev</button><input type="date" value="'+wk+'" onchange="f90SchedPick(this.value)" style="font:inherit;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:8px"><button class="rm-btn o" style="padding:3px 9px;font-size:12px" onclick="f90SchedShift(1)">Next ›</button>'+(wk!==_sundayStr(TODAY)?'<button class="rm-btn o" style="padding:3px 9px;font-size:12px" onclick="f90SchedWeek=null;renderF90D()">This week</button>':'')+'</div></div>'+
     '<div class="fc"><div class="ct">New hires scheduled</div><div class="big-stat"><span class="v g">'+withVisits+'</span></div><div class="stat-foot">of '+nh.length+' in their first 90 days</div></div>'+
     '<div class="fc"><div class="ct">Without a visit this week</div><div class="big-stat"><span class="v '+(nh.length-withVisits?'r':'g')+'">'+(nh.length-withVisits)+'</span></div><div class="stat-foot">worth a call to Scheduling</div></div>'+
     '<div class="fc"><div class="ct">Visits</div><div class="big-stat"><span class="v">'+totalVisits+'</span></div><div class="stat-foot"><button class="rm-btn o" style="padding:4px 10px;font-size:12px" onclick="printNewHireSchedules(\'f90\')">🖨 Printable sheet</button></div></div>'+
@@ -2710,7 +2731,7 @@ function openF90Modal(spineKey,tpKey){
   let h='';
   if(tp){
     const st=doc.status||(tp.auto?'done':'');
-    h+='<div class="f90field"><label>Status</label><div class="f90seg">'+[['done','Completed'],['waiting','Waiting for response'],['skipped','Skipped'],['','Not done yet']].map(([v,l])=>'<label class="'+(st===v?'on':'')+'"><input type="radio" name="f90st" value="'+v+'" '+(st===v?'checked':'')+' onchange="this.closest(\'.f90seg\').querySelectorAll(\'label\').forEach(x=>x.classList.remove(\'on\'));this.parentNode.classList.add(\'on\')"> '+l+'</label>').join('')+'</div>'+
+    h+='<div class="f90field"><label>Status</label><div class="f90seg">'+[['done','Completed'],['waiting','Waiting for response'],['','Not done yet']].map(([v,l])=>'<label class="'+(st===v?'on':'')+'"><input type="radio" name="f90st" value="'+v+'" '+(st===v?'checked':'')+' onchange="this.closest(\'.f90seg\').querySelectorAll(\'label\').forEach(x=>x.classList.remove(\'on\'));this.parentNode.classList.add(\'on\')"> '+l+'</label>').join('')+'</div>'+
       (tp.auto&&!doc.status?'<div class="stat-foot">A '+escHtml(tp.label)+' form is already on file in Viv, so this shows as completed automatically.</div>':'')+'</div>';
     h+='<div class="f90field"><label>Date completed <span class="f90muted">the day the touchpoint actually happened</span></label><input type="date" id="f90DoneDate" value="'+escHtml(doc.date||(doc.status==='done'?'':_f90Ymd(TODAY)))+'"></div>';
     h+='<div class="f90field"><label>Communication method</label><select id="f90Method"><option value="">—</option>'+F90_METHODS.map(m=>'<option '+(doc.method===m?'selected':'')+'>'+m+'</option>').join('')+'</select></div>';
@@ -2768,7 +2789,10 @@ async function saveF90Touchpoint(){
     if(tp){
       const st=(document.querySelector('input[name=f90st]:checked')||{}).value||'';
       const method=val('f90Method'), notes=val('f90Notes').trim();
+      // Tory 10/21: documenting a touchpoint (method or notes) marks it done unless
+      // the MCE chose Waiting; a red chip then always means "not done".
       let status=st; if(!status&&method==='Waiting for Response')status='waiting'; if(!status&&method==='Skipped')status='skipped';
+      if(!status&&(method||notes))status='done';
       body.touchpoint={key:tp.key,status,method,notes,date:val('f90DoneDate')};
     }
     const ck={}; document.querySelectorAll('#f90ModalBody input[data-ck]').forEach(i=>{ const k=i.getAttribute('data-ck'); const was=!!(rec.checklist||{})[k]; if(i.checked!==was)ck[k]=i.checked; });
@@ -3333,9 +3357,15 @@ function renderCelebrations(){
     .map(p=>({p,id:'bday:'+(p.viv.id||p.key)+':'+TODAY.getFullYear(),when:upcoming[p.viv.birthMonthDay],md:p.viv.birthMonthDay}))
     .filter(x=>showable(x.id)).sort((a,b)=>((a.when<0)-(b.when<0))||(a.when<0?b.when-a.when:a.when-b.when));
   // Anniversaries
-  const annivs=scope.filter(p=>p.hireDate).map(p=>{
-    const md=String(p.hireDate.getMonth()+1).padStart(2,'0')+'-'+String(p.hireDate.getDate()).padStart(2,'0');
-    return {p,md,when:upcoming[md],years:TODAY.getFullYear()-p.hireDate.getFullYear(),id:'anniv:'+(p.viv&&p.viv.id||p.key)+':'+TODAY.getFullYear()};
+  // Tory 11/2026: tenure celebrations use the ORIGINAL hire date from iSolved when
+  // the caregiver was rehired, and note the gap between stints.
+  const annivs=scope.filter(p=>p.hireDate||(p.viv&&p.viv.origHireDate)).map(p=>{
+    const orig=parseDate(p.viv&&p.viv.origHireDate)||p.hireDate;
+    const cur=p.hireDate||orig;
+    const base=(orig&&cur&&orig<cur)?orig:cur;
+    const md=String(base.getMonth()+1).padStart(2,'0')+'-'+String(base.getDate()).padStart(2,'0');
+    const gapDays=(orig&&cur&&orig<cur&&p.viv&&p.viv.origTermDate)?Math.round((cur-parseDate(p.viv.origTermDate))/86400000):null;
+    return {p,md,when:upcoming[md],years:TODAY.getFullYear()-base.getFullYear(),orig:(orig&&cur&&orig<cur)?orig:null,cur,gapDays,id:'anniv:'+(p.viv&&p.viv.id||p.key)+':'+TODAY.getFullYear()};
   }).filter(x=>x.when!=null&&x.years>=1&&showable(x.id)).sort((a,b)=>((a.when<0)-(b.when<0))||(a.when<0?b.when-a.when:a.when-b.when));
   // Recent compliments (last 48h)
   const recentComps=[];
@@ -3354,7 +3384,7 @@ function renderCelebrations(){
   h+='<div class="cel-sub">🎂 Birthdays</div>';
   h+=bdays.length?bdays.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+escHtml(x.p.market||'')+' · '+_celWhen(x.when)+'</span>',x.id)).join(''):'<div class="no-data">No birthdays in the window.</div>';
   h+='<div class="cel-sub" style="margin-top:12px">🎊 Work Anniversaries</div>';
-  h+=annivs.length?annivs.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+x.years+' yr'+(x.years!==1?'s':'')+' · '+_celWhen(x.when)+' · '+escHtml(x.p.market||'')+'</span>',x.id)).join(''):'<div class="no-data">No anniversaries in the window.</div>';
+  h+=annivs.length?annivs.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+x.years+' yr'+(x.years!==1?'s':'')+(x.orig?' since original hire '+formatDate(x.orig)+(x.gapDays!=null?' · away '+(x.gapDays>=60?Math.round(x.gapDays/30)+' mo':x.gapDays+' d')+' before rehire '+formatDate(x.cur):' · rehired '+formatDate(x.cur)):'')+' · '+_celWhen(x.when)+' · '+escHtml(x.p.market||'')+'</span>',x.id)).join(''):'<div class="no-data">No anniversaries in the window.</div>';
   h+='</div><div>';
   h+='<div class="cel-sub">⭐ Compliments (last 7 days)</div>';
   h+=recentComps.length?recentComps.map(x=>celItem('<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.c.reason||'')+(x.c.from?' · '+escHtml(x.c.from):'')+'</span></div><div style="font-size:12px;color:var(--text2);margin-top:3px">"'+escHtml(x.c.desc||'')+'"</div>',x.id)).join(''):'<div class="no-data">No compliments in the last 7 days.</div>';
@@ -3870,7 +3900,8 @@ function renderCerts(){
   // (most-recent lapse first) so long-ago-expired records sink to the bottom.
   // Clicking a column header overrides this with an explicit sort.
   if(!certSort.col){
-    rows.sort((a,b)=>{ const ae=a.days<0,be=b.days<0; if(ae!==be)return ae?1:-1; return ae?(b.days-a.days):(a.days-b.days); });
+    // Default (Tory): expired first with the oldest lapse at the very top, then upcoming soonest-first.
+    rows.sort((a,b)=>{ const ae=a.days<0,be=b.days<0; if(ae!==be)return ae?-1:1; return a.days-b.days; });
   } else {
     const cmp={ exp:(a,b)=>a.exp-b.exp, status:(a,b)=>a.days-b.days,
       name:(a,b)=>a.name.localeCompare(b.name), cert:(a,b)=>a.cert.localeCompare(b.cert),
@@ -3898,8 +3929,8 @@ function renderCerts(){
     th('authority','Issuer')+th('mce','MCE')+th('market','Market')+
   '</tr></thead><tbody>';
   rows.forEach(r=>{
+    // Tory 11/2026: red is reserved for expired; upcoming (within 90 days) is yellow; further out is green.
     const badge=r.days<0?'<span class="bdg bg-r">Expired '+(-r.days)+'d ago</span>'
-      :r.days<=30?'<span class="bdg bg-r">'+r.days+'d left</span>'
       :r.days<=90?'<span class="bdg bg-a">'+r.days+'d left</span>'
       :'<span class="bdg bg-g">'+r.days+'d</span>';
     h+='<tr style="cursor:pointer" onclick="openCaregiver(\''+r.key+'\')">'+
@@ -4365,6 +4396,26 @@ async function loadTodo(force){
 // is shared server-side across the CE team.
 // ════════════════════════════════════════════════════════════════════════════
 let leaveData=null, leaveLoading=false, leaveStatusStore=null;
+// Current leave span for a caregiver (Khadijah 10/27): on the CAs on Leave list,
+// not closed, and TODAY falls inside the scheduled leave dates. Null otherwise.
+function _leaveNowFor(p){
+  if(!leaveData||!leaveData.rows||!p)return null;
+  const r=leaveData.rows.find(x=>(p.viv&&String(p.viv.id)===String(x.id))||_normNm(x.name||'')===_normNm(p.name||''));
+  if(!r||!r.leave||!r.leave.from||!r.leave.until)return null;
+  if(_leaveStatusOf(r.id)==='closed')return null;
+  const f=parseDate(r.leave.from), u=parseDate(r.leave.until); if(!f||!u)return null;
+  return (f<=TODAY&&u>=TODAY)?{from:f,until:u}:null;
+}
+// Auto-return (Tory 11/2026): nothing in Viv closes a leave, so rows whose leave
+// dates have passed by a week, or form-only rows ("—" dates) older than 30 days,
+// count as returned unless an MCE has explicitly reopened them.
+function _leaveAutoClosed(r){
+  if(!r)return false;
+  if(leaveStatusStore&&leaveStatusStore[r.id]&&leaveStatusStore[r.id].status==='open')return false;
+  if(r.leave&&r.leave.until){ const u=parseDate(r.leave.until); return !!(u&&((TODAY-u)/86400000)>7); }
+  const f=(r.forms&&r.forms[0])||null; const sub=f&&parseDate(f.updatedAt||f.submittedAt);
+  return !!(sub&&((TODAY-sub)/86400000)>30);
+}
 async function loadLeave(force){
   if(force){ leaveData=null; leaveStatusStore=null; }
   if(leaveData){ renderLeave(); return; }
@@ -4378,13 +4429,14 @@ async function loadLeave(force){
       fetch(PROXY+'?endpoint=cas_leave_status',{headers:hd}).then(r=>r.ok?r.json():{status:{}}).catch(()=>({status:{}}))
     ]);
     leaveData=lr; leaveStatusStore=(sr&&sr.status)||{};
+    if(_curTab==='tracker'){ try{ renderTracker(); }catch(e){} }   // on-leave chips depend on this feed
   }catch(e){
     document.getElementById('leave').innerHTML='<div class="err" style="display:block">Couldn\'t load CAs on Leave: '+escHtml(e.message)+'. If the backend was just updated, give it a minute and hit Refresh.</div>';
     leaveLoading=false; return;
   }
   leaveLoading=false; renderLeave();
 }
-function _leaveStatusOf(id){ return (leaveStatusStore&&leaveStatusStore[id])?'closed':'open'; }
+function _leaveStatusOf(id){ if(leaveStatusStore&&leaveStatusStore[id])return leaveStatusStore[id].status==='open'?'open':'closed'; const r=leaveData&&leaveData.rows&&leaveData.rows.find(x=>String(x.id)===String(id)); return _leaveAutoClosed(r)?'closed':'open'; }
 function _leaveReturned(id){ return !!(leaveStatusStore&&leaveStatusStore[id]&&leaveStatusStore[id].returned); }
 // Return-to-work = day after the last day on leave; alert when within 5 days (r9).
 function _leaveRtw(r){ if(!r||!r.leave||!r.leave.until)return null; const u=parseDate(r.leave.until); if(!u)return null; const d=new Date(u); d.setDate(d.getDate()+1); d.setHours(0,0,0,0); return d; }
@@ -4864,7 +4916,12 @@ function renderSummary(){
   // (too new to expect weekend coverage).
   // Exclude SH-TS (Tribute Secure short-hours, TS level 16) — they aren't held to
   // weekend coverage even though their desired hours can read ≥30 (r5, Monya Johnson).
-  const weekendPop=active.filter(p=>p.viv&&(p.viv.desiredHours||0)>=30&&p.viv.tsLevel!==16);
+  // Tory 11/2026: also exclude anyone whose iSolved job title says Short Hours or PRN
+  // (desired hours alone let some short-hour caregivers through), and anyone hired
+  // within 45 days by EITHER hire date on file.
+  const _isSH=p=>/short\s*hour|\bprn\b/i.test(String((p.viv&&p.viv.jobTitle)||p.title||''));
+  const _newHire=p=>{ const d=[p.hireDate,parseDate(p.viv&&p.viv.hireDate)].filter(Boolean).sort((a,b)=>b-a)[0]; return d&&((TODAY-d)/86400000)<45; };
+  const weekendPop=active.filter(p=>p.viv&&(p.viv.desiredHours||0)>=30&&p.viv.tsLevel!==16&&!_isSH(p)&&!_newHire(p));
   const weekendFlag=weekendPop.filter(p=>{
       if((p.viv.weekendMonthsWorked||[]).includes(refMonth))return false;
       // Already worked a weekend in the current (partial) month → drop from the list (r12, Pearl Manner).
