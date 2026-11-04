@@ -647,6 +647,9 @@ table.sched-tbl tr:last-child td{border-bottom:none}
             <option value="pip">Development / Performance Improvement Plan</option>
             <option value="warning">Written Warning</option>
             <option value="corrective">Corrective Action</option>
+            <option value="offer_ts">Offer Letter — Tribute Secure</option>
+            <option value="offer_hourly">Offer Letter — Hourly Caregiver</option>
+            <option value="cash_advance">Cash Advance Letter</option>
             <option value="letter">Recognition / Other Letter</option>
           </select></div>
       </div>
@@ -3089,7 +3092,8 @@ async function ceDraft(){
   const sit=(document.getElementById('docsSituation').value||'').trim();
   const type=document.getElementById('docsType').value;
   const msg=document.getElementById('docsDraftMsg'), btn=document.getElementById('docsDraftBtn');
-  if(!_docsCg&&type!=='letter'){ msg.textContent='Pick a caregiver first.'; return; }
+  const _freeTypes=['letter','offer_ts','offer_hourly','cash_advance'];   // can be drafted for someone not yet on the roster
+  if(!_docsCg&&!_freeTypes.includes(type)){ msg.textContent='Pick a caregiver first.'; return; }
   const picked=ceSelectedSes();
   if(sit.length<8&&!picked.length){ msg.textContent='Add a few sentences about the situation, or check the incidents to include.'; return; }
   btn.disabled=true; msg.textContent='Tribute Intelligence is drafting…';
