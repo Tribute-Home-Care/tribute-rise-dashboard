@@ -3670,12 +3670,22 @@ function slToggleResolved(on){ slHideResolved=!!on; slSaveShow(); renderShortLis
 function _seResolved(e){ return !!(e&&(e.resolvedAt||e.resolution||/resolved/i.test(String(e.status||'')))); }
 // Performance r12 (Khadijah): SE kinds that usually lead to a Written Warning.
 // Read from the SE type AND description; returns a short label or null.
-const WW_KINDS=[['no call / no show',/no[- ]?call[,/ ]*no[- ]?show|\bncns\b|did(n't| not) show( up)?|never (showed|arrived)|failed to (show|arrive)/i],
-  ['sleeping on a visit',/\b(asleep|sleeping|slept|napping|dozed|dozing)\b/i],
-  ['phone use',/cell ?phone|on (her|his|their) phone|phone use|using (her|his|their) phone|texting|scrolling|facetim|headphones?|earbuds?/i],
-  ['uniform',/\buniform\b|dress code|scrubs|not wearing (her|his|their) (badge|uniform)/i],
-  ['not following the care plan',/care ?plan|not following (the )?(plan|instructions|tasks)|did(n't| not) (complete|do|perform) (the )?tasks|refus(ed|ing) (to|the|a) /i]];
-function _wwKind(e){ if(!e)return null; const t=String(e.type||'')+' '+String(e.desc||''); for(const [k,re] of WW_KINDS){ if(re.test(t))return k; } return null; }
+const WW_KINDS=[['no call / no show',/\bncns\b|no[- ]?call[,/ ]*no[- ]?show/i],
+  ['uniform',/\buniform\b|dress code/i],
+  ['phone use',/cell ?phone|phone use/i],
+  ['not following the care plan',/not following the care plan/i],
+  ['sleeping on a visit',/\bsleep|asleep/i]];
+// Description wording only counts on a complaint-type SE about the caregiver
+// (not internal notes, falls, injuries, change of condition), and only when the
+// phrasing is about the caregiver, not the client.
+const WW_DESC=[['no call / no show',/\bncns\b|no[- ]?call[,/ ]*no[- ]?show|did(n't| not) show up/i],
+  ['sleeping on a visit',/(caregiver|she|he|they) (was|were) (found )?(asleep|sleeping)|fell asleep|found (her|him|them|the caregiver) (asleep|sleeping)|sleeping (on|during) (the|a|her|his) (visit|job)|napping|dozing|dozed off/i],
+  ['phone use',/on (her|his|their) (cell ?)?phone|phone use|using (her|his|their) phone|texting|facetim|headphones|earbuds/i],
+  ['uniform',/\buniform\b|dress code|\bscrubs\b/i],
+  ['not following the care plan',/not following (the )?(care )?plan|did(n't| not) follow (the )?(care )?plan|ignor(ed|ing) the care plan|refus(ed|ing) to (do|complete|perform|follow)/i]];
+function _wwKind(e){ if(!e)return null; const ty=String(e.type||''); for(const [k,re] of WW_KINDS){ if(re.test(ty))return k; }
+  if(!/^(client|connection|reliability|communication|flexibility) complaint/i.test(ty))return null;
+  const d=String(e.desc||''); for(const [k,re] of WW_DESC){ if(re.test(d))return k; } return null; }
 function _sePerformance(e){ const t=String(e&&e.type||'').toLowerCase(); return !!(_seStandard(t)||/call\s?out|ncns|no.?show|lateness|conduct|misconduct|care concern/.test(t)||_wwKind(e)); }
 function renderShortList(){
   const el=document.getElementById('scoreboard');
