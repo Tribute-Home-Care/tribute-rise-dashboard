@@ -3590,32 +3590,33 @@ function shortListTriggers(p){
   const notes2=perfWindowNotes(v,perfWeeksBack(2));     // recent missing notes
   const exc=perfExcWindow(v,30);                        // dated incidents, past month
   const trig=[];
-  if(ck2.checked>=3 && ck2.onTime/ck2.checked<0.80) trig.push({t:'Running late — OTP '+Math.round(ck2.onTime/ck2.checked*100)+'% past 2 wks',sev:'r'});
-  if(ckM.veryLate>2) trig.push({t:'Very late — >15 min late '+ckM.veryLate+'× this month',sev:'r'});
-  if(exc.prevCallout>1) trig.push({t:exc.prevCallout+' preventable call-outs this month',sev:'r'});
-  if(exc.emergCallout>3) trig.push({t:exc.emergCallout+' emergency call-outs this month',sev:'warn'});
-  if(notes2.error>0) trig.push({t:notes2.error+' missing visit note'+(notes2.error>1?'s':'')+' (recent)',sev:'r'});
-  if(exc.connection>1) trig.push({t:exc.connection+' connection complaints this month',sev:'r'});
-  if(exc.communication>1) trig.push({t:exc.communication+' communication complaints this month',sev:'r'});
+  if(ck2.checked>=3 && ck2.onTime/ck2.checked<0.80) trig.push({t:'Running late — OTP '+Math.round(ck2.onTime/ck2.checked*100)+'% past 2 wks',sev:'r',cat:'otp'});
+  if(ckM.veryLate>2) trig.push({t:'Very late — >15 min late '+ckM.veryLate+'× this month',sev:'r',cat:'otp'});
+  if(exc.prevCallout>1) trig.push({t:exc.prevCallout+' preventable call-outs this month',sev:'r',cat:'callout'});
+  if(exc.emergCallout>3) trig.push({t:exc.emergCallout+' emergency call-outs this month',sev:'warn',cat:'callout'});
+  if(notes2.error>0) trig.push({t:notes2.error+' missing visit note'+(notes2.error>1?'s':'')+' (recent)',sev:'r',cat:'notes'});
+  if(exc.connection>1) trig.push({t:exc.connection+' connection complaints this month',sev:'r',cat:'connection'});
+  if(exc.communication>1) trig.push({t:exc.communication+' communication complaints this month',sev:'r',cat:'communication'});
   // r11: 3+ reliability/connection/communication/flexibility complaints + lateness SEs within 8 weeks
   const exc8=perfExcWindow(v,56);
   const cluster8=exc8.connection+exc8.communication+exc8.reliability+exc8.flexibility+exc8.lateness;
-  if(cluster8>=3) trig.push({t:cluster8+' reliability/connection/communication/flexibility/lateness SEs in 8 wks',sev:'r'});
+  if(cluster8>=3) trig.push({t:cluster8+' reliability/connection/communication/flexibility/lateness SEs in 8 wks',sev:'r',cat:'cluster'});
   // r10: a new SE while a written warning or PIP is active
   const activeCA=activePipwwFor(p);
   if(activeCA.length && (v.exceptions||[]).some(inc=>_withinDays(inc.date,30))){
-    trig.push({t:'New SE during active '+((activeCA[0].type||'WW/PIP').toString().toUpperCase()),sev:'r'});
+    trig.push({t:'New SE during active '+((activeCA[0].type||'WW/PIP').toString().toUpperCase()),sev:'r',cat:'pipww'});
   }
-  if(v.sundayRemoved && _withinDays(v.sundayRemoved.date,35)) trig.push({t:'Removed Sunday availability ('+formatDate(v.sundayRemoved.date)+')',sev:'warn'});
+  if(v.sundayRemoved && _withinDays(v.sundayRemoved.date,35)) trig.push({t:'Removed Sunday availability ('+formatDate(v.sundayRemoved.date)+')',sev:'warn',cat:'sunday'});
   // r14 (Khadijah): SEs that relate to the caregiver's documented Rise goal. The
   // goal is free text on the Rise / 90-day form, so we read which performance
   // standard it targets (riseGoalStandard) and flag 2+ SEs in that standard
   // since the meeting where the goal was set.
   const rg=riseGoalFor(p);
-  if(rg&&rg.standard){
+  // Khadijah 10/27: goal-related flags apply only to caregivers in Performance Support.
+  if(rg&&rg.standard&&personCurrentSegment(p)==='Performance Support'){
     const since=rg.date?rg.date.toLocaleDateString('en-CA'):null;
     const hits=(v.exceptions||[]).filter(inc=>(!since||String(inc.date||'').slice(0,10)>=since)&&_seStandard(inc.type)===rg.standard);
-    if(hits.length>=2) trig.push({t:hits.length+' '+rg.standard+' SEs since their Rise goal'+(rg.date?' ('+formatDate(rg.date)+')':'')+': "'+rg.goal.slice(0,70)+(rg.goal.length>70?'…':'')+'"',sev:'r'});
+    if(hits.length>=2) trig.push({t:hits.length+' '+rg.standard+' SEs since their Rise goal'+(rg.date?' ('+formatDate(rg.date)+')':'')+': "'+rg.goal.slice(0,70)+(rg.goal.length>70?'…':'')+'"',sev:'r',cat:'goal'});
   }
   return trig;
 }
@@ -3648,30 +3649,49 @@ function riseGoalFor(p){
   const f=forms[0]; const goal=String(f.goal).trim();
   return {goal, date:parseDate(f.meetingDate||f.submittedAt), standard:riseGoalStandard(goal)};
 }
+// Short List "Data shown" (Khadijah 10/27): which flag families appear; resolved
+// SEs can be hidden from the counts. Persisted per browser.
+const SL_CATS=[['otp','On-time performance'],['notes','Visit note completion'],['callout','Call-outs'],['connection','Connection complaints'],['communication','Communication complaints'],['cluster','3+ complaints in 8 weeks'],['pipww','New SE during PIP/WW'],['goal','Rise goal SEs'],['sunday','Sunday availability']];
+let slShow=null, slHideResolved=false;
+try{ const j=JSON.parse(localStorage.getItem('rise_sl_show')||'null'); if(j&&Array.isArray(j.cats)){ slShow=new Set(j.cats); slHideResolved=!!j.hideResolved; } }catch(e){}
+if(!slShow)slShow=new Set(SL_CATS.map(c=>c[0]));
+function slSaveShow(){ try{ localStorage.setItem('rise_sl_show',JSON.stringify({cats:[...slShow],hideResolved:slHideResolved})); }catch(e){} }
+function slToggleCat(c,on){ if(on)slShow.add(c); else slShow.delete(c); slSaveShow(); renderShortList(); }
+function slToggleResolved(on){ slHideResolved=!!on; slSaveShow(); renderShortList(); }
+function _seResolved(e){ return !!(e&&(e.resolvedAt||e.resolution||/resolved/i.test(String(e.status||'')))); }
+function _sePerformance(e){ const t=String(e&&e.type||'').toLowerCase(); return !!(_seStandard(t)||/call\s?out|ncns|no.?show|lateness/.test(t)); }
 function renderShortList(){
   const el=document.getElementById('scoreboard');
   if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading…</div>'; return; }
   perfPopulateFilters();
   const scope=perfScope();
   const flagged=[];
-  scope.forEach(p=>{
-    const trig=shortListTriggers(p);
+  scope.forEach(p0=>{
+    // Optionally drop resolved SEs before any counting (Khadijah: some MCEs want only open ones).
+    const p=slHideResolved&&p0.viv?Object.assign({},p0,{viv:Object.assign({},p0.viv,{exceptions:(p0.viv.exceptions||[]).filter(e=>!_seResolved(e))})}):p0;
+    const trig=shortListTriggers(p).filter(t=>!t.cat||slShow.has(t.cat));
     if(trig.length)flagged.push({p,trig});
   });
   flagged.sort((a,b)=>(b.trig.some(t=>t.sev==='r')?1:0)-(a.trig.some(t=>t.sev==='r')?1:0)||b.trig.length-a.trig.length||a.p.name.localeCompare(b.p.name));
   document.getElementById('sbCount').textContent=flagged.length+' on the short list · '+scope.length+' caregivers';
   let h='<div class="sb-note">Short List criteria (past 2 weeks / past month, from live Viv data): OTP &lt;80% (2 wks) · &gt;15 min late more than twice · &gt;1 preventable call-out · &gt;3 emergency call-outs · any missing visit note · &gt;1 connection complaint (incl. match failures) · &gt;1 communication complaint · 3+ complaint/lateness SEs in 8 wks · new SE during an active WW/PIP · 2+ SEs on the standard their Rise goal targets · removed Sunday availability.</div>';
+  h+='<div class="fc" style="margin:0 0 12px;padding:10px 14px"><div class="ct" style="margin-bottom:6px">Data shown <span style="font-weight:500;text-transform:none;color:var(--text3)">· pick the flags you want on your list; a caregiver drops off when none of their flags are selected</span></div>'+
+    '<div style="display:flex;gap:10px 16px;flex-wrap:wrap;font-size:12.5px">'+SL_CATS.map(c=>'<label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" '+(slShow.has(c[0])?'checked':'')+' onchange="slToggleCat(\''+c[0]+'\',this.checked)"> '+c[1]+'</label>').join('')+
+    '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:auto;font-weight:600"><input type="checkbox" '+(slHideResolved?'checked':'')+' onchange="slToggleResolved(this.checked)"> Hide resolved SEs</label></div></div>';
   h+='<div class="sl-gro01">⚠️ Needs attention <span style="color:var(--text3);font-weight:600">· '+flagged.length+' caregiver'+(flagged.length!==1?'s':'')+'</span></div>';
   if(!flagged.length){ h+='<div class="sb-allgood">🎉 Nobody trips a Short List criterion right now — great work across the board!</div>'; }
   else h+=flagged.map(x=>{
     const hard=x.trig.some(t=>t.sev==='r');
     const v=x.p.viv||{};
-    const recentSes=((v.exceptions)||[]).filter(e=>_withinDays(e.date,60)).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    // Khadijah 10/27: only performance-related SEs (standards, call-outs, lateness), with the
+    // resolution under each; client updates and internal notes stay out. Goal-related ones are marked.
+    const rg=riseGoalFor(x.p); const goalStd=rg&&rg.standard&&personCurrentSegment(x.p)==='Performance Support'?rg.standard:null;
+    const recentSes=((v.exceptions)||[]).filter(e=>_withinDays(e.date,60)&&_sePerformance(e)).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
     let det='<div class="sl-detail" id="sld_'+x.p.key+'" hidden style="padding:8px 10px 2px;border-top:.5px solid var(--border);margin-top:8px">';
     if(recentSes.length){
-      det+='<div class="ct" style="margin-bottom:4px">Service exceptions (last 60 days)</div>'+
-        recentSes.slice(0,12).map(e=>'<div class="stat-foot" style="padding:2px 0"><strong>'+formatDate(parseDate(e.date))+'</strong> · '+escHtml(e.type||'—')+(e.desc?' — '+escHtml(e.desc):'')+'</div>').join('');
-    } else det+='<div class="stat-foot">No service exceptions in the last 60 days.</div>';
+      det+='<div class="ct" style="margin-bottom:4px">Performance service exceptions (last 60 days)</div>'+
+        recentSes.slice(0,12).map(e=>'<div class="stat-foot" style="padding:3px 0"><strong>'+formatDate(parseDate(e.date))+'</strong> · '+escHtml(e.type||'—')+(goalStd&&_seStandard(e.type)===goalStd?' <span class="bdg bg-a">Rise goal</span>':'')+(_seResolved(e)?' <span class="bdg bg-n">resolved</span>':' <span class="bdg bg-r">open</span>')+(e.desc?'<div style="margin-left:10px">'+escHtml(e.desc)+'</div>':'')+(e.resolution?'<div style="margin-left:10px;color:var(--text2)"><b>Resolution:</b> '+escHtml(e.resolution)+'</div>':'')+'</div>').join('');
+    } else det+='<div class="stat-foot">No performance service exceptions in the last 60 days.</div>';
     det+='<div style="margin-top:6px"><a class="card-link" style="cursor:pointer" onclick="event.stopPropagation();openCaregiver(\''+x.p.key+'\')">Open full dashboard →</a></div></div>';
     return '<div class="sl-row sev-'+(hard?'r':'good')+'" style="cursor:pointer" onclick="toggleSlDetail(\''+x.p.key+'\')">'+
       '<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.p.manager||'—')+' · '+escHtml(x.p.market||'—')+' <span style="color:var(--text3)" title="click to expand">▾</span></span></div>'+
