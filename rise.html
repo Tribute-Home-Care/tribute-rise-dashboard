@@ -1458,7 +1458,7 @@ function renderTracker(){
   tbody.innerHTML=rows.map(row=>{
     let chip='<span class="bdg bg-g">—</span>';
     const _lv=_leaveNowFor(row.p);
-    if(_lv){ chip='<span class="bdg bg-n" title="On the CAs on Leave list; the meeting is not counted overdue while they are out">On leave '+formatDate(_lv.from)+' – '+formatDate(_lv.until)+'</span>'; }
+    if(_lv){ chip='<span class="bdg bg-n" title="On the CAs on Leave list; the meeting is not counted overdue while they are out">On leave '+formatDate(_lv.from)+' to '+formatDate(_lv.until)+'</span>'; }
     else if(row.daysUntil!==null){
       if(row.daysUntil<=0)chip='<span class="bdg bg-r">'+(row.daysUntil===0?'Due Today':Math.abs(row.daysUntil)+' days overdue')+'</span>';
       else if(row.daysUntil<=14)chip='<span class="bdg bg-a">'+row.daysUntil+' day'+(row.daysUntil!==1?'s':'')+'</span>';
