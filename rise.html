@@ -3613,6 +3613,9 @@ function shortListTriggers(p){
     trig.push({t:'New SE during active '+((activeCA[0].type||'WW/PIP').toString().toUpperCase()),sev:'r',cat:'pipww'});
   }
   if(v.sundayRemoved && _withinDays(v.sundayRemoved.date,35)) trig.push({t:'Removed Sunday availability ('+formatDate(v.sundayRemoved.date)+')',sev:'warn',cat:'sunday'});
+  // Performance r12: SE kinds that usually lead to a Written Warning, past 60 days.
+  const wwHits=(v.exceptions||[]).filter(inc=>_withinDays(inc.date,60)&&_wwKind(inc)).map(inc=>({k:_wwKind(inc),d:inc.date,open:!_seResolved(inc)}));
+  if(wwHits.length){ const kinds=[...new Set(wwHits.map(h=>h.k))]; trig.push({t:'WW-leading SE'+(wwHits.length>1?'s':'')+' ('+wwHits.length+'): '+kinds.join(', ')+(wwHits.some(h=>h.open)?'':' (all resolved)'),sev:'r',cat:'ww'}); }
   // r14 (Khadijah): SEs that relate to the caregiver's documented Rise goal. The
   // goal is free text on the Rise / 90-day form, so we read which performance
   // standard it targets (riseGoalStandard) and flag 2+ SEs in that standard
@@ -3657,7 +3660,7 @@ function riseGoalFor(p){
 }
 // Short List "Data shown" (Khadijah 10/27): which flag families appear; resolved
 // SEs can be hidden from the counts. Persisted per browser.
-const SL_CATS=[['otp','On-time performance'],['notes','Visit note completion'],['callout','Call-outs'],['connection','Connection complaints'],['communication','Communication complaints'],['cluster','3+ complaints in 8 weeks'],['pipww','New SE during PIP/WW'],['goal','Rise goal SEs'],['sunday','Sunday availability']];
+const SL_CATS=[['otp','On-time performance'],['notes','Visit note completion'],['callout','Call-outs'],['connection','Connection complaints'],['communication','Communication complaints'],['cluster','3+ complaints in 8 weeks'],['pipww','New SE during PIP/WW'],['goal','Rise goal SEs'],['ww','WW-leading SE types'],['sunday','Sunday availability']];
 let slShow=null, slHideResolved=false;
 try{ const j=JSON.parse(localStorage.getItem('rise_sl_show')||'null'); if(j&&Array.isArray(j.cats)){ slShow=new Set(j.cats); slHideResolved=!!j.hideResolved; } }catch(e){}
 if(!slShow)slShow=new Set(SL_CATS.map(c=>c[0]));
@@ -3665,7 +3668,15 @@ function slSaveShow(){ try{ localStorage.setItem('rise_sl_show',JSON.stringify({
 function slToggleCat(c,on){ if(on)slShow.add(c); else slShow.delete(c); slSaveShow(); renderShortList(); }
 function slToggleResolved(on){ slHideResolved=!!on; slSaveShow(); renderShortList(); }
 function _seResolved(e){ return !!(e&&(e.resolvedAt||e.resolution||/resolved/i.test(String(e.status||'')))); }
-function _sePerformance(e){ const t=String(e&&e.type||'').toLowerCase(); return !!(_seStandard(t)||/call\s?out|ncns|no.?show|lateness/.test(t)); }
+// Performance r12 (Khadijah): SE kinds that usually lead to a Written Warning.
+// Read from the SE type AND description; returns a short label or null.
+const WW_KINDS=[['no call / no show',/no[- ]?call[,/ ]*no[- ]?show|\bncns\b|did(n't| not) show( up)?|never (showed|arrived)|failed to (show|arrive)/i],
+  ['sleeping on a visit',/\b(asleep|sleeping|slept|napping|dozed|dozing)\b/i],
+  ['phone use',/cell ?phone|on (her|his|their) phone|phone use|using (her|his|their) phone|texting|scrolling|facetim|headphones?|earbuds?/i],
+  ['uniform',/\buniform\b|dress code|scrubs|not wearing (her|his|their) (badge|uniform)/i],
+  ['not following the care plan',/care ?plan|not following (the )?(plan|instructions|tasks)|did(n't| not) (complete|do|perform) (the )?tasks|refus(ed|ing) (to|the|a) /i]];
+function _wwKind(e){ if(!e)return null; const t=String(e.type||'')+' '+String(e.desc||''); for(const [k,re] of WW_KINDS){ if(re.test(t))return k; } return null; }
+function _sePerformance(e){ const t=String(e&&e.type||'').toLowerCase(); return !!(_seStandard(t)||/call\s?out|ncns|no.?show|lateness|conduct|misconduct|care concern/.test(t)||_wwKind(e)); }
 function renderShortList(){
   const el=document.getElementById('scoreboard');
   if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading…</div>'; return; }
@@ -3696,7 +3707,7 @@ function renderShortList(){
     let det='<div class="sl-detail" id="sld_'+x.p.key+'" hidden style="padding:8px 10px 2px;border-top:.5px solid var(--border);margin-top:8px">';
     if(recentSes.length){
       det+='<div class="ct" style="margin-bottom:4px">Performance service exceptions (last 60 days)</div>'+
-        recentSes.slice(0,12).map(e=>'<div class="stat-foot" style="padding:3px 0"><strong>'+formatDate(parseDate(e.date))+'</strong> · '+escHtml(e.type||'—')+(goalStd&&_seStandard(e.type)===goalStd?' <span class="bdg bg-a">Rise goal</span>':'')+(_seResolved(e)?' <span class="bdg bg-n">resolved</span>':' <span class="bdg bg-r">open</span>')+(e.desc?'<div style="margin-left:10px">'+escHtml(e.desc)+'</div>':'')+(e.resolution?'<div style="margin-left:10px;color:var(--text2)"><b>Resolution:</b> '+escHtml(e.resolution)+'</div>':'')+'</div>').join('');
+        recentSes.slice(0,12).map(e=>'<div class="stat-foot" style="padding:3px 0"><strong>'+formatDate(parseDate(e.date))+'</strong> · '+escHtml(e.type||'—')+(goalStd&&_seStandard(e.type)===goalStd?' <span class="bdg bg-a">Rise goal</span>':'')+(_wwKind(e)?' <span class="bdg bg-r" title="This kind of SE usually leads to a Written Warning">WW-leading: '+escHtml(_wwKind(e))+'</span>':'')+(_seResolved(e)?' <span class="bdg bg-n">resolved</span>':' <span class="bdg bg-r">open</span>')+(e.desc?'<div style="margin-left:10px">'+escHtml(e.desc)+'</div>':'')+(e.resolution?'<div style="margin-left:10px;color:var(--text2)"><b>Resolution:</b> '+escHtml(e.resolution)+'</div>':'')+'</div>').join('');
     } else det+='<div class="stat-foot">No performance service exceptions in the last 60 days.</div>';
     det+='<div style="margin-top:6px"><a class="card-link" style="cursor:pointer" onclick="event.stopPropagation();openCaregiver(\''+x.p.key+'\')">Open full dashboard →</a></div></div>';
     return '<div class="sl-row sev-'+(hard?'r':'good')+'" style="cursor:pointer" onclick="toggleSlDetail(\''+x.p.key+'\')">'+
@@ -5044,11 +5055,17 @@ function renderSummary(){
       return true;
     })
     .map(p=>({ p, streak:_missStreak(p.viv.weekendMonthsWorked), last:_maxMonth(p.viv.weekendMonthsWorked),
-      lh:(p.viv.desiredHours||0)>=30, ts:!!p.viv.tsEnrolled }))
+      lh:(p.viv.desiredHours||0)>=30, ts:!!p.viv.tsEnrolled, kinds:_wkKinds6(p) }))
     .sort((a,b)=>b.streak-a.streak||a.p.name.localeCompare(b.p.name));
   const wkTs=weekendFlag.filter(x=>x.ts).length, wk3=weekendFlag.filter(x=>x.streak>=3).length;
+  // Rise Summary r7 (Tory): days vs overnights. Backend weekendKinds = {YYYY-MM:{d,o}}.
+  function _wkKinds6(p){ const K=(p.viv&&p.viv.weekendKinds)||null; if(!K)return null; const m6=new Date(TODAY); m6.setMonth(m6.getMonth()-6); const since=m6.toLocaleDateString('en-CA').slice(0,7); let d=0,o=0,any=false; for(const mk in K){ const c=K[mk]; if(mk<since||!c||typeof c!=='object')continue; any=true; d+=c.d||0; o+=c.o||0; } return any?{d,o}:{d:0,o:0}; }
+  let refD=0,refO=0,refBoth=0,refKnown=0;
+  weekendPop.forEach(p=>{ const K=p.viv.weekendKinds; if(!K)return; const c=K[refMonth]; if(!c||typeof c!=='object')return; refKnown++; if(c.d&&c.o)refBoth++; else if(c.o)refO++; else if(c.d)refD++; });
+  const _kindCell=k=>{ if(!k)return '<span style="color:var(--text2)">—</span>'; if(!k.d&&!k.o)return '<span style="color:var(--text2)">none in 6 mo</span>'; return (k.d?'<span class="bdg bg-b">'+k.d+' day'+(k.d>1?'s':'')+'</span> ':'')+(k.o?'<span class="bdg bg-p">'+k.o+' overnight'+(k.o>1?'s':'')+'</span>':''); };
   h+='<h2 style="margin:22px 0 4px">Weekend Coverage Audit</h2>';
   h+='<div class="stat-foot" style="margin-bottom:10px">Long-Hours caregivers (desired ≥ 30 hrs/wk) who did <strong>not</strong> work a weekend visit in <strong>'+escHtml(refLabel)+'</strong> (the last complete calendar month). Excludes SH-TS (short-hours Tribute Secure), anyone in their first 45 days, and anyone who has already worked a weekend this month. Streak = consecutive months with no weekend, counting back from '+escHtml(refLabel)+'.</div>';
+  if(refKnown) h+='<div class="stat-foot" style="margin:-4px 0 10px">Of the '+refKnown+' who did work a weekend in '+escHtml(refLabel)+': <span class="bdg bg-b">'+refD+' days only</span> <span class="bdg bg-p">'+refO+' overnights only</span> <span class="bdg bg-n">'+refBoth+' both</span>. Overnight = a weekend visit that runs past midnight (Friday overnights count).</div>';
   h+='<div class="grid four" style="margin-bottom:14px">'+
     '<div class="fc"><div class="ct">Flagged this month</div><div class="big-stat"><span class="v '+(weekendFlag.length?'a':'g')+'">'+weekendFlag.length+'</span></div><div class="stat-foot">no weekend in '+escHtml(refLabel)+'</div></div>'+
     '<div class="fc"><div class="ct">Of those, Tribute Secure</div><div class="big-stat"><span class="v '+(wkTs?'a':'g')+'">'+wkTs+'</span></div><div class="stat-foot">TS caregivers flagged</div></div>'+
@@ -5056,7 +5073,7 @@ function renderSummary(){
     '<div class="fc"><div class="ct">Long-Hours population</div><div class="big-stat"><span class="v b">'+weekendPop.length+'</span></div><div class="stat-foot">caregivers audited</div></div>'+
   '</div>';
   if(weekendFlag.length){
-    h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Market</th><th>Manager</th><th>Type</th><th>Last weekend worked</th><th>Streak</th></tr></thead><tbody>';
+    h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Market</th><th>Manager</th><th>Type</th><th>Last weekend worked</th><th>Weekends worked, past 6 mo</th><th>Streak</th></tr></thead><tbody>';
     weekendFlag.forEach(x=>{
       const typeBadge=x.lh&&x.ts?'<span class="bdg bg-p">LH+TS</span>':x.ts?'<span class="bdg bg-p">TS</span>':'<span class="bdg bg-b">LH</span>';
       const wkBadge=x.streak===1?'<span class="bdg bg-a">1 mo no weekend</span>':_missBadge(x.streak);
@@ -5065,6 +5082,7 @@ function renderSummary(){
         '<td style="font-size:12px">'+escHtml(x.p.manager||'—')+'</td>'+
         '<td>'+typeBadge+'</td>'+
         '<td class="td-date">'+(x.last?escHtml(_fmtMonth(x.last)):'<span style="color:var(--text2)">none on record</span>')+'</td>'+
+        '<td>'+_kindCell(x.kinds)+'</td>'+
         '<td>'+wkBadge+'</td></tr>';
     });
     h+='</tbody></table></div>';
