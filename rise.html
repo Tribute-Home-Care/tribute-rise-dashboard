@@ -1196,7 +1196,8 @@ function generateDueDates(hireDate){
   return dates;
 }
 // Only a real Meeting Date (≤ today) counts as a completed meeting. A meeting
-// covers a due date if it falls within 3 weeks early / 10 weeks late of it.
+// covers a due date if it falls within 5 weeks early / 10 weeks late of it
+// (was 3 weeks early; Tasheya Knox 11/5 met 24 days before her 6-month date).
 function getActiveDueDate(hireDate,riseRows){
   const dueDates=generateDueDates(hireDate);
   if(!dueDates.length)return null;
@@ -1206,7 +1207,7 @@ function getActiveDueDate(hireDate,riseRows){
     const pastDues=dueDates.filter(d=>d<=TODAY);
     return pastDues.length?pastDues[pastDues.length-1]:dueDates[0];
   }
-  const lateWindow=new Date(latestMeeting); lateWindow.setDate(lateWindow.getDate()+21);
+  const lateWindow=new Date(latestMeeting); lateWindow.setDate(lateWindow.getDate()+35);
   const earlyLimit=new Date(latestMeeting); earlyLimit.setDate(earlyLimit.getDate()-70);
   let coveredIdx=-1;
   for(let i=dueDates.length-1;i>=0;i--){
@@ -1389,7 +1390,10 @@ function renderTracker(){
     const skipCgId=(p.viv&&p.viv.id)?p.viv.id:null;
     const skipRec=(skipCgId&&meetingSkips&&meetingSkips[skipCgId])?meetingSkips[skipCgId]:null;
     const skippedTo=(skipRec&&skipRec.skippedTo)?parseDate(skipRec.skippedTo):null;
-    const effDueDate=skippedTo||activeDueDate;
+    // A skip only moves the due date FORWARD. Once a meeting is held and the cadence
+    // computes a later due date, the old skip is spent (Susan Mutobaano 11/5: skipped
+    // to 10/29, met 10/27, row still read 7 days overdue).
+    const effDueDate=(skippedTo&&(!activeDueDate||skippedTo>activeDueDate))?skippedTo:activeDueDate;
     const daysUntil=effDueDate?Math.round((effDueDate-TODAY)/86400000):null;
 
     // Segment priority: latest 90-day form → First 90 Days window → latest Rise form
@@ -1492,13 +1496,14 @@ function renderTracker(){
     let dueCell=(row.activeDueDate?formatDate(row.activeDueDate):'—');
     if(row.skipCgId){
       const escSkipId=String(row.skipCgId).replace(/'/g,"\\'");
-      if(row.skippedTo && row.skippedTo>=TODAY){
+      const skipSpent=!!(row.skippedTo&&row.activeDueDate&&row.activeDueDate>row.skippedTo);   // meeting held since the skip
+      if(row.skippedTo && row.skippedTo>=TODAY && !skipSpent){
         dueCell+=' <span class="bdg bg-n" title="Next Rise meeting skipped — due date advanced one cycle">Skipped → '+formatDate(row.skippedTo)+
           ' <span onclick="event.stopPropagation();unskipMeeting(\''+escSkipId+'\')" style="cursor:pointer;margin-left:2px" title="Undo skip">✕</span></span>';
       } else if(row.activeDueDate){
         // A skip whose date has passed no longer hides the Skip button (Shaina 10/22:
         // eleven old skips from last fall left rows overdue with no way to skip again).
-        if(row.skippedTo) dueCell+=' <span class="bdg bg-n" title="Earlier skip, now past">skipped to '+formatDate(row.skippedTo)+'</span>';
+        if(row.skippedTo&&!skipSpent) dueCell+=' <span class="bdg bg-n" title="Earlier skip, now past">skipped to '+formatDate(row.skippedTo)+'</span>';
         // Skip steps to the NEXT meeting in the cadence 45 → 90 → 6-month → +6mo.
         let adv;
         if(row.dueKind==='45-day' && row.hireDate){
