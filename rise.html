@@ -410,6 +410,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <label for="trackerState">State</label>
     <select id="trackerState" onchange="renderTracker()"><option value="">All states</option><option value="MD">MD</option><option value="IL">IL</option><option value="MA">MA</option></select>
     <span class="count" id="trackerCount"></span>
+    <span id="mceSetBox" style="margin-left:auto;font-size:12px;color:var(--text2)"></span>
   </div>
   <div id="trackerEmpty" class="empty-state">
     <div class="big">📋</div>
@@ -1458,6 +1459,7 @@ function renderTracker(){
   }
   if(trackerNotes===null)loadTrackerNotes();   // durable Notes / Next-Meeting store
   if(meetingSkips===null)loadMeetingSkips();   // durable meeting-skip store
+  renderMceSettingsBox();                        // Calendly link for text-to-schedule (Tory 11/5)
   const autoClear=[];
   tbody.innerHTML=rows.map(row=>{
     let chip='<span class="bdg bg-g">—</span>';
@@ -1539,7 +1541,7 @@ function renderTracker(){
     const _cp=v=>'<span title="Copy" onclick="event.stopPropagation();navigator.clipboard.writeText(\''+escHtml(v).replace(/'/g,'')+'\');this.textContent=\'✓\';setTimeout(()=>this.textContent=\'⧉\',1200)" style="cursor:pointer;color:var(--text3);font-size:11px;margin-left:4px">⧉</span>';
     const phoneLine=phoneFmt?('<a href="https://teams.microsoft.com/l/call/0/0?users=4:'+encodeURIComponent((rawPhone.length===10?'+1':'+')+rawPhone)+'" target="_blank" rel="noopener" title="Call in Microsoft Teams" onclick="event.stopPropagation()" style="color:var(--blue-text);text-decoration:none">'+escHtml(phoneFmt)+'</a>'+_cp(phoneFmt)):'';
     const emailLine=cgEmail?('<a href="mailto:'+escHtml(cgEmail)+'" title="Email in Outlook" onclick="event.stopPropagation()" style="color:var(--blue-text);text-decoration:none">'+escHtml(cgEmail)+'</a>'+_cp(cgEmail)):'';
-    const contactCell=(phoneLine||emailLine)?('<div style="font-size:11.5px;line-height:1.5;white-space:nowrap">'+phoneLine+(phoneLine&&emailLine?'<br>':'')+emailLine+'</div>'):'—';
+    const contactCell=((phoneLine||emailLine)?('<div style="font-size:11.5px;line-height:1.5;white-space:nowrap">'+phoneLine+(phoneLine&&emailLine?'<br>':'')+emailLine+'</div>'):'—')+_schedBtn(row.p);
     return '<tr data-nk="'+nkAttr+'">'+
       '<td class="td-name"><span class="cg-link clickable" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')" style="cursor:pointer;color:var(--blue-text);font-weight:600">'+escHtml(row.p.name)+'</span>'+cycleBadge+pipwwBadge+'</td>'+
       '<td style="text-align:left">'+contactCell+'</td>'+
@@ -3345,6 +3347,7 @@ function _celWhen(n){ return n===0?'today!':(n>0?'in '+n+'d':Math.abs(n)+'d ago'
 function _daysAgoStr(n){ const d=new Date(TODAY); d.setDate(d.getDate()-n); return d.toLocaleDateString('en-CA'); }
 
 function renderCelebrations(){
+  if(ceAwards===null)loadCeAwards(()=>renderCelebrations());
   const el=document.getElementById('scoreboard');
   if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="big">🎉</div><div>Sync Viv data to build Celebrations.</div></div>'; return; }
   perfPopulateFilters();
@@ -3449,13 +3452,14 @@ function renderCelebrations(){
   const awardScore={};
   CATS.forEach(cat=>leaderTop[cat.k].forEach(key=>{ (awardScore[key]=awardScore[key]||{cats:[]}).cats.push(cat.l); }));
   const recs=Object.keys(awardScore).map(key=>{ const s=leaderStats.find(x=>x.key===key); return {s,cats:awardScore[key].cats}; })
-    .filter(x=>x.s&&x.cats.length>=2).sort((a,b)=>b.cats.length-a.cats.length).slice(0,10);
+    .filter(x=>x.s&&x.cats.length>=2&&!_ceWonRecently(x.s.p)).sort((a,b)=>b.cats.length-a.cats.length).slice(0,10);
   h+='<div class="sb-section-h" style="margin-top:20px">🏆 CE Award Recommendations <span class="pill">caregivers leading in 2+ categories</span></div>';
   if(!recs.length)h+='<div class="no-data">No multi-category leaders in this period yet.</div>';
   else h+=recs.map(x=>{
     const id='award:'+(x.s.p.viv&&x.s.p.viv.id||x.s.key)+':'+TODAY.getFullYear()+'-'+(TODAY.getMonth()+1);
     return '<div class="sl-row sev-good" style="'+(isDone(id)?'opacity:.55;':'')+'display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer" onclick="openCaregiver(\''+x.s.key+'\')"><div style="flex:1"><span class="sl-name">🏅 '+escHtml(x.s.name)+'</span> <span class="sl-meta">'+escHtml(x.s.mce)+' · '+escHtml(x.s.market)+'</span><div style="font-size:12px;color:var(--text2);margin-top:3px">Leads in: '+x.cats.map(escHtml).join(' · ')+'</div></div>'+celBtn(id)+'</div>';
   }).join('');
+  h+=_ceAwardsSection(scope);
 
   el.innerHTML=h;
 }
@@ -3692,8 +3696,170 @@ function _wwKind(e){ if(!e)return null; const ty=String(e.type||''); for(const [
   if(!/^(client|connection|reliability|communication|flexibility) complaint/i.test(ty))return null;
   const d=String(e.desc||''); for(const [k,re] of WW_DESC){ if(re.test(d))return k; } return null; }
 function _sePerformance(e){ const t=String(e&&e.type||'').toLowerCase(); return !!(_seStandard(t)||/call\s?out|ncns|no.?show|lateness|conduct|misconduct|care concern/.test(t)||_wwKind(e)); }
+
+// ════════════════════════════════════════════════════════════════════════════
+// 11/10 CE stores: flag notes (Shaina), CE award record (Khadijah), binder clients
+// (Tory), per-MCE settings (Calendly + development plan link), text-to-schedule.
+// All durable + shared via vivProxy small stores; loaded lazily per view.
+// ════════════════════════════════════════════════════════════════════════════
+let flagNotes=null, ceAwards=null, binderClients=null, mceSettings=null, schedTexts=null;
+const _ldOnce={};
+async function _loadJson(endpoint){ try{ const r=await fetch(PROXY+'?endpoint='+endpoint,{headers:await authHeaders()}); return r.ok?await r.json():{}; }catch(e){ return {}; } }
+async function _postJson(endpoint,body){ const r=await fetch(PROXY+'?endpoint='+endpoint,{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(Object.assign({by:(CURRENT_USER&&CURRENT_USER.name)||undefined},body))}); const j=await r.json().catch(()=>({})); if(!r.ok)throw new Error(j.error||('HTTP '+r.status)); return j; }
+async function loadFlagNotes(after){ if(_ldOnce.fn)return; _ldOnce.fn=true; flagNotes=(await _loadJson('rise_flag_notes')).notes||{}; if(after)after(); }
+async function loadCeAwards(after){ if(_ldOnce.aw)return; _ldOnce.aw=true; ceAwards=(await _loadJson('rise_ce_awards')).awards||{}; if(after)after(); }
+async function loadBinderClients(after){ if(_ldOnce.bc)return; _ldOnce.bc=true; binderClients=(await _loadJson('rise_binder_clients')).clients||{}; if(after)after(); }
+async function loadMceSettings(after){ if(_ldOnce.ms)return; _ldOnce.ms=true; const j=await _loadJson('rise_mce_settings'); mceSettings=j.settings||{}; schedTexts=(await _loadJson('rise_schedule_text')).texts||{}; if(after)after(); }
+const _dom=k=>String(k).replace(/[^a-zA-Z0-9_]/g,'_');
+function _firstName(n){ return String(n||'').replace(/['"].*?['"]\s*/,'').trim().split(/\s+/)[0]||''; }
+
+// ── flag notes: one note per caregiver per context (shortlist | weekend) ──
+function _fnRec(ctx,p){ const id=p&&p.viv&&p.viv.id; return (id&&flagNotes&&flagNotes[ctx+':'+id])||null; }
+function _fnChip(ctx,p){ const r=_fnRec(ctx,p); if(!r)return ''; return ' <span class="bdg bg-n" title="'+escHtml(r.notes)+'">addressed '+formatDate(parseDate(r.at.slice(0,10)))+(r.by?' by '+escHtml(_firstName(r.by)):'')+'</span>'; }
+function _fnBlock(ctx,p){
+  const id=p&&p.viv&&p.viv.id; if(!id)return '';
+  const r=_fnRec(ctx,p), k=_dom(ctx+':'+id);
+  return '<div style="margin-top:8px" onclick="event.stopPropagation()"><div class="ct" style="margin-bottom:4px">Notes · when did we last address this?</div>'+
+    '<textarea id="fn_'+k+'" rows="2" style="width:100%;font-size:12px;font-family:inherit;padding:5px 7px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)" placeholder="e.g. Spoke with her 11/8 about Sunday call-outs; she has a ride now.">'+escHtml(r?r.notes:'')+'</textarea>'+
+    '<div style="display:flex;gap:8px;align-items:center;margin-top:4px"><button class="rm-btn o" style="padding:3px 9px;font-size:11.5px" onclick="saveFlagNote(\''+ctx+'\',\''+id+'\')">Save</button><span class="stat-foot" id="fnm_'+k+'">'+(r?'Last saved '+formatDate(parseDate(r.at.slice(0,10)))+(r.by?' by '+escHtml(r.by):''):'Nothing saved yet.')+'</span></div></div>';
+}
+function _fnCell(ctx,p){
+  const id=p&&p.viv&&p.viv.id; if(!id)return '<td></td>';
+  const r=_fnRec(ctx,p), k=_dom(ctx+':'+id);
+  const body=r?('<div style="font-size:12px;white-space:normal;max-width:260px">'+escHtml(r.notes)+'</div><div class="stat-foot">'+formatDate(parseDate(r.at.slice(0,10)))+(r.by?' · '+escHtml(_firstName(r.by)):'')+' · <a class="card-link" style="cursor:pointer" onclick="fnEdit(\''+ctx+'\',\''+id+'\')">edit</a></div>')
+    :('<a class="card-link" style="cursor:pointer;font-size:12px" onclick="fnEdit(\''+ctx+'\',\''+id+'\')">add a note</a>');
+  return '<td onclick="event.stopPropagation()" style="vertical-align:top"><div id="fnc_'+k+'">'+body+'</div></td>';
+}
+function fnEdit(ctx,id){ const p=spine.find(x=>x.viv&&String(x.viv.id)===String(id)); const box=document.getElementById('fnc_'+_dom(ctx+':'+id)); if(p&&box)box.innerHTML=_fnBlock(ctx,p); }
+async function saveFlagNote(ctx,id){
+  const k=_dom(ctx+':'+id), ta=document.getElementById('fn_'+k), msg=document.getElementById('fnm_'+k);
+  if(!ta)return; const notes=ta.value.trim();
+  if(msg)msg.textContent='Saving…';
+  try{ const j=await _postJson('rise_flag_notes',{ctx,cgId:id,notes}); if(!flagNotes)flagNotes={}; if(j.rec)flagNotes[ctx+':'+id]=j.rec; else delete flagNotes[ctx+':'+id]; if(msg)msg.textContent=notes?'Saved '+formatDate(TODAY)+(CURRENT_USER&&CURRENT_USER.name?' by '+CURRENT_USER.name:''):'Cleared.'; }
+  catch(e){ if(msg)msg.textContent='Could not save: '+e.message; }
+}
+
+// ── CE Awards (Khadijah 11/5): record of winners; recent winners leave the recommendation list ──
+const CE_SEASONS=['Winter','Spring','Summer','Fall'], _seasonMonth={Winter:0,Spring:3,Summer:6,Fall:9};
+function _awardDate(a){ return new Date(+a.year,_seasonMonth[a.season]||0,15); }
+function _ceWonRecently(p){ const id=p&&p.viv&&p.viv.id; if(!id||!ceAwards)return false; return Object.values(ceAwards).some(a=>String(a.cgId)===String(id)&&(TODAY-_awardDate(a))<365*86400000); }
+function _seasonOf(dateStr){ const m=parseDate(dateStr); if(!m)return {season:'',year:''}; const mo=m.getMonth(); return {season:mo<2||mo===11?'Winter':mo<5?'Spring':mo<8?'Summer':'Fall', year:(mo===11?m.getFullYear()+1:m.getFullYear())}; }
+function _ceAwardsSection(scope){
+  const list=ceAwards?Object.entries(ceAwards).map(([id,a])=>Object.assign({id},a)).sort((a,b)=>_awardDate(b)-_awardDate(a)):[];
+  const won=new Set(list.map(a=>String(a.cgId)));
+  // Winners mentioned in compliments: Viv compliment text that names the award.
+  const hints=[]; const AW=/\b(ce award|caregiver excellence award|excellence award|award winner|won the .{0,25}award|caregiver of the (month|quarter|year))/i;
+  scope.forEach(p=>(p.viv&&p.viv.compliments||[]).forEach(c=>{ const t=(c.desc||'')+' '+(c.reason||''); if(AW.test(t)){ const sy=_seasonOf(c.date); if(!list.some(a=>String(a.cgId)===String(p.viv.id)&&a.season===sy.season&&String(a.year)===String(sy.year)))hints.push({p,c,sy}); } }));
+  let h='<div class="sb-section-h" style="margin-top:20px">🏆 CE Awards <span class="pill">who has won, and when</span></div>';
+  h+='<div class="stat-foot" style="margin-bottom:8px">Winners stay off the recommendation list above for a year. Record a win below, or pick one up from a compliment that mentions the award.</div>';
+  if(list.length){
+    h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Season</th><th>Caregiver</th><th>Manager</th><th>Market</th><th>Note</th><th></th></tr></thead><tbody>'+
+      list.map(a=>{ const p=spine.find(x=>x.viv&&String(x.viv.id)===String(a.cgId)); return '<tr><td class="td-date">'+escHtml(a.season+' '+a.year)+'</td><td class="td-name">'+(p?'<span class="clickable" style="cursor:pointer;color:var(--blue-text)" onclick="openCaregiver(\''+p.key+'\')">'+escHtml(p.name)+'</span>':escHtml(a.name||''))+'</td><td style="font-size:12px">'+escHtml(p?(p.manager||''):'')+'</td><td style="font-size:12px">'+escHtml(p?(p.market||''):'')+'</td><td style="font-size:12px">'+escHtml(a.note||'')+'</td><td><span style="cursor:pointer;color:var(--text3)" title="Remove this record" onclick="removeCeAward(\''+escHtml(a.id).replace(/'/g,'')+'\')">✕</span></td></tr>'; }).join('')+
+      '</tbody></table></div>';
+  } else h+='<div class="no-data">No CE Award winners recorded yet.</div>';
+  if(hints.length){
+    h+='<div class="ct" style="margin:12px 0 4px">Mentioned in compliments, not recorded yet</div>'+hints.slice(0,8).map(x=>'<div class="sl-row sev-good" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div style="flex:1"><span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+formatDate(parseDate(x.c.date))+'</span><div style="font-size:12px;color:var(--text2);margin-top:3px">"'+escHtml((x.c.desc||'').slice(0,180))+'"</div></div><button class="rm-btn o" style="padding:3px 9px;font-size:11.5px;white-space:nowrap" onclick="recordCeAward(\''+x.p.viv.id+'\',\''+x.sy.season+'\','+x.sy.year+',\'From a compliment on '+formatDate(parseDate(x.c.date))+'\')">Record '+escHtml(x.sy.season+' '+x.sy.year)+'</button></div>').join('');
+  }
+  const cgOpts=scope.filter(p=>p.viv&&p.viv.id).slice().sort((a,b)=>a.name.localeCompare(b.name)).map(p=>'<option value="'+p.viv.id+'">'+escHtml(p.name)+(won.has(String(p.viv.id))?' (past winner)':'')+'</option>').join('');
+  const yr=TODAY.getFullYear();
+  h+='<div class="fc" style="margin-top:12px;padding:10px 14px"><div class="ct" style="margin-bottom:6px">Record a win</div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+    '<select id="ceaCg" class="pf" style="max-width:260px"><option value="">Caregiver…</option>'+cgOpts+'</select>'+
+    '<select id="ceaSeason" class="pf">'+CE_SEASONS.map(x=>'<option'+(x===_seasonOf(TODAY.toLocaleDateString('en-CA')).season?' selected':'')+'>'+x+'</option>').join('')+'</select>'+
+    '<select id="ceaYear" class="pf">'+[yr+1,yr,yr-1,yr-2,yr-3].map(y=>'<option'+(y===yr?' selected':'')+'>'+y+'</option>').join('')+'</select>'+
+    '<input id="ceaNote" class="pf" placeholder="Note (optional)" style="min-width:200px">'+
+    '<button class="rm-btn o" style="padding:4px 11px;font-size:12px" onclick="recordCeAward(document.getElementById(\'ceaCg\').value,document.getElementById(\'ceaSeason\').value,document.getElementById(\'ceaYear\').value,document.getElementById(\'ceaNote\').value)">Record</button><span class="stat-foot" id="ceaMsg"></span></div></div>';
+  return h;
+}
+async function recordCeAward(cgId,season,year,note){
+  const msg=document.getElementById('ceaMsg'); if(!cgId){ if(msg)msg.textContent='Pick a caregiver first.'; return; }
+  const p=spine.find(x=>x.viv&&String(x.viv.id)===String(cgId));
+  try{ const j=await _postJson('rise_ce_awards',{cgId,name:p?p.name:'',season,year:+year,note:note||''}); ceAwards=j.awards||{}; renderCelebrations(); }
+  catch(e){ if(msg)msg.textContent='Could not save: '+e.message; }
+}
+async function removeCeAward(id){ try{ const j=await _postJson('rise_ce_awards',{remove:id}); ceAwards=j.awards||{}; renderCelebrations(); }catch(e){ showErr('Could not remove: '+e.message); } }
+
+// ── Binder clients (Tory 11/5): paper binder in the home, no e-visit notes expected ──
+function _binderPanel(){
+  if(binderClients===null)loadBinderClients(()=>renderVisitCompliance());
+  const list=binderClients?Object.entries(binderClients).sort((a,b)=>a[1].name.localeCompare(b[1].name)):[];
+  return '<div class="fc" style="margin:0 0 12px;padding:10px 14px"><div class="ct">Binder clients <span class="pill">visit notes not expected</span></div>'+
+    '<div class="stat-foot" style="margin-bottom:6px">Clients who keep a paper binder in the home instead of e-visit notes. Their visits are left out of every visit note percent on this dashboard. A change here takes effect within a few hours, when the data rebuilds.</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'+(list.length?list.map(([cid,c])=>'<span class="bdg bg-n" style="font-size:12px">'+escHtml(c.name)+(c.market?' · '+escHtml(c.market):'')+' <span style="cursor:pointer" title="Remove" onclick="removeBinderClient(\''+cid+'\')">✕</span></span>').join(''):(binderClients?'<span class="stat-foot">None recorded yet.</span>':'<span class="stat-foot">Loading…</span>'))+'</div>'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input id="binderQ" class="pf" placeholder="Add a client by name…" oninput="binderSearch(this.value)" style="min-width:240px"><span id="binderRes" style="font-size:12px;display:flex;gap:6px;flex-wrap:wrap"></span></div></div>';
+}
+let _binderT=null;
+function binderSearch(q){
+  clearTimeout(_binderT); const res=document.getElementById('binderRes'); if(!res)return;
+  q=(q||'').trim(); if(q.length<2){ res.innerHTML=''; return; }
+  res.innerHTML='<span class="stat-foot">Searching…</span>';
+  _binderT=setTimeout(async()=>{
+    const j=await _loadJson('rise_binder_clients&q='+encodeURIComponent(q));
+    const m=(j.matches||[]).filter(c=>!(binderClients&&binderClients[c.cid]));
+    res.innerHTML=m.length?m.map(c=>'<span class="bdg bg-b" style="cursor:pointer;font-size:12px" onclick="addBinderClient(\''+c.cid+'\',\''+escHtml(c.name).replace(/'/g,'')+'\',\''+escHtml(c.market||'').replace(/'/g,'')+'\')">+ '+escHtml(c.name)+(c.market?' · '+escHtml(c.market):'')+'</span>').join(''):'<span class="stat-foot">No active client matches.</span>';
+  },350);
+}
+async function addBinderClient(cid,name,market){ try{ const j=await _postJson('rise_binder_clients',{cid,name,market}); binderClients=j.clients||{}; renderVisitCompliance(); }catch(e){ showErr('Could not add: '+e.message); } }
+async function removeBinderClient(cid){ try{ const j=await _postJson('rise_binder_clients',{cid,remove:true}); binderClients=j.clients||{}; renderVisitCompliance(); }catch(e){ showErr('Could not remove: '+e.message); } }
+
+// ── Per-MCE settings: Calendly link (tracker text-to-schedule) + development plan link (scorecard) ──
+function _mceSettingsKey(){ return currentUserMce()||(document.getElementById('managerFilter')||{}).value||''; }
+function renderMceSettingsBox(){
+  const box=document.getElementById('mceSetBox'); if(!box)return;
+  if(mceSettings===null){ loadMceSettings(()=>{ renderMceSettingsBox(); renderTracker(); }); box.textContent=''; return; }
+  const mce=_mceSettingsKey(); if(!mce){ box.innerHTML='<span class="stat-foot">Pick a manager to set a scheduling link.</span>'; return; }
+  const rec=mceSettings[mce]||{};
+  box.innerHTML='<span class="stat-foot">Scheduling link for '+escHtml(_firstName(mce))+': </span>'+(rec.calendly?'<a href="'+escHtml(rec.calendly)+'" target="_blank" rel="noopener" style="color:var(--blue-text)">'+escHtml(rec.calendly.replace(/^https?:\/\//,'').slice(0,40))+'</a>':'<span class="stat-foot">not set</span>')+
+    ' <a class="card-link" style="cursor:pointer" onclick="editMceSetting(\'calendly\',\''+escHtml(mce).replace(/'/g,'')+'\',\'mceSetBox\')">'+(rec.calendly?'edit':'add')+'</a>';
+}
+function editMceSetting(field,mce,boxId){
+  const box=document.getElementById(boxId); if(!box)return;
+  const cur=(mceSettings&&mceSettings[mce]&&mceSettings[mce][field])||'';
+  box.innerHTML='<input id="mceSetIn" class="pf" value="'+escHtml(cur)+'" placeholder="https://…" style="min-width:260px;font-size:12px"> <button class="rm-btn o" style="padding:3px 9px;font-size:11.5px" onclick="saveMceSetting(\''+field+'\',\''+escHtml(mce).replace(/'/g,'')+'\')">Save</button> <a class="card-link" style="cursor:pointer" onclick="renderMceSettingsBox();try{renderMceScore()}catch(e){}">cancel</a>';
+  const inp=document.getElementById('mceSetIn'); if(inp)inp.focus();
+}
+async function saveMceSetting(field,mce){
+  const inp=document.getElementById('mceSetIn'); const val=inp?inp.value.trim():'';
+  try{ const body={mce}; body[field]=val; const j=await _postJson('rise_mce_settings',body); mceSettings=j.settings||{}; renderMceSettingsBox(); renderTracker(); try{ renderMceScore(); }catch(e){} }
+  catch(e){ showErr(e.message); }
+}
+function _pdpCell(mce){
+  if(mceSettings===null){ loadMceSettings(()=>{ try{ renderMceScore(); }catch(e){} }); return '<td></td>'; }
+  const rec=mceSettings[mce]||{}, k=_dom('pdp_'+mce);
+  return '<td id="'+k+'" style="font-size:12px;white-space:nowrap">'+(rec.pdpUrl?'<a href="'+escHtml(rec.pdpUrl)+'" target="_blank" rel="noopener" style="color:var(--blue-text)">Development plan ↗</a> ':'')+'<a class="card-link" style="cursor:pointer" onclick="editMceSetting(\'pdpUrl\',\''+escHtml(mce).replace(/'/g,'')+'\',\''+k+'\')">'+(rec.pdpUrl?'edit':'add link')+'</a></td>';
+}
+
+// ── Text to schedule (Tory 11/5): one tap sends the MCE's Calendly link through Viv ──
+function _schedBtn(p){
+  if(mceSettings===null||!p||!p.viv||!p.viv.id)return '';
+  const link=p.manager&&mceSettings[p.manager]&&mceSettings[p.manager].calendly; if(!link)return '';
+  const t=schedTexts&&schedTexts[String(p.viv.id)];
+  return '<div style="margin-top:3px;white-space:nowrap"><button class="bdg bg-b" style="cursor:pointer;border:none;font-size:10px" onclick="event.stopPropagation();openSchedText(\''+p.key.replace(/'/g,"\\'")+'\')" title="Text the caregiver your scheduling link through Viv">Text to schedule</button>'+(t&&t.at?' <span class="stat-foot" title="'+escHtml(t.by||'')+'">texted '+formatDate(parseDate(t.at.slice(0,10)))+'</span>':'')+'</div>';
+}
+function openSchedText(key){
+  const p=spine.find(x=>x.key===key); if(!p||!p.viv)return;
+  const link=(mceSettings[p.manager]||{}).calendly||'';
+  const me=_firstName((CURRENT_USER&&CURRENT_USER.name)||p.manager||'');
+  const msg='Hi '+_firstName(p.name)+', it\'s '+me+' from Tribute. It\'s time for your Rise meeting. Pick a time that works for you here: '+link+' Thank you!';
+  let m=document.getElementById('schedModal');
+  if(!m){ m=document.createElement('div'); m.id='schedModal'; m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:9999'; m.onclick=e=>{ if(e.target===m)m.remove(); }; document.body.appendChild(m); }
+  m.innerHTML='<div class="fc" style="width:min(520px,92vw);padding:16px 18px" onclick="event.stopPropagation()"><div class="ct" style="margin-bottom:6px">Text '+escHtml(p.name)+' to schedule</div>'+
+    '<div class="stat-foot" style="margin-bottom:6px">Sent through Viv from the Tribute number, so the reply lands in Viv like any other text. Edit the wording if you like; the link stays in.</div>'+
+    '<textarea id="schedMsg" rows="4" style="width:100%;font-size:13px;font-family:inherit;padding:7px 9px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">'+escHtml(msg)+'</textarea>'+
+    '<div style="display:flex;gap:8px;align-items:center;margin-top:8px"><button class="rm-btn o" id="schedSend" onclick="sendSchedText(\''+key.replace(/'/g,"\\'")+'\')">Send text</button><button class="rm-btn" onclick="document.getElementById(\'schedModal\').remove()">Cancel</button><span class="stat-foot" id="schedMsgOut"></span></div></div>';
+}
+async function sendSchedText(key){
+  const p=spine.find(x=>x.key===key); const ta=document.getElementById('schedMsg'), out=document.getElementById('schedMsgOut'), btn=document.getElementById('schedSend');
+  if(!p||!ta)return; btn.disabled=true; out.textContent='Sending…';
+  try{
+    const j=await _postJson('rise_schedule_text',{cgId:p.viv.id,caregiver:p.name,message:ta.value.trim()});
+    if(j.delivered){ if(!schedTexts)schedTexts={}; schedTexts[String(p.viv.id)]={at:j.at,by:(CURRENT_USER&&CURRENT_USER.name)||''}; out.textContent='Sent to '+j.caregiver+'.'; setTimeout(()=>{ const m=document.getElementById('schedModal'); if(m)m.remove(); renderTracker(); },900); }
+    else out.textContent=j.note||'Not sent.';
+  }catch(e){ out.textContent=e.message; btn.disabled=false; }
+}
+
 function renderShortList(){
   const el=document.getElementById('scoreboard');
+  if(flagNotes===null)loadFlagNotes(()=>renderShortList());
   if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading…</div>'; return; }
   perfPopulateFilters();
   const scope=perfScope();
@@ -3724,9 +3890,10 @@ function renderShortList(){
       det+='<div class="ct" style="margin-bottom:4px">Performance service exceptions (last 60 days)</div>'+
         recentSes.slice(0,12).map(e=>'<div class="stat-foot" style="padding:3px 0"><strong>'+formatDate(parseDate(e.date))+'</strong> · '+escHtml(e.type||'—')+(goalStd&&_seStandard(e.type)===goalStd?' <span class="bdg bg-a">Rise goal</span>':'')+(_wwKind(e)?' <span class="bdg bg-r" title="This kind of SE usually leads to a Written Warning">WW-leading: '+escHtml(_wwKind(e))+'</span>':'')+(_seResolved(e)?' <span class="bdg bg-n">resolved</span>':' <span class="bdg bg-r">open</span>')+(e.desc?'<div style="margin-left:10px">'+escHtml(e.desc)+'</div>':'')+(e.resolution?'<div style="margin-left:10px;color:var(--text2)"><b>Resolution:</b> '+escHtml(e.resolution)+'</div>':'')+'</div>').join('');
     } else det+='<div class="stat-foot">No performance service exceptions in the last 60 days.</div>';
+    det+=_fnBlock('shortlist',x.p);
     det+='<div style="margin-top:6px"><a class="card-link" style="cursor:pointer" onclick="event.stopPropagation();openCaregiver(\''+x.p.key+'\')">Open full dashboard →</a></div></div>';
     return '<div class="sl-row sev-'+(hard?'r':'good')+'" style="cursor:pointer" onclick="toggleSlDetail(\''+x.p.key+'\')">'+
-      '<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.p.manager||'—')+' · '+escHtml(x.p.market||'—')+' <span style="color:var(--text3)" title="click to expand">▾</span></span></div>'+
+      '<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.p.manager||'—')+' · '+escHtml(x.p.market||'—')+_fnChip('shortlist',x.p)+' <span style="color:var(--text3)" title="click to expand">▾</span></span></div>'+
       '<div class="sl-trig">'+x.trig.map(t=>'<span class="sl-chip'+(t.sev==='warn'?' warn':'')+'">'+escHtml(t.t)+'</span>').join('')+'</div>'+
       det+
     '</div>';
@@ -3787,6 +3954,7 @@ function renderVisitCompliance(){
     perfStatCard('% Checked in via App',appPct,90,'higher is better')+
     '<div class="fc"><div class="ct">Checked-In Visits</div><div class="big-stat"><span class="v b">'+agg.checked+'</span></div><div class="stat-foot">'+periodLbl+'</div></div>'+
   '</div>';
+  h+=_binderPanel();
   h+='<div class="vc-chart"><div class="ct">Weekly trend — '+escHtml(subject)+'</div>'+perfTrendSvg(series)+
     '<div class="vc-legend"><span><span class="k" style="background:#FF5A1F"></span>On-time check-in %</span><span><span class="k" style="background:#0F8F6B"></span>Visit note %</span><span style="color:var(--text3)">dashed = goal (92% / 95%)</span></div></div>';
   h+='<div class="sb-note">Pick a caregiver above to see their individual trend. Data is live from Viv (weekly, Sunday-start).</div>';
@@ -4827,10 +4995,10 @@ function renderMceScore(){
   const rows=mces.map(_mceFacts);
   const pct=(v,goal)=>v==null?'—':'<span class="bdg '+(v>=goal?'bg-g':v>=goal-5?'bg-a':'bg-r')+'">'+v+'%</span>';
   let h='<div class="fc"><div class="ct" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><span>MCE scorecard <span style="font-weight:500;text-transform:none;color:var(--text3)">· live Viv + Rise data · last 90 days where dated</span></span><span style="font-weight:500;text-transform:none;color:var(--text3)">Phone time and call counts arrive once the call app feed is connected</span></div>'+
-    '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>MCE</th><th>Team</th><th>New hires (≤90d)</th><th>Open SEs</th><th>Oldest open</th><th>Resolved (90d)</th><th>Median days to resolve</th><th>Rise/45/90 meetings (90d)</th><th>Meetings overdue</th><th>On-time</th><th>Visit notes</th><th>On Short List</th><th></th></tr></thead><tbody>'+
-    rows.map(r=>'<tr><td class="td-name">'+escHtml(r.mce)+'</td><td>'+r.team+'</td><td>'+r.newHires+'</td><td>'+(r.openSes?'<span class="bdg '+(r.openSes>20?'bg-r':r.openSes>8?'bg-a':'bg-n')+'">'+r.openSes+'</span>':'0')+'</td><td>'+(r.oldestOpenDays!=null?r.oldestOpenDays+'d':'—')+'</td><td>'+r.resolved90+'</td><td>'+(r.medianResolveDays!=null?r.medianResolveDays:'—')+'</td><td>'+r.meetings90+'</td><td>'+(r.overdue?'<span class="bdg bg-r">'+r.overdue+'</span>':'0')+'</td><td>'+pct(r.onTime,92)+'</td><td>'+pct(r.notes,95)+'</td><td>'+r.shortList+'</td>'+
+    '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>MCE</th><th>Team</th><th>New hires (≤90d)</th><th>Open SEs</th><th>Oldest open</th><th>Resolved (90d)</th><th>Median days to resolve</th><th>Rise/45/90 meetings (90d)</th><th>Meetings overdue</th><th>On-time</th><th>Visit notes</th><th>On Short List</th><th>Development plan</th><th></th></tr></thead><tbody>'+
+    rows.map(r=>'<tr><td class="td-name">'+escHtml(r.mce)+'</td><td>'+r.team+'</td><td>'+r.newHires+'</td><td>'+(r.openSes?'<span class="bdg '+(r.openSes>20?'bg-r':r.openSes>8?'bg-a':'bg-n')+'">'+r.openSes+'</span>':'0')+'</td><td>'+(r.oldestOpenDays!=null?r.oldestOpenDays+'d':'—')+'</td><td>'+r.resolved90+'</td><td>'+(r.medianResolveDays!=null?r.medianResolveDays:'—')+'</td><td>'+r.meetings90+'</td><td>'+(r.overdue?'<span class="bdg bg-r">'+r.overdue+'</span>':'0')+'</td><td>'+pct(r.onTime,92)+'</td><td>'+pct(r.notes,95)+'</td><td>'+r.shortList+'</td>'+_pdpCell(r.mce)+
       '<td><button class="rm-btn o" style="padding:3px 9px;font-size:11.5px" onclick="mceAiSummary(\''+escHtml(r.mce).replace(/'/g,'')+'\')">✨ Summary</button></td></tr>'+
-      (_mceScoreAi[r.mce]?'<tr><td colspan="13" style="background:var(--bg2);white-space:pre-wrap;font-size:12.5px;line-height:1.5">'+escHtml(_mceScoreAi[r.mce])+'</td></tr>':'')).join('')+
+      (_mceScoreAi[r.mce]?'<tr><td colspan="14" style="background:var(--bg2);white-space:pre-wrap;font-size:12.5px;line-height:1.5">'+escHtml(_mceScoreAi[r.mce])+'</td></tr>':'')).join('')+
     '</tbody></table></div><div class="stat-foot">Open SEs = service exceptions assigned to the MCE in Viv without a resolution. Resolve time = resolution date minus incident date for SEs resolved in the last 90 days. On-time and notes are the team\'s 6-month figures. Summary reads the open and recently resolved SEs, the team\'s Rise goals, and these numbers.</div></div>';
   el.innerHTML=h;
 }
@@ -5088,7 +5256,7 @@ function renderSummary(){
     '<div class="fc"><div class="ct">Long-Hours population</div><div class="big-stat"><span class="v b">'+weekendPop.length+'</span></div><div class="stat-foot">caregivers audited</div></div>'+
   '</div>';
   if(weekendFlag.length){
-    h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Market</th><th>Manager</th><th>Type</th><th>Last weekend worked</th><th>Weekends worked, past 6 mo</th><th>Streak</th></tr></thead><tbody>';
+    h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Market</th><th>Manager</th><th>Type</th><th>Last weekend worked</th><th>Weekends worked, past 6 mo</th><th>Streak</th><th>Notes</th></tr></thead><tbody>';
     weekendFlag.forEach(x=>{
       const typeBadge=x.lh&&x.ts?'<span class="bdg bg-p">LH+TS</span>':x.ts?'<span class="bdg bg-p">TS</span>':'<span class="bdg bg-b">LH</span>';
       const wkBadge=x.streak===1?'<span class="bdg bg-a">1 mo no weekend</span>':_missBadge(x.streak);
@@ -5098,7 +5266,7 @@ function renderSummary(){
         '<td>'+typeBadge+'</td>'+
         '<td class="td-date">'+(x.last?escHtml(_fmtMonth(x.last)):'<span style="color:var(--text2)">none on record</span>')+'</td>'+
         '<td>'+_kindCell(x.kinds)+'</td>'+
-        '<td>'+wkBadge+'</td></tr>';
+        '<td>'+wkBadge+'</td>'+_fnCell('weekend',x.p)+'</tr>';
     });
     h+='</tbody></table></div>';
   } else { h+='<div class="no-data">✅ Every Long-Hours and Tribute Secure caregiver worked a weekend in '+escHtml(refLabel)+'.</div>'; }
