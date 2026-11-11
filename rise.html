@@ -4231,7 +4231,7 @@ function openRiseMeeting(key){
     _rmField('rm_mdate','Meeting Date',todayMDY,'text')+
     _rmField('rm_mtime','Meeting Time','','text')+
     _rmField('rm_anniv','Anniversary?',d.anniv,'select',['No','Yes'])+
-    _rmField('rm_bonus','Anniversary bonus (amount + paycheck date)','','text')+
+    _rmField('rm_bonus','Anniversary bonus: how much, and the paycheck date','','text')+
   '</div>';
   b+='<div class="rm-sec">Prep · Compliance &amp; Referrals</div><div class="rm-grid">'+
     _rmField('rm_reg','Nursing Registry','Clear','select',['Clear','Not clear — partner with Dir. of CE/P&C'])+
@@ -4410,7 +4410,8 @@ function copyRiseMeetingForViv(){
     if(_rmVal('rm_mtime'))L.push('Meeting Time: '+_rmVal('rm_mtime'));
   }
   L.push('Is this meeting for an anniversary?: '+_rmVal('rm_anniv'));
-  if(_rmVal('rm_bonus'))L.push('Anniversary bonus (amount + paycheck date): '+_rmVal('rm_bonus'));
+  // Viv's question is worded exactly like this (Khadijah 11/11); the AI prefill only fills a question it recognizes.
+  if(_rmVal('rm_bonus'))L.push('How much is the anniversary bonus? What is the paycheck date that they will be receiving their bonus?: '+_rmVal('rm_bonus'));
   L.push('');
   L.push('PREP: COMPLIANCE AND REFERRALS');
   L.push('Nursing Registry: '+_rmVal('rm_reg'));
