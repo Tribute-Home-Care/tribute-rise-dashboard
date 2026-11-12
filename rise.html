@@ -3846,16 +3846,21 @@ function openSchedText(key){
     '<div class="stat-foot" style="margin-bottom:6px">Sent through Viv from the Tribute number, so the reply lands in Viv like any other text. Edit the wording if you like; the link stays in.</div>'+
     '<textarea id="schedMsg" rows="4" style="width:100%;font-size:13px;font-family:inherit;padding:7px 9px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">'+escHtml(msg)+'</textarea>'+
     '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><button class="rm-btn o" id="schedSend" onclick="sendSchedText(\''+key.replace(/'/g,"\\'")+'\')">Send from the Tribute number</button>'+
-    '<button class="rm-btn" title="Copies the text and opens the caregiver in Viv so you can paste it into Messages from your own Viv login" onclick="copySchedAndOpenViv(\''+key.replace(/'/g,"\\'")+'\')">Copy and send from my Viv</button>'+
+    '<button class="rm-btn" title="Copies the text and opens the caregiver in Viv so you can paste it into Messages from your own Viv login" onclick="copySchedAndOpenViv(\''+key.replace(/'/g,"\\'")+'\')">Copy and open the text thread in Viv</button>'+
     '<button class="rm-btn" onclick="document.getElementById(\'schedModal\').remove()">Cancel</button><span class="stat-foot" id="schedMsgOut"></span></div>'+
-    '<div class="stat-foot" style="margin-top:6px">"Send from the Tribute number" goes out under the suite\'s Viv login, so the thread shows that sender. To have the text come from you, use "Copy and send from my Viv" and paste it into the caregiver\'s Messages in Viv.</div></div>';
+    '<div class="stat-foot" style="margin-top:6px">"Send from the Tribute number" goes out under the suite\'s Viv login, so the thread shows that sender. To have the text come from you and sit in your own Viv history, use "Copy and open the text thread in Viv", then paste and send there.</div></div>';
 }
-function copySchedAndOpenViv(key){
+async function copySchedAndOpenViv(key){
   const p=spine.find(x=>x.key===key); const ta=document.getElementById('schedMsg'), out=document.getElementById('schedMsgOut');
   if(!p||!ta)return;
-  try{ navigator.clipboard.writeText(ta.value.trim()); }catch(e){}
-  if(out)out.textContent='Copied. Paste it into Messages in Viv.';
-  if(p.viv&&p.viv.id)window.open('https://tribute.mavencare.com/caregivers/'+encodeURIComponent(p.viv.id)+'/dashboard/summary','_blank','noopener');
+  try{ await navigator.clipboard.writeText(ta.value.trim()); }catch(e){}
+  if(out)out.textContent='Copied. Opening the text thread in Viv…';
+  // Open the caregiver's own text thread (Viv: /admin/messages/text/<threadId>) so the
+  // MCE pastes and sends from their login; fall back to the caregiver page.
+  let url=p.viv&&p.viv.id?'https://tribute.mavencare.com/caregivers/'+encodeURIComponent(p.viv.id)+'/dashboard/summary':'https://tribute.mavencare.com/admin/messages/text';
+  try{ const j=await _loadJson('rise_schedule_text&action=thread&caregiver='+encodeURIComponent(p.name)); if(j&&j.threadId)url='https://tribute.mavencare.com/admin/messages/text/'+encodeURIComponent(j.threadId); }catch(e){}
+  window.open(url,'_blank','noopener');
+  if(out)out.textContent='Copied. Paste it into the thread in Viv and send.';
 }
 async function sendSchedText(key){
   const p=spine.find(x=>x.key===key); const ta=document.getElementById('schedMsg'), out=document.getElementById('schedMsgOut'), btn=document.getElementById('schedSend');
