@@ -4732,7 +4732,9 @@ function openLeaveModal(id){
         '<div class="stat-foot" style="margin-top:2px">Submitted '+(f.submittedAt?fmtTime(f.submittedAt):'—')+(f.updatedAt&&f.updatedAt!==f.submittedAt?' · updated '+fmtTime(f.updatedAt):'')+(f.author?' · by '+escHtml(f.author):'')+'</div>'+
         '<table style="width:100%;margin-top:8px;font-size:13px;border-collapse:collapse">'+
         (f.fields||[]).map(x=>'<tr><td style="vertical-align:top;padding:4px 10px 4px 0;color:var(--text2);width:42%;font-weight:600">'+escHtml(x.q)+'</td><td style="vertical-align:top;padding:4px 0;white-space:pre-wrap">'+escHtml(x.a)+'</td></tr>').join('')+
-        '</table></div>';
+        '</table>'+
+        (/HR Absence/i.test(f.title||'')?'<div class="stat-foot" style="margin-top:6px">The absence type, narrative and HR notes are visible to People &amp; Culture only.</div>':'')+
+        '</div>';
     });
   } else {
     h+='<div style="color:var(--text2);font-size:13px">No submitted HR form fields to display.</div>';
