@@ -393,7 +393,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div class="ntab on" id="tab-tracker" onclick="switchTab('tracker')">Rise Meeting Tracker</div>
   <div class="ntab" id="tab-scoreboard" onclick="switchTab('scoreboard')">Performance</div>
   <div class="ntab" id="tab-dashboard" onclick="switchTab('dashboard')">Caregiver Dashboard</div>
-  <div class="ntab" id="tab-summary" onclick="switchTab('summary')">Rise Summary</div>
+  <div class="ntab" id="tab-summary" onclick="switchTab('summary')">MCE KSF</div>
   <div class="ntab" id="tab-leave" onclick="switchTab('leave')">CAs on Leave</div>
   <div class="ntab" id="tab-certs" onclick="switchTab('certs')">Certifications</div>
   <div class="ntab" id="tab-referrals" onclick="switchTab('referrals')">Referrals</div>
@@ -1483,6 +1483,12 @@ function renderTracker(){
     const nkAttr=escHtml(String(nk).replace(/"/g,'&quot;'));
     // Full Rise-cycle tag on every row.
     const cycleBadge=' <span class="bdg '+row.cycleCls+'" style="font-size:9px" title="Rise cycle stage">'+row.cycleTag+'</span>';
+    // Rise Meeting Tracker r13: show when the latest Rise / 45 / 90-day form landed in Viv,
+    // so an MCE can see it was submitted (the due date moves on by itself once it is).
+    const _lf=[...riseFormsFor(row.p),...ninetyFormsFor(row.p),...fortyFiveFormsFor(row.p)].filter(f=>f.submitted!==false&&f.submittedAt)
+      .sort((a,b)=>String(b.submittedAt).localeCompare(String(a.submittedAt)))[0];
+    const _lfd=_lf?parseDate(String(_lf.submittedAt).slice(0,10)):null;
+    const formBadge=(_lfd&&(TODAY-_lfd)<=60*86400000)?' <span class="bdg bg-g" style="font-size:9px" title="Latest meeting form submitted in Viv'+(_lf.meetingDate?' for the meeting on '+escHtml(_lf.meetingDate):'')+'">Form in Viv '+formatDate(_lfd)+'</span>':'';
     // Active WW/PIP badge(s): type + performance standard + end date (Charlotte).
     const pipwwBadge=activePipwwFor(row.p).map(w=>{
       const cls=w.isPip?'bg-r':'bg-a';
@@ -1543,7 +1549,7 @@ function renderTracker(){
     const emailLine=cgEmail?('<a href="mailto:'+escHtml(cgEmail)+'" title="Email in Outlook" onclick="event.stopPropagation()" style="color:var(--blue-text);text-decoration:none">'+escHtml(cgEmail)+'</a>'+_cp(cgEmail)):'';
     const contactCell=((phoneLine||emailLine)?('<div style="font-size:11.5px;line-height:1.5;white-space:nowrap">'+phoneLine+(phoneLine&&emailLine?'<br>':'')+emailLine+'</div>'):'—')+_schedBtn(row.p);
     return '<tr data-nk="'+nkAttr+'">'+
-      '<td class="td-name"><span class="cg-link clickable" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')" style="cursor:pointer;color:var(--blue-text);font-weight:600">'+escHtml(row.p.name)+'</span>'+cycleBadge+pipwwBadge+'</td>'+
+      '<td class="td-name"><span class="cg-link clickable" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')" style="cursor:pointer;color:var(--blue-text);font-weight:600">'+escHtml(row.p.name)+'</span>'+cycleBadge+formBadge+pipwwBadge+'</td>'+
       '<td style="text-align:left">'+contactCell+'</td>'+
       '<td class="td-date">'+escHtml(row.p.market||'—')+'</td>'+
       '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
@@ -3398,7 +3404,7 @@ function renderCelebrations(){
   h+='<div class="cel-sub">🎂 Birthdays</div>';
   h+=bdays.length?bdays.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+escHtml(x.p.market||'')+' · '+_celWhen(x.when)+'</span>',x.id)).join(''):'<div class="no-data">No birthdays in the window.</div>';
   h+='<div class="cel-sub" style="margin-top:12px">🎊 Work Anniversaries</div>';
-  h+=annivs.length?annivs.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+x.years+' yr'+(x.years!==1?'s':'')+(x.orig?' since original hire '+formatDate(x.orig)+(x.gapDays!=null?' · away '+(x.gapDays>=60?Math.round(x.gapDays/30)+' mo':x.gapDays+' d')+' before rehire '+formatDate(x.cur):' · rehired '+formatDate(x.cur)):'')+' · '+_celWhen(x.when)+' · '+escHtml(x.p.market||'')+'</span>',x.id)).join(''):'<div class="no-data">No anniversaries in the window.</div>';
+  h+=annivs.length?annivs.map(x=>celItem('<span class="sl-name">'+escHtml(x.p.name)+'</span> <span class="sl-meta">'+x.years+' yr'+(x.years!==1?'s':'')+(x.orig?' since original hire '+formatDate(x.orig)+(x.p.viv&&x.p.viv.origTermDate?' · original term '+formatDate(parseDate(x.p.viv.origTermDate)):'')+(x.gapDays!=null?' · away '+(x.gapDays>=60?Math.round(x.gapDays/30)+' mo':x.gapDays+' d')+' before rehire '+formatDate(x.cur):' · rehired '+formatDate(x.cur)):'')+' · '+_celWhen(x.when)+' · '+escHtml(x.p.market||'')+'</span>',x.id)).join(''):'<div class="no-data">No anniversaries in the window.</div>';
   h+='</div><div>';
   h+='<div class="cel-sub">⭐ Compliments (last 7 days)</div>';
   h+=recentComps.length?recentComps.map(x=>celItem('<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.c.reason||'')+(x.c.from?' · '+escHtml(x.c.from):'')+'</span></div><div style="font-size:12px;color:var(--text2);margin-top:3px">"'+escHtml(x.c.desc||'')+'"</div>',x.id)).join(''):'<div class="no-data">No compliments in the last 7 days.</div>';
@@ -3702,7 +3708,7 @@ function _sePerformance(e){ const t=String(e&&e.type||'').toLowerCase(); return 
 // (Tory), per-MCE settings (Calendly + development plan link), text-to-schedule.
 // All durable + shared via vivProxy small stores; loaded lazily per view.
 // ════════════════════════════════════════════════════════════════════════════
-let flagNotes=null, ceAwards=null, binderClients=null, mceSettings=null, schedTexts=null;
+let flagNotes=null, ceAwards=null, binderClients=null, mceSettings=null, schedTexts=null, perfTexts=null;
 const _ldOnce={};
 async function _loadJson(endpoint){ try{ const r=await fetch(PROXY+'?endpoint='+endpoint,{headers:await authHeaders()}); return r.ok?await r.json():{}; }catch(e){ return {}; } }
 async function _postJson(endpoint,body){ const r=await fetch(PROXY+'?endpoint='+endpoint,{method:'POST',headers:await authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(Object.assign({by:(CURRENT_USER&&CURRENT_USER.name)||undefined},body))}); const j=await r.json().catch(()=>({})); if(!r.ok)throw new Error(j.error||('HTTP '+r.status)); return j; }
@@ -3840,15 +3846,41 @@ function openSchedText(key){
   const link=(mceSettings[p.manager]||{}).calendly||'';
   const me=_firstName((CURRENT_USER&&CURRENT_USER.name)||p.manager||'');
   const msg='Hi '+_firstName(p.name)+', it\'s '+me+' from Tribute. It\'s time for your Rise meeting. Pick a time that works for you here: '+link+' Thank you!';
+  _openTextModal(key,'Text '+p.name+' to schedule','Edit the wording if you like; the link stays in.',msg,'schedule');
+}
+// Short List "Text performance data" (Dova 11/12): a draft built from the same
+// numbers the Short List shows, editable before it goes out.
+const PERF_GOAL={onTime:92,notes:95};
+function _perfTextDraft(p){
+  const v=p.viv||{}; const me=_firstName((CURRENT_USER&&CURRENT_USER.name)||p.manager||'');
+  const ck2=perfWindowCk(v,perfWeeksBack(2)), notes2=perfWindowNotes(v,perfWeeksBack(2)), exc=perfExcWindow(v,30);
+  const parts=[];
+  if(ck2.checked>=3){ const pct=Math.round(ck2.onTime/ck2.checked*100); if(pct<PERF_GOAL.onTime)parts.push('your on-time rate over the past two weeks is '+pct+'%, and the goal is '+PERF_GOAL.onTime+'% or higher'); }
+  const nt=(notes2.success||0)+(notes2.error||0);
+  if(nt>=3){ const pct=Math.round((notes2.success||0)/nt*100); if(pct<PERF_GOAL.notes)parts.push('your visit note completion over the past two weeks is '+pct+'%, and the goal is '+PERF_GOAL.notes+'% or higher'); }
+  const co=(exc.prevCallout||0)+(exc.emergCallout||0);
+  if(co>1)parts.push('you have had '+co+' call-outs this month');
+  const body=parts.length?(parts.length===1?parts[0]:parts.slice(0,-1).join('; ')+'; and '+parts[parts.length-1]):'I wanted to check in on how your recent visits have been going';
+  return 'Hi '+_firstName(p.name)+', it\'s '+me+' from Tribute. '+body.charAt(0).toUpperCase()+body.slice(1)+'. Meeting these goals is how you move into Professional Development and earn Rise Points. Please let me know how I can support you in getting there, or if there is anything we should talk through.';
+}
+function openPerfText(key){
+  const p=spine.find(x=>x.key===key); if(!p||!p.viv)return;
+  _openTextModal(key,'Text '+p.name+' their performance data','Built from the last two weeks of on-time and visit note data and this month\'s call-outs. Check it and edit before sending.',_perfTextDraft(p),'performance');
+}
+let _textKind='schedule';
+function _perfTextBtn(p){ if(!p||!p.viv||!p.viv.id)return ''; const t=perfTexts&&perfTexts[String(p.viv.id)]; return ' <button class="bdg bg-b" style="cursor:pointer;border:none;font-size:10px" onclick="event.stopPropagation();openPerfText(\''+p.key.replace(/'/g,"\\'")+'\')" title="Draft a text with this caregiver\'s recent numbers">Text performance data</button>'+(t&&t.at?' <span class="stat-foot">texted '+formatDate(parseDate(t.at.slice(0,10)))+'</span>':''); }
+function _openTextModal(key,title,intro,msg,kind){
+  _textKind=kind||'schedule';
   let m=document.getElementById('schedModal');
   if(!m){ m=document.createElement('div'); m.id='schedModal'; m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:9999'; m.onclick=e=>{ if(e.target===m)m.remove(); }; document.body.appendChild(m); }
-  m.innerHTML='<div class="fc" style="width:min(520px,92vw);padding:16px 18px" onclick="event.stopPropagation()"><div class="ct" style="margin-bottom:6px">Text '+escHtml(p.name)+' to schedule</div>'+
-    '<div class="stat-foot" style="margin-bottom:6px">Sent through Viv from the Tribute number, so the reply lands in Viv like any other text. Edit the wording if you like; the link stays in.</div>'+
-    '<textarea id="schedMsg" rows="4" style="width:100%;font-size:13px;font-family:inherit;padding:7px 9px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">'+escHtml(msg)+'</textarea>'+
-    '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><button class="rm-btn o" id="schedSend" onclick="sendSchedText(\''+key.replace(/'/g,"\\'")+'\')">Send from the Tribute number</button>'+
-    '<button class="rm-btn" title="Copies the text and opens the caregiver in Viv so you can paste it into Messages from your own Viv login" onclick="copySchedAndOpenViv(\''+key.replace(/'/g,"\\'")+'\')">Copy and open the text thread in Viv</button>'+
+  const k=key.replace(/'/g,"\\'");
+  m.innerHTML='<div class="fc" style="width:min(560px,92vw);padding:16px 18px" onclick="event.stopPropagation()"><div class="ct" style="margin-bottom:6px">'+escHtml(title)+'</div>'+
+    '<div class="stat-foot" style="margin-bottom:6px">'+escHtml(intro)+'</div>'+
+    '<textarea id="schedMsg" rows="5" style="width:100%;font-size:13px;font-family:inherit;padding:7px 9px;border:.5px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text)">'+escHtml(msg)+'</textarea>'+
+    '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><button class="rm-btn o" id="schedSend" onclick="sendSchedText(\''+k+'\')">Send from the Tribute number</button>'+
+    '<button class="rm-btn" title="Copies the text and opens the caregiver\'s text thread in Viv so you can paste and send from your own Viv login" onclick="copySchedAndOpenViv(\''+k+'\')">Copy and open the text thread in Viv</button>'+
     '<button class="rm-btn" onclick="document.getElementById(\'schedModal\').remove()">Cancel</button><span class="stat-foot" id="schedMsgOut"></span></div>'+
-    '<div class="stat-foot" style="margin-top:6px">"Send from the Tribute number" goes out under the suite\'s Viv login, so the thread shows that sender. To have the text come from you and sit in your own Viv history, use "Copy and open the text thread in Viv", then paste and send there.</div></div>';
+    '<div class="stat-foot" style="margin-top:6px">"Send from the Tribute number" goes out under the suite\'s Viv login. To have the text come from you and sit in your own Viv history, use "Copy and open the text thread in Viv", then paste and send there.</div></div>';
 }
 async function copySchedAndOpenViv(key){
   const p=spine.find(x=>x.key===key); const ta=document.getElementById('schedMsg'), out=document.getElementById('schedMsgOut');
@@ -3866,8 +3898,9 @@ async function sendSchedText(key){
   const p=spine.find(x=>x.key===key); const ta=document.getElementById('schedMsg'), out=document.getElementById('schedMsgOut'), btn=document.getElementById('schedSend');
   if(!p||!ta)return; btn.disabled=true; out.textContent='Sending…';
   try{
-    const j=await _postJson('rise_schedule_text',{cgId:p.viv.id,caregiver:p.name,message:ta.value.trim()});
-    if(j.delivered){ if(!schedTexts)schedTexts={}; schedTexts[String(p.viv.id)]={at:j.at,by:(CURRENT_USER&&CURRENT_USER.name)||''}; out.textContent='Sent to '+j.caregiver+'.'; setTimeout(()=>{ const m=document.getElementById('schedModal'); if(m)m.remove(); renderTracker(); },900); }
+    const kind=_textKind;
+    const j=await _postJson('rise_schedule_text',{cgId:p.viv.id,caregiver:p.name,message:ta.value.trim(),kind});
+    if(j.delivered){ const rec={at:j.at,by:(CURRENT_USER&&CURRENT_USER.name)||''}; if(kind==='performance'){ if(!perfTexts)perfTexts={}; perfTexts[String(p.viv.id)]=rec; } else { if(!schedTexts)schedTexts={}; schedTexts[String(p.viv.id)]=rec; } out.textContent='Sent to '+j.caregiver+'.'; setTimeout(()=>{ const m=document.getElementById('schedModal'); if(m)m.remove(); if(kind==='performance')renderShortList(); else renderTracker(); },900); }
     else out.textContent=j.note||'Not sent.';
   }catch(e){ out.textContent=e.message; btn.disabled=false; }
 }
@@ -3875,6 +3908,7 @@ async function sendSchedText(key){
 function renderShortList(){
   const el=document.getElementById('scoreboard');
   if(flagNotes===null)loadFlagNotes(()=>renderShortList());
+  if(perfTexts===null&&!_ldOnce.pt){ _ldOnce.pt=true; _loadJson('rise_schedule_text&kind=performance').then(j=>{ perfTexts=j.texts||{}; renderShortList(); }); }
   if(!spine.length){ el.innerHTML='<div class="empty-state"><div class="spin"></div>Loading…</div>'; return; }
   perfPopulateFilters();
   const scope=perfScope();
@@ -3908,7 +3942,7 @@ function renderShortList(){
     det+=_fnBlock('shortlist',x.p);
     det+='<div style="margin-top:6px"><a class="card-link" style="cursor:pointer" onclick="event.stopPropagation();openCaregiver(\''+x.p.key+'\')">Open full dashboard →</a></div></div>';
     return '<div class="sl-row sev-'+(hard?'r':'good')+'" style="cursor:pointer" onclick="toggleSlDetail(\''+x.p.key+'\')">'+
-      '<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.p.manager||'—')+' · '+escHtml(x.p.market||'—')+_fnChip('shortlist',x.p)+' <span style="color:var(--text3)" title="click to expand">▾</span></span></div>'+
+      '<div class="sl-top"><span class="sl-name">'+escHtml(x.p.name)+'</span><span class="sl-meta">'+escHtml(x.p.manager||'—')+' · '+escHtml(x.p.market||'—')+_fnChip('shortlist',x.p)+_perfTextBtn(x.p)+' <span style="color:var(--text3)" title="click to expand">▾</span></span></div>'+
       '<div class="sl-trig">'+x.trig.map(t=>'<span class="sl-chip'+(t.sev==='warn'?' warn':'')+'">'+escHtml(t.t)+'</span>').join('')+'</div>'+
       det+
     '</div>';
