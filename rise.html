@@ -2459,7 +2459,7 @@ function _rampRows(){
     const hd=v.hireDate?String(v.hireDate).slice(0,10):(p.hireDate?p.hireDate.toLocaleDateString('en-CA'):'');
     if(!hd)return; const age=(TODAY-parseDate(hd))/86400000; if(age<0||age>180)return;
     const H=parseDate(hd).getTime(); const weeks=[];
-    ws.forEach((w,i)=>{ const t=parseDate(w).getTime(); if(t+6*86400000<H)return; const k=Math.floor((t-H)/(7*86400000))+1; if(k<1||k>13)return; weeks.push({k:Math.min(k,13),h:(v.weeklyHours&&v.weeklyHours[i])||0,w}); });
+    ws.forEach((w,i)=>{ const t=parseDate(w).getTime(); if(t+6*86400000<H)return; const k=Math.floor((t+6*86400000-H)/(7*86400000))+1;   // week containing the hire date = week 1 if(k<1||k>13)return; weeks.push({k:Math.min(k,13),h:(v.weeklyHours&&v.weeklyHours[i])||0,w}); });
     const first=weeks.find(x=>x.h>0);
     out.push({p,hd,age:Math.round(age),desired:v.desiredHours||0,weeks,firstWeek:first?first.k:null,last:weeks.length?weeks[weeks.length-1]:null});
   });
@@ -2503,7 +2503,7 @@ function renderRamp(){
     if(list.length){
       h+='<div class="ct" style="margin:12px 0 4px">In their first 90 days now ('+list.length+')</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>MCE</th><th>Hired</th><th>Days in</th><th>First week with work</th><th>Last week</th><th>Desired</th></tr></thead><tbody>'+
         list.map(r=>{ const lw=r.last; const pct=(lw&&r.desired)?Math.round(lw.h/r.desired*100):null;
-          return '<tr><td class="td-name"><span class="clickable" style="cursor:pointer;color:var(--blue-text)" onclick="openCaregiver(\''+r.p.key.replace(/'/g,"\\'")+'\')">'+escHtml(r.p.name)+'</span></td><td style="font-size:12px">'+escHtml(r.p.manager||'')+'</td><td class="td-date">'+formatDate(parseDate(r.hd))+'</td><td>'+r.age+'</td><td>'+(r.firstWeek?'Week '+r.firstWeek:'<span class="bdg bg-r">not yet</span>')+'</td><td>'+(lw?lw.h.toFixed(1)+' hrs'+(pct!=null?' <span class="bdg '+(pct>=75?'bg-g':pct>=50?'bg-a':'bg-r')+'">'+pct+'%</span>':''):'n/a')+'</td><td>'+(r.desired||'not set')+'</td></tr>'; }).join('')+
+          return '<tr><td class="td-name"><span class="clickable" style="cursor:pointer;color:var(--blue-text)" onclick="openCaregiver(\''+r.p.key.replace(/'/g,"\\'")+'\')">'+escHtml(r.p.name)+'</span></td><td style="font-size:12px">'+escHtml(r.p.manager||'')+'</td><td class="td-date">'+formatDate(parseDate(r.hd))+'</td><td>'+r.age+'</td><td>'+(r.firstWeek?'Week '+r.firstWeek:(r.weeks.length?'<span class="bdg bg-r">not yet</span>':'<span class="bdg bg-n" title="No complete week since hire yet">too new</span>'))+'</td><td>'+(lw?lw.h.toFixed(1)+' hrs'+(pct!=null?' <span class="bdg '+(pct>=75?'bg-g':pct>=50?'bg-a':'bg-r')+'">'+pct+'%</span>':''):'n/a')+'</td><td>'+(r.desired||'not set')+'</td></tr>'; }).join('')+
         '</tbody></table></div>';
     }
   }
