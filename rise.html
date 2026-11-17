@@ -2459,7 +2459,7 @@ function _rampRows(){
     const hd=v.hireDate?String(v.hireDate).slice(0,10):(p.hireDate?p.hireDate.toLocaleDateString('en-CA'):'');
     if(!hd)return; const age=(TODAY-parseDate(hd))/86400000; if(age<0||age>180)return;
     const H=parseDate(hd).getTime(); const weeks=[];
-    ws.forEach((w,i)=>{ const t=parseDate(w).getTime(); if(t+6*86400000<H)return; const k=Math.floor((t+6*86400000-H)/(7*86400000))+1; /* week containing the hire date = week 1 */ if(k<1||k>13)return; weeks.push({k:Math.min(k,13),h:(v.weeklyHours&&v.weeklyHours[i])||0,w}); });
+    ws.forEach((w,i)=>{ const t=parseDate(w).getTime(); if(t+6*86400000<H)return; const k=Math.floor((t+6*86400000-H)/(7*86400000))+1; /* week containing the hire date = week 1 */ if(k<1||k>13)return; weeks.push({k:Math.min(k,13),h:((v.weeklyCareHours||v.weeklyHours)&&(v.weeklyCareHours||v.weeklyHours)[i])||0,w}); });
     const first=weeks.find(x=>x.h>0);
     out.push({p,hd,age:Math.round(age),desired:v.desiredHours||0,weeks,firstWeek:first?first.k:null,last:weeks.length?weeks[weeks.length-1]:null});
   });
@@ -2499,7 +2499,7 @@ function renderRamp(){
       '<div class="fc"><div class="ct">Working by week 4</div><div class="big-stat"><span class="v '+(!ready.length?'n':by4/ready.length>=0.85?'g':by4/ready.length>=0.65?'a':'r')+'">'+(ready.length?Math.round(by4/ready.length*100)+'%':'n/a')+'</span></div><div class="stat-foot">'+by4+' of '+ready.length+' hires with 4 weeks on the books</div></div>'+
       '<div class="fc"><div class="ct">Median first week with work</div><div class="big-stat"><span class="v b">'+(firsts.length?'Week '+med(firsts):'n/a')+'</span></div><div class="stat-foot">among those who have worked</div></div>'+
     '</div>';
-    h+=svg+'<div class="stat-foot" style="margin-top:4px">Bars: share of new hires with any visit hours in that week since hire. Orange line: median share of their desired hours received. Built from the last 12 complete weeks of Viv visits, so each week mixes hires from different start dates; week counts are shown on hover.</div>';
+    h+=svg+'<div class="stat-foot" style="margin-top:4px">'+(spine.some(p=>p.viv&&p.viv.weeklyCareHours)?'':'<b>Note:</b> client-visit hours are still loading, so orientation and training hours are counted for now. ')+'Bars: share of new hires with any client visit hours in that week since hire (orientation, training and PTO are not counted). Orange line: median share of their desired hours received. Built from the last 12 complete weeks of Viv visits, so each week mixes hires from different start dates; week counts are shown on hover.</div>';
     if(list.length){
       h+='<div class="ct" style="margin:12px 0 4px">In their first 90 days now ('+list.length+')</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>MCE</th><th>Hired</th><th>Days in</th><th>First week with work</th><th>Last week</th><th>Desired</th></tr></thead><tbody>'+
         list.map(r=>{ const lw=r.last; const pct=(lw&&r.desired)?Math.round(lw.h/r.desired*100):null;
