@@ -592,7 +592,8 @@ table.sched-tbl tr:last-child td{border-bottom:none}
 <!-- PAGE: DESIRED HOURS (embeds the standalone Caregiver Hours & Happiness app;
      the original still lives in the suite shell — Charlotte "add as a tab, keep original") -->
 <div id="page-hours" style="display:none">
-  <div style="font-size:11px;color:var(--text2);margin:0 14px 8px">Desired Hours &amp; Happiness — embedded from the standalone app. If it prompts for sign-in, use your Microsoft account.</div>
+  <div id="rampPanel" style="margin:0 14px 12px"></div>
+  <div style="font-size:11px;color:var(--text2);margin:0 14px 8px">Desired Hours &amp; Happiness, embedded from the standalone app. If it prompts for sign-in, use your Microsoft account.</div>
   <iframe id="hoursFrame" title="Caregiver Hours &amp; Happiness" style="width:100%;height:calc(100vh - 190px);border:none;background:var(--bg)"></iframe>
 </div>
 
@@ -2429,7 +2430,7 @@ function switchTab(tab,push){
   if(tab==='leave')loadLeave();
   if(tab==='certs')renderCerts();
   if(tab==='referrals')loadReferrals();
-  if(tab==='hours')loadHoursFrame();
+  if(tab==='hours'){ loadHoursFrame(); try{ renderRamp(); }catch(e){ console.error('ramp',e); } }
   if(tab==='docs')renderDocs();
   if(tab==='f90d')loadF90D();
   // Push a history entry so the browser Back button steps between tabs instead
@@ -2441,6 +2442,73 @@ function switchTab(tab,push){
 // otherwise the embedded app runs its own sign-in. (Follow-up: migrate that app
 // to Microsoft auth so no key is ever needed.)
 let _hoursLoaded=false;
+
+// ════════════════════════════════════════════════════════════════════════════
+// FIRST 90 DAYS: HOW FAST NEW HIRES GET WORK (Tory 11/16, Desired Hours r10).
+// From the Rise payload's 12 complete Sun-Sat weeks of hours (weeklyHours aligned
+// to viv.hoursWeekStarts) and each caregiver's hire date. Week N = the Nth week
+// starting on or after the hire date. Hires from the last 180 days, still hired.
+// ════════════════════════════════════════════════════════════════════════════
+let _rampOpen=true, _rampMce='';
+function _rampRows(){
+  const ws=(viv&&viv.hoursWeekStarts)||[]; if(!ws.length)return [];
+  const out=[];
+  spine.forEach(p=>{
+    const v=p.viv; if(!v||v.termDate||(v.status&&!/hired|active/i.test(v.status)))return;
+    if(_rampMce&&p.manager!==_rampMce)return;
+    const hd=v.hireDate?String(v.hireDate).slice(0,10):(p.hireDate?p.hireDate.toLocaleDateString('en-CA'):'');
+    if(!hd)return; const age=(TODAY-parseDate(hd))/86400000; if(age<0||age>180)return;
+    const H=parseDate(hd).getTime(); const weeks=[];
+    ws.forEach((w,i)=>{ const t=parseDate(w).getTime(); if(t+6*86400000<H)return; const k=Math.floor((t-H)/(7*86400000))+1; if(k<1||k>13)return; weeks.push({k:Math.min(k,13),h:(v.weeklyHours&&v.weeklyHours[i])||0,w}); });
+    const first=weeks.find(x=>x.h>0);
+    out.push({p,hd,age:Math.round(age),desired:v.desiredHours||0,weeks,firstWeek:first?first.k:null,last:weeks.length?weeks[weeks.length-1]:null});
+  });
+  return out;
+}
+function renderRamp(){
+  const el=document.getElementById('rampPanel'); if(!el)return;
+  if(!viv||!spine.length){ el.innerHTML='<div class="fc" style="padding:10px 14px"><div class="stat-foot">Loading new-hire data…</div></div>'; return; }
+  const mces=[...new Set(spine.map(p=>p.manager).filter(Boolean))].sort();
+  if(!_rampMce&&currentUserMce())_rampMce=currentUserMce();
+  const rows=_rampRows();
+  const W=12, per=[]; for(let k=1;k<=W;k++)per.push({k,n:0,any:0,pcts:[]});
+  rows.forEach(r=>r.weeks.forEach(x=>{ if(x.k>W)return; const b=per[x.k-1]; b.n++; if(x.h>0)b.any++; if(r.desired>0)b.pcts.push(Math.min(150,x.h/r.desired*100)); }));
+  const med=a=>{ if(!a.length)return null; const s=[...a].sort((x,y)=>x-y); const m=Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; };
+  per.forEach(b=>{ b.anyPct=b.n?b.any/b.n*100:null; b.med=med(b.pcts); });
+  const ready=rows.filter(r=>r.weeks.some(x=>x.k===4));
+  const by4=ready.filter(r=>r.firstWeek&&r.firstWeek<=4).length;
+  const firsts=rows.map(r=>r.firstWeek).filter(x=>x!=null);
+  const wk1=per[0];
+  // SVG: bars = share of new hires with any hours that week; line = median % of desired hours.
+  const Wd=720,Ht=200,pl=34,pr=12,pt=12,pb=28, bw=(Wd-pl-pr)/W;
+  const y=v=>pt+(100-Math.min(100,v))/100*(Ht-pt-pb);
+  let svg='<svg viewBox="0 0 '+Wd+' '+Ht+'" style="width:100%;max-width:760px;height:auto" role="img" aria-label="New hire ramp by week since hire">';
+  [0,25,50,75,100].forEach(g=>{ svg+='<line x1="'+pl+'" x2="'+(Wd-pr)+'" y1="'+y(g)+'" y2="'+y(g)+'" stroke="var(--border)" stroke-width="1"/><text x="'+(pl-6)+'" y="'+(y(g)+4)+'" font-size="10" text-anchor="end" fill="var(--text3)">'+g+'%</text>'; });
+  per.forEach((b,i)=>{ const x0=pl+i*bw+bw*0.18, w=bw*0.64; if(b.anyPct!=null)svg+='<rect x="'+x0.toFixed(1)+'" y="'+y(b.anyPct).toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+(Ht-pb-y(b.anyPct)).toFixed(1)+'" rx="3" fill="var(--blue-text)" opacity=".28"><title>Week '+b.k+': '+Math.round(b.anyPct)+'% of '+b.n+' new hires had any hours</title></rect>'; svg+='<text x="'+(pl+i*bw+bw/2).toFixed(1)+'" y="'+(Ht-10)+'" font-size="10" text-anchor="middle" fill="var(--text3)">W'+b.k+'</text>'; });
+  let d='',st=false; per.forEach((b,i)=>{ if(b.med==null)return; d+=(st?'L':'M')+(pl+i*bw+bw/2).toFixed(1)+','+y(b.med).toFixed(1)+' '; st=true; });
+  if(d)svg+='<path d="'+d+'" fill="none" stroke="var(--orange)" stroke-width="2.5" stroke-linejoin="round"/>'+per.map((b,i)=>b.med==null?'':'<circle cx="'+(pl+i*bw+bw/2).toFixed(1)+'" cy="'+y(b.med).toFixed(1)+'" r="3" fill="var(--orange)"><title>Week '+b.k+': median '+Math.round(b.med)+'% of desired hours</title></circle>').join('');
+  svg+='</svg>';
+  const list=rows.filter(r=>r.age<=90).sort((a,b)=>a.age-b.age);
+  let h='<div class="fc" style="padding:12px 16px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div class="ct" style="margin:0">First 90 days: how fast new hires get work</div>'+
+    '<div style="display:flex;gap:8px;align-items:center"><select class="pf" onchange="_rampMce=this.value;renderRamp()"><option value="">All MCEs</option>'+mces.map(m=>'<option'+(m===_rampMce?' selected':'')+'>'+escHtml(m)+'</option>').join('')+'</select>'+
+    '<a class="card-link" style="cursor:pointer" onclick="_rampOpen=!_rampOpen;renderRamp()">'+(_rampOpen?'hide':'show')+'</a></div></div>';
+  if(_rampOpen){
+    h+='<div class="grid four" style="margin:10px 0">'+
+      '<div class="fc"><div class="ct">New hires, last 180 days</div><div class="big-stat"><span class="v b">'+rows.length+'</span></div><div class="stat-foot">still hired</div></div>'+
+      '<div class="fc"><div class="ct">Working in week 1</div><div class="big-stat"><span class="v '+(wk1.anyPct==null?'n':wk1.anyPct>=70?'g':wk1.anyPct>=50?'a':'r')+'">'+(wk1.anyPct==null?'n/a':Math.round(wk1.anyPct)+'%')+'</span></div><div class="stat-foot">had any visit hours, '+wk1.n+' hires measured</div></div>'+
+      '<div class="fc"><div class="ct">Working by week 4</div><div class="big-stat"><span class="v '+(!ready.length?'n':by4/ready.length>=0.85?'g':by4/ready.length>=0.65?'a':'r')+'">'+(ready.length?Math.round(by4/ready.length*100)+'%':'n/a')+'</span></div><div class="stat-foot">'+by4+' of '+ready.length+' hires with 4 weeks on the books</div></div>'+
+      '<div class="fc"><div class="ct">Median first week with work</div><div class="big-stat"><span class="v b">'+(firsts.length?'Week '+med(firsts):'n/a')+'</span></div><div class="stat-foot">among those who have worked</div></div>'+
+    '</div>';
+    h+=svg+'<div class="stat-foot" style="margin-top:4px">Bars: share of new hires with any visit hours in that week since hire. Orange line: median share of their desired hours received. Built from the last 12 complete weeks of Viv visits, so each week mixes hires from different start dates; week counts are shown on hover.</div>';
+    if(list.length){
+      h+='<div class="ct" style="margin:12px 0 4px">In their first 90 days now ('+list.length+')</div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>MCE</th><th>Hired</th><th>Days in</th><th>First week with work</th><th>Last week</th><th>Desired</th></tr></thead><tbody>'+
+        list.map(r=>{ const lw=r.last; const pct=(lw&&r.desired)?Math.round(lw.h/r.desired*100):null;
+          return '<tr><td class="td-name"><span class="clickable" style="cursor:pointer;color:var(--blue-text)" onclick="openCaregiver(\''+r.p.key.replace(/'/g,"\\'")+'\')">'+escHtml(r.p.name)+'</span></td><td style="font-size:12px">'+escHtml(r.p.manager||'')+'</td><td class="td-date">'+formatDate(parseDate(r.hd))+'</td><td>'+r.age+'</td><td>'+(r.firstWeek?'Week '+r.firstWeek:'<span class="bdg bg-r">not yet</span>')+'</td><td>'+(lw?lw.h.toFixed(1)+' hrs'+(pct!=null?' <span class="bdg '+(pct>=75?'bg-g':pct>=50?'bg-a':'bg-r')+'">'+pct+'%</span>':''):'n/a')+'</td><td>'+(r.desired||'not set')+'</td></tr>'; }).join('')+
+        '</tbody></table></div>';
+    }
+  }
+  el.innerHTML=h+'</div>';
+}
 function loadHoursFrame(){
   if(_hoursLoaded)return; _hoursLoaded=true;
   const f=document.getElementById('hoursFrame'); if(!f)return;
