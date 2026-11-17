@@ -3679,8 +3679,8 @@ function shortListTriggers(p){
   const notes2=perfWindowNotes(v,perfWeeksBack(2));     // recent missing notes
   const exc=perfExcWindow(v,30);                        // dated incidents, past month
   const trig=[];
-  if(ck2.checked>=3 && ck2.onTime/ck2.checked<0.80) trig.push({t:'Running late — OTP '+Math.round(ck2.onTime/ck2.checked*100)+'% past 2 wks',sev:'r',cat:'otp'});
-  if(ckM.veryLate>2) trig.push({t:'Very late — >15 min late '+ckM.veryLate+'× this month',sev:'r',cat:'otp'});
+  if(ck2.checked>=3 && ck2.onTime/ck2.checked<0.80) trig.push({t:'Running late: on-time '+Math.round(ck2.onTime/ck2.checked*100)+'% past 2 wks',sev:'r',cat:'otp'});
+  if(ckM.veryLate>2) trig.push({t:'Very late: more than 15 min late '+ckM.veryLate+'× this month',sev:'r',cat:'otp'});
   if(exc.prevCallout>1) trig.push({t:exc.prevCallout+' preventable call-outs this month',sev:'r',cat:'callout'});
   if(exc.emergCallout>3) trig.push({t:exc.emergCallout+' emergency call-outs this month',sev:'warn',cat:'callout'});
   if(notes2.error>0) trig.push({t:notes2.error+' missing visit note'+(notes2.error>1?'s':'')+' (recent)',sev:'r',cat:'notes'});
