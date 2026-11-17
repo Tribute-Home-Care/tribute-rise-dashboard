@@ -3786,6 +3786,8 @@ async function loadBinderClients(after){ if(_ldOnce.bc)return; _ldOnce.bc=true; 
 async function loadMceSettings(after){ if(_ldOnce.ms)return; _ldOnce.ms=true; const j=await _loadJson('rise_mce_settings'); mceSettings=j.settings||{}; schedTexts=(await _loadJson('rise_schedule_text')).texts||{}; if(after)after(); }
 const _dom=k=>String(k).replace(/[^a-zA-Z0-9_]/g,'_');
 function _firstName(n){ return String(n||'').replace(/['"].*?['"]\s*/,'').trim().split(/\s+/)[0]||''; }
+// Greeting name: the quoted nickname Viv carries ("Assephie 'Berline' Joseph" -> Berline), else the first name.
+function _callName(n){ const m=String(n||'').match(/['"\u2018\u2019\u201c\u201d]\s*([^'"\u2018\u2019\u201c\u201d]+?)\s*['"\u2018\u2019\u201c\u201d]/); return (m&&m[1].trim())||_firstName(n); }
 function _senderFirst(p){ const me=_firstName(CURRENT_USER&&CURRENT_USER.name); return (me&&!/^tribute$/i.test(me))?me:_firstName(p&&p.manager); }
 
 // ── flag notes: one note per caregiver per context (shortlist | weekend) ──
@@ -3914,7 +3916,7 @@ function openSchedText(key){
   const p=spine.find(x=>x.key===key); if(!p||!p.viv)return;
   const link=(mceSettings[p.manager]||{}).calendly||'';
   const me=_senderFirst(p);
-  const msg='Hi '+_firstName(p.name)+', it\'s '+me+' from Tribute. It\'s time for your Rise meeting. Pick a time that works for you here: '+link+' Thank you!';
+  const msg='Hi '+_callName(p.name)+', it\'s '+me+' from Tribute. It\'s time for your Rise meeting. Pick a time that works for you here: '+link+' Thank you!';
   _openTextModal(key,'Text '+p.name+' to schedule','Edit the wording if you like; the link stays in.',msg,'schedule');
 }
 // Short List "Text performance data" (Dova 11/12): a draft built from the same
@@ -3932,7 +3934,7 @@ function _perfTextDraft(p){
   const body=parts.length?(parts.length===1?parts[0]:parts.slice(0,-1).join('; ')+'; and '+parts[parts.length-1]):'I wanted to check in on how your recent visits have been going';
   const goalMet=parts.some(x=>/goal is/.test(x));
   const close=goalMet?' Meeting these goals is how you move into Professional Development and earn Rise Points.':(parts.length?' Reliable attendance is part of moving into Professional Development and earning Rise Points.':'');
-  return 'Hi '+_firstName(p.name)+', it\'s '+me+' from Tribute. '+body.charAt(0).toUpperCase()+body.slice(1)+'.'+close+' Please let me know how I can support you, or if there is anything we should talk through.';
+  return 'Hi '+_callName(p.name)+', it\'s '+me+' from Tribute. '+body.charAt(0).toUpperCase()+body.slice(1)+'.'+close+' Please let me know how I can support you, or if there is anything we should talk through.';
 }
 function openPerfText(key){
   const p=spine.find(x=>x.key===key); if(!p||!p.viv)return;
