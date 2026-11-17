@@ -4948,11 +4948,15 @@ function _ksfPeriodKey(dateStr,roll){
 function _ksfIsPct(kpi){ return KSF_PCT_RE.test(kpi); }
 function _ksfFmt(v,kpi){ if(v==null)return '—'; if(_ksfIsPct(kpi)){ const p=v<=1.5?v*100:v; return (Math.round(p*10)/10)+'%'; } return Math.round(v*10)/10; }
 // Roll a {date:value} series into period buckets. Counts sum; rates/percentages average.
+// Headcount KPIs are a level at a point in time, not a count of events: a quarter's
+// Net Caregivers is the last month's number, not three months added together
+// (Tory 11/16: quarterly view showed ~200 for teams of ~70).
+function _ksfIsStock(kpi){ return /net caregivers|out of compliance|active caregivers|caregivers getting/i.test(kpi||''); }
 function _ksfRollUp(series,kpi,roll){
   const b={};
   Object.keys(series).sort().forEach(d=>{ const k=_ksfPeriodKey(d,roll); (b[k]||(b[k]=[])).push(series[d]); });
-  const out={};
-  for(const k in b){ const a=b[k]; out[k]=_ksfIsPct(kpi)?a.reduce((x,y)=>x+y,0)/a.length:a.reduce((x,y)=>x+y,0); }
+  const out={}, stock=_ksfIsStock(kpi);
+  for(const k in b){ const a=b[k]; out[k]=_ksfIsPct(kpi)?a.reduce((x,y)=>x+y,0)/a.length:stock?a[a.length-1]:a.reduce((x,y)=>x+y,0); }
   return out;
 }
 function _ksfSvg(lines,periods,kpi,kind){
@@ -5106,7 +5110,7 @@ function renderMceKsf(){
       h+='<tr><td class="td-name">'+escHtml(l.name)+'</td>'+(prev?'<td>'+_ksfFmt(b,_ksfKpi)+'</td>':'')+'<td style="font-weight:600">'+_ksfFmt(a,_ksfKpi)+'</td><td>'+chg+'</td></tr>'; });
     h+='</tbody></table></div>';
   }
-  h+='<div class="stat-foot" style="margin-top:8px">Counts are summed within each period; rates and percentages are averaged. Source: KSF MCE_v2 (Charlotte), with monthly snapshots added automatically going forward.</div>';
+  h+='<div class="stat-foot" style="margin-top:8px">Event counts (terminations, interviews, offers) are summed within each period; headcounts (net caregivers, active caregivers, documents out of compliance) show the last month or week of the period; rates and percentages are averaged. Source: KSF MCE_v2 (Charlotte), with monthly snapshots added automatically going forward.</div>';
   host.innerHTML=h+'</div>';
 }
 
