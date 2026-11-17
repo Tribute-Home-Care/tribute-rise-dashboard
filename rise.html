@@ -4814,10 +4814,10 @@ async function toggleLeaveStatus(id,ev){
   }catch(e){/* local state already updated; server catches up */}
 }
 function _leaveDateRange(lv){
-  if(!lv)return '—';
+  if(!lv)return '';
   const f=lv.from?formatDate(parseDate(lv.from)):'?';
   const u=lv.until?formatDate(parseDate(lv.until)):'?';
-  return f+' → '+u+' <span style="color:var(--text2)">('+lv.days+'d'+(lv.upcoming?', upcoming':'')+')</span>';
+  return '<span style="white-space:nowrap">'+f+' to '+u+'</span><div style="font-size:11px;color:var(--text2)">'+lv.days+' days'+(lv.upcoming?' · upcoming':'')+'</div>';
 }
 function openLeaveModal(id){
   const rec=(leaveData&&leaveData.rows||[]).find(r=>String(r.id)===String(id));
@@ -4898,33 +4898,33 @@ function renderLeave(){
   const soon=rows.map(r=>({r,a:_leaveReturnAlert(r)})).filter(x=>x.a).sort((x,y)=>x.a.days-y.a.days);
   let h='';
   if(soon.length){
-    h+='<div class="fc" style="margin-bottom:12px;border-color:#f6c79a;background:#fff8f0"><div class="ct" style="color:#9a4d00">⏰ Returning soon — confirm each return when the caregiver is back</div><div style="display:flex;gap:8px;flex-wrap:wrap">'+
+    h+='<div class="fc" style="margin-bottom:12px;border-color:#f6c79a;background:#fff8f0"><div class="ct" style="color:#9a4d00">⏰ Returning soon: confirm each return when the caregiver is back</div><div style="display:flex;gap:8px;flex-wrap:wrap">'+
       soon.map(({r,a})=>'<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:10px;background:var(--bg);font-size:12px"><b>'+escHtml(r.name)+'</b> <span class="bdg '+a.cls+'">'+a.label+'</span> <span class="muted">'+formatDate(a.rtw)+' · '+escHtml(r.manager||'')+'</span> <button class="bdg bg-g" style="cursor:pointer;border:none" onclick="confirmLeaveReturn(\''+String(r.id).replace(/'/g,"\\'")+'\',event)">Return confirmed</button></div>').join('')+
     '</div></div>';
   }
-  h+='<div class="tbl-wrap"><table><thead><tr>'+
+  h+='<div class="tbl-wrap"><table class="tbl" style="font-size:12.5px"><thead><tr>'+
     '<th>Caregiver</th><th>Market</th><th>Manager</th><th>Dates on leave</th><th>Return to Work</th><th>HR form</th><th>Submitted</th><th>Updated</th><th>Status</th></tr></thead><tbody>';
   rows.forEach(r=>{
     const st=_leaveStatusOf(r.id);
     const alert=_leaveReturnAlert(r);
     const primaryForm=(r.forms&&r.forms[0])||null;
     // Return-to-work = the day AFTER the last day on leave.
-    let rtwCell='<span style="color:var(--text2)">—</span>';
+    let rtwCell='';
     if(r.leave&&r.leave.until){ const _u=parseDate(r.leave.until); if(_u){ const _rtw=new Date(_u); _rtw.setDate(_rtw.getDate()+1); rtwCell=formatDate(_rtw); } }
     if(alert) rtwCell+=' <span class="bdg '+alert.cls+'">'+alert.label+'</span>';
     else if(_leaveReturned(r.id)) rtwCell+=' <span class="bdg bg-g">Returned ✓</span>';
     const formCell=primaryForm
       ? escHtml(primaryForm.title)+(r.forms.length>1?' <span class="bdg bg-n">+'+(r.forms.length-1)+'</span>':'')
-      : (r.needsForm?'<span class="bdg bg-r">⚠ Needs HR form</span>':'<span style="color:var(--text2)">—</span>');
+      : (r.needsForm?'<span class="bdg bg-r">⚠ Needs HR form</span>':'');
     h+='<tr style="cursor:pointer" onclick="openLeaveModal(\''+String(r.id).replace(/'/g,"\\'")+'\')">'+
-      '<td class="td-name">'+escHtml(r.name)+(r.needsForm&&primaryForm?' <span class="bdg bg-r" title="also needs HR form">⚠</span>':'')+'</td>'+
-      '<td style="font-size:12px">'+escHtml(r.market||'—')+'</td>'+
-      '<td style="font-size:12px">'+escHtml(r.manager||'—')+'</td>'+
-      '<td style="font-size:12px">'+(r.leave?_leaveDateRange(r.leave):'<span style="color:var(--text2)">form only</span>')+'</td>'+
-      '<td class="td-date">'+rtwCell+'</td>'+
-      '<td style="font-size:12px;max-width:220px;white-space:normal">'+formCell+'</td>'+
-      '<td class="td-date">'+(primaryForm&&primaryForm.submittedAt?formatDate(parseDate(primaryForm.submittedAt)):'—')+'</td>'+
-      '<td class="td-date">'+(primaryForm&&primaryForm.updatedAt?formatDate(parseDate(primaryForm.updatedAt)):'—')+'</td>'+
+      '<td class="td-name" style="white-space:nowrap">'+escHtml(r.name)+(r.needsForm&&primaryForm?' <span class="bdg bg-r" title="also needs HR form">⚠</span>':'')+'</td>'+
+      '<td style="white-space:nowrap">'+escHtml(r.market||'')+'</td>'+
+      '<td style="white-space:nowrap">'+escHtml(r.manager||'')+'</td>'+
+      '<td style="min-width:190px;line-height:1.45">'+(r.leave?_leaveDateRange(r.leave):'<span style="color:var(--text2)">form only</span>')+'</td>'+
+      '<td class="td-date" style="white-space:nowrap">'+rtwCell+'</td>'+
+      '<td style="min-width:200px;max-width:260px;white-space:normal;line-height:1.45">'+formCell+'</td>'+
+      '<td class="td-date" style="white-space:nowrap">'+(primaryForm&&primaryForm.submittedAt?formatDate(parseDate(primaryForm.submittedAt)):'')+'</td>'+
+      '<td class="td-date" style="white-space:nowrap">'+(primaryForm&&primaryForm.updatedAt?formatDate(parseDate(primaryForm.updatedAt)):'')+'</td>'+
       '<td style="white-space:nowrap">'+(alert?'<button class="bdg bg-g" style="cursor:pointer;border:none;margin-right:4px" onclick="confirmLeaveReturn(\''+String(r.id).replace(/'/g,"\\'")+'\',event)">Return confirmed</button>':'')+
         '<button class="bdg '+(st==='closed'?'bg-n':'bg-g')+'" style="cursor:pointer;border:none" onclick="toggleLeaveStatus(\''+String(r.id).replace(/'/g,"\\'")+'\',event)">'+(st==='closed'?(_leaveReturned(r.id)?'Returned':'Closed'):'Open')+'</button></td>'+
     '</tr>';
