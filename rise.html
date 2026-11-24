@@ -400,6 +400,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div class="ntab" id="tab-hours" onclick="switchTab('hours')">Desired Hours</div>
   <div class="ntab" id="tab-f90d" onclick="switchTab('f90d')">First 90 Days</div>
   <div class="ntab" id="tab-docs" onclick="switchTab('docs')">DocuSign Assist</div>
+  <div class="ntab" id="tab-teamuse" style="display:none" onclick="switchTab('teamuse')">Team usage</div>
   <div class="ntab" id="tab-insights" title="Opens Caregiver Insights in Call Intelligence in a new browser tab" onclick="window.open('https://tribute-call-intel-app.agreeablefield-f3120a94.centralus.azurecontainerapps.io/ce/insights','_blank','noopener')">Caregiver Insights &#8599;</div>
 </div>
 
@@ -630,6 +631,29 @@ table.sched-tbl tr:last-child td{border-bottom:none}
       <button class="rm-btn o" onclick="closeF90Modal()">Cancel</button>
       <button class="rm-btn g" id="f90SaveBtn" onclick="saveF90Touchpoint()">Save touchpoint</button>
     </div>
+  </div>
+</div>
+
+<!-- PAGE: TEAM USAGE (Tory 11/24): CE leaders and admins only. The tab stays hidden
+     unless usage_team?probe=1 says this person may see it; the API enforces it too. -->
+<div id="page-teamuse" style="display:none">
+  <div style="max-width:1100px;margin:0 auto;padding:0 14px 40px">
+    <div style="font-family:'Space Grotesk',Inter,sans-serif;font-size:20px;font-weight:700;margin:6px 0 2px">Team usage</div>
+    <div class="fc" style="margin:8px 0 12px;padding:10px 14px;font-size:13px;line-height:1.5">
+      <b>Use this to start a conversation: is something making the dashboard harder to use?</b><br>
+      This is not a ranking. If someone is using the tools much less than their peers, ask what is in the way: a missing feature, a confusing screen, a different way of working, or just a busy stretch.
+    </div>
+    <div class="bar" style="flex-wrap:wrap;padding:0;margin-bottom:10px">
+      <label>Period</label>
+      <select id="tuDays" onchange="loadTeamUsage(true)">
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+      </select>
+      <button class="rm-btn o" style="padding:6px 12px;font-size:12px" onclick="loadTeamUsage(true)">&#8635; Refresh</button>
+      <span class="count" id="tuCount"></span>
+    </div>
+    <div id="tuBody"><div class="empty-state"><div>Loading team usage...</div></div></div>
+    <div id="tuNotes" style="font-size:11px;color:var(--text2);margin:10px 0 20px;line-height:1.6"></div>
   </div>
 </div>
 
@@ -2421,7 +2445,7 @@ function switchTab(tab,push){
   if(push===undefined)push=true;
   _curTab=tab;
   if(window.TributeUsage)TributeUsage.setView(_tabLabel(tab));   // active time by tab (tribute-usage.js)
-  ['tracker','scoreboard','dashboard','summary','leave','certs','referrals','hours','docs','f90d'].forEach(t=>{
+  ['tracker','scoreboard','dashboard','summary','leave','certs','referrals','hours','docs','f90d','teamuse'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
   });
@@ -2434,6 +2458,7 @@ function switchTab(tab,push){
   if(tab==='hours'){ loadHoursFrame(); try{ renderRamp(); }catch(e){ console.error('ramp',e); } }
   if(tab==='docs')renderDocs();
   if(tab==='f90d')loadF90D();
+  if(tab==='teamuse')loadTeamUsage(false);
   // Push a history entry so the browser Back button steps between tabs instead
   // of leaving the app. popstate handler passes push=false to avoid re-pushing.
   if(push&&_navReady){ try{ history.pushState({riseTab:tab},''); }catch(e){} }
@@ -2517,6 +2542,77 @@ function loadHoursFrame(){
   const k=(typeof getKey==='function')?getKey():'';
   f.src=base+(k?('#k='+encodeURIComponent(k)):'');
 }
+// ════════════════════════════════════════════════════════════════════════════
+// TEAM USAGE (Tory 11/24; Andrew approved names for CE leaders): how much each
+// MCE uses Rise and Call Intelligence next to peers in a similar role. People
+// under 90 days are compared only with each other. Sorted by name, not ranked.
+// Visible only to CE leaders and admins (vivProxy usage_team checks again).
+// ════════════════════════════════════════════════════════════════════════════
+let _tuData=null, _tuDays=null, _tuAllowed=false;
+async function probeTeamUsage(){
+  try{
+    const r=await fetch(PROXY+'?endpoint=usage_team&probe=1',{headers:await authHeaders()});
+    const j=r.ok?await r.json():{};
+    _tuAllowed=!!j.allowed;
+  }catch(e){ _tuAllowed=false; }
+  const tab=document.getElementById('tab-teamuse'); if(tab)tab.style.display=_tuAllowed?'':'none';
+  if(!_tuAllowed&&_curTab==='teamuse')switchTab('tracker',false);
+}
+function _tuMins(m){ m=Number(m)||0; if(m<60)return m+' min'; const h=Math.floor(m/60), r=m%60; return h+' hr'+(r?' '+r+' min':''); }
+function _tuDate(d){ if(!d)return 'None on record'; const t=parseDate(d); return t?formatDate(t):d; }
+function _tuVs(p){
+  if(p.pctVsPeers==null)return '<span style="color:var(--text3)">'+(p.peerCount?'Peers have no time yet':(p.isNew?'No other new team members to compare with':'No one to compare with'))+'</span>';
+  const n=p.pctVsPeers, txt=n===0?'About the same':(Math.abs(n)+'% '+(n<0?'below':'above'));
+  return txt+'<div style="font-size:11px;color:var(--text2)">Peer average '+_tuMins(p.peerAvgMinutes)+' ('+escHtml(p.peerBasis||'')+', '+p.peerCount+' '+(p.peerCount===1?'person':'people')+')</div>';
+}
+async function loadTeamUsage(force){
+  const body=document.getElementById('tuBody'); if(!body)return;
+  const days=(document.getElementById('tuDays')||{}).value||'30';
+  if(_tuData&&!force&&_tuDays===days){ renderTeamUsage(); return; }
+  body.innerHTML='<div class="empty-state"><div>Loading team usage...</div></div>';
+  try{
+    const r=await fetch(PROXY+'?endpoint=usage_team&days='+encodeURIComponent(days),{headers:await authHeaders()});
+    const j=await r.json().catch(()=>({}));
+    if(r.status===403){ body.innerHTML='<div class="empty-state"><div>Team usage is only available to Caregiver Excellence leaders.</div></div>'; return; }
+    if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+    _tuData=j; _tuDays=days; renderTeamUsage();
+  }catch(e){ body.innerHTML='<div class="empty-state"><div>Could not load team usage: '+escHtml(e.message)+'</div></div>'; }
+}
+function renderTeamUsage(){
+  const j=_tuData, body=document.getElementById('tuBody'); if(!j||!body)return;
+  const people=j.people||[], flagged=people.filter(p=>p.flags&&p.flags.length).length;
+  const cnt=document.getElementById('tuCount'); if(cnt)cnt.textContent=people.length+' people'+(flagged?' · '+flagged+' worth a check-in':'');
+  if(!people.length){ body.innerHTML='<div class="empty-state"><div>No team members found.</div></div>'; return; }
+  let h='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Role</th><th>Active time</th><th>Days signed in</th><th>Last sign-in</th><th>Compared with peers</th><th>Most-used tabs</th></tr></thead><tbody>';
+  people.forEach(p=>{
+    const amber=p.flags&&p.flags.length;
+    const why=[]; if(amber&&p.flags.includes('low'))why.push(Math.abs(p.pctVsPeers)+'% below peers'); if(amber&&p.flags.includes('quiet'))why.push(p.daysSinceSeen==null?'Not seen in this record':'Not seen in '+p.daysSinceSeen+' days');
+    const td=(cls,css)=>'<td'+(cls?' class="'+cls+'"':'')+' style="'+(amber?'background:var(--amber-bg);':'')+(css||'')+'">';
+    const split=(p.riseMinutes||p.callsMinutes)?'<div style="font-size:11px;color:var(--text2)">Rise '+_tuMins(p.riseMinutes)+(p.callsMinutes?' · Call Intelligence '+_tuMins(p.callsMinutes):'')+'</div>':'';
+    const tabs=(p.topTabs||[]).map(t=>escHtml(t.tab)+' <span style="color:var(--text2)">('+_tuMins(t.minutes)+')</span>').join('<br>')||'<span style="color:var(--text3)">None</span>';
+    h+='<tr>'+
+      td('td-name')+escHtml(p.name)+(p.isNew?' <span class="bdg bg-b" title="Hired '+escHtml(p.hireDate||'')+'">New</span>':'')+(amber?'<div style="margin-top:4px"><span class="bdg bg-a">Check in</span></div><div style="font-size:11px;color:var(--amber-text);font-weight:500;white-space:normal">'+escHtml(why.join('; '))+'</div>':'')+'</td>'+
+      td('','font-size:11.5px;max-width:200px')+escHtml(p.role||'Not in the employee list')+'</td>'+
+      td()+_tuMins(p.minutes)+split+'<div style="font-size:11px;color:var(--text2)">Active on '+p.activeDays+' '+(p.activeDays===1?'day':'days')+'</div></td>'+
+      td()+p.signinDays+'</td>'+
+      td('td-date')+escHtml(_tuDate(p.lastSignin))+(p.lastActive?'<div style="font-size:11px">Last active '+escHtml(_tuDate(p.lastActive))+'</div>':'')+'</td>'+
+      td()+_tuVs(p)+'</td>'+
+      td('','font-size:11.5px')+tabs+'</td>'+
+    '</tr>';
+  });
+  h+='</tbody></table></div>';
+  body.innerHTML=h;
+  const sm=(j.signins&&j.signins.dash&&j.signins.dash.updatedAt)||'';
+  const notes=document.getElementById('tuNotes');
+  if(notes)notes.innerHTML=
+    '<b>Period:</b> '+escHtml(_tuDate(j.from))+' to '+escHtml(_tuDate(j.today))+' ('+j.coverageDays+' days'+(j.coverageDays<j.days?'; active time has only been recorded since '+escHtml(_tuDate(j.since)):'')+').<br>'+
+    '<b>Active time</b> counts only minutes with Rise or Call Intelligence on screen and someone clicking, typing or scrolling. It is live.<br>'+
+    '<b>Sign-ins</b> come from the Microsoft sign-in record, pulled weekly on Mondays'+(sm?' (last pulled '+escHtml(_tuDate(sm.slice(0,10)))+')':'')+', so the last few days may not show yet. One sign-in can last several days, so this undercounts.<br>'+
+    '<b>Peers:</b> people with the same job title when there are at least two, otherwise everyone else on the team. People hired in the last 90 days (marked New) are compared only with each other. '+
+    'Team average '+(j.teamAvgMinutes==null?'n/a':_tuMins(j.teamAvgMinutes))+(j.newAvgMinutes!=null?'; new team members '+_tuMins(j.newAvgMinutes):'')+'.<br>'+
+    '<b>Check in</b> (amber) = 40% or more below peers, or nothing seen in 10 days or more (no sign-in and no active time).';
+}
+
 window.addEventListener('popstate',function(e){
   const tab=(e.state&&e.state.riseTab)||'tracker';
   if(tab!==_curTab)switchTab(tab,false);
@@ -5497,6 +5593,7 @@ ensureCurrentUser();   // start decoding the signed-in identity early
   let token=null;
   try{ token=(window.tributeKsfGate&&window.tributeKsfGate.getToken)?await window.tributeKsfGate.getToken():null; }catch(e){}
   if(token||getKey()) syncViv(false); else showGate();
+  if(token) probeTeamUsage();   // shows the Team usage tab to CE leaders and admins only
 })();
 </script>
 <script src="./tribute-usage.js?v=2026-10-21a"></script>
