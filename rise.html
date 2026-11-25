@@ -621,7 +621,6 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <select id="riskMce" onchange="renderRisk()" style="font-size:13px;padding:6px 8px;border-radius:8px;border:.5px solid var(--border2);background:var(--bg)"></select>
     <label class="ct" for="riskCat">Why</label>
     <select id="riskCat" onchange="renderRisk()" style="font-size:13px;padding:6px 8px;border-radius:8px;border:.5px solid var(--border2);background:var(--bg)">
-      <option value="">All reasons</option><option value="hours">Hours</option><option value="performance">Performance</option>
     </select>
     <span id="riskCount" class="stat-foot" style="margin-left:auto"></span>
   </div>
@@ -3880,45 +3879,66 @@ function sbPickTeam(mceEnc){
 }
 
 // ── AT RISK (Galip 11/24) ──────────────────────────────────────────────────
-// Early warning signs that come before a caregiver leaves, grouped by WHY, each
-// with a suggested next step. First version: the thresholds below are provisional
-// and get replaced by the ones the retention analysis validates on past
-// terminations. Kept in one object so that swap is a one-line change.
+// Early warning signs before a caregiver leaves, grouped by WHY, each with a next
+// step. Rules come from the 11/25 backtest on 499 past terminations (2023-2026,
+// weekly hours vs desired, Viv termination forms), checked on a held-out period:
+//  - stopped:  0 hours (worked or PTO) 2 weeks running. Ghosting terminations are filed
+//              ~43 days after the last visit; calling now reaches them ~6 weeks sooner.
+//              5.8x more likely to end as "stopped communicating".
+//  - hours:    under 50% of desired hours each of the last 3 weeks. The only true early
+//              warning for ghosting (about 6 weeks before the last visit), 2.7-5.4x.
+//  - dropped:  last 4 weeks at half or less of their own prior 8-week average (prior 10h+).
+//              The signal before involuntary terminations, 2.2-2.8x.
+//  - performance: the Short List coaching triggers. NOT yet testable against past exits
+//              (no service-exception history); kept because MCEs act on it already.
+// Tenure under 90 days doubles risk; shown as a tag, not a flag on its own.
 const RISK_RULES = {
-  hoursUnderPct: 0.25,     // a week counts as "short" below 25% of desired hours (client visits only)
-  hoursShortWeeks: 3,      // ...in at least 3 of the last 4 full weeks
-  hoursMinDesired: 8,      // only caregivers who want 8+ hours a week
-  askDays: 30,             // "asked for more hours": a Desired Hours service exception in the last 30 days
-  minTenureDays: 21,       // brand-new hires are still being placed; the First 90 Days tab covers them
-  newDays: 90
+  stoppedWeeks: 2,          // 0 hours (all billable, so PTO counts as working) this many weeks running
+  underPct: 0.50, underWeeks: 3, minDesired: 8,
+  dropRecent: 4, dropPrior: 8, dropRatio: 0.5, dropMinPrior: 10,
+  askDays: 60,              // "asked for more hours" (Desired Hours service exception), supporting evidence
+  minTenureDays: 21, newDays: 90
 };
-const RISK_ACTIONS = {
-  hours: 'Ask Scheduling to put them first for open visits that fit their availability, and check their availability in Viv is current.',
-  performance: 'Coaching conversation on the standard flagged; consider a CareAcademy course on it. Document it here.'
+const RISK_CATS = {
+  stopped: {lbl:'Stopped working', cls:'bg-r', act:'Call them this week (then text, then a second try). Find out if they are on leave, temporarily unavailable, or gone. If gone, file the termination now rather than weeks later.'},
+  hours: {lbl:'Short of hours', cls:'bg-b', act:'Hours conversation with Scheduling: offer visits inside their availability, or reset desired hours in Viv to something realistic.'},
+  dropped: {lbl:'Hours dropped', cls:'bg-p', act:'Ask what changed (lost a client, call-outs, a coaching issue). Check their service exceptions, then decide between coaching and finding replacement visits.'},
+  performance: {lbl:'Performance', cls:'bg-a', act:'Coaching conversation on the standard flagged; consider a CareAcademy course on it.'}
 };
+const RISK_ORDER=['stopped','hours','dropped','performance'];
 function riskFor(p){
-  const v=p&&p.viv; if(!v||String(v.status||'').toLowerCase()!=='active')return null;
+  const v=p&&p.viv; if(!v)return null;
+  const st=String(v.status||'').toLowerCase(); if(st!=='hired'&&st!=='active')return null;
   if(_leaveNowFor(p))return null;                       // on the CAs on Leave list
   const hd=parseDate(v.hireDate); const tenure=hd?Math.round((TODAY-hd)/86400000):null;
   if(tenure!=null&&tenure<RISK_RULES.minTenureDays)return null;
   const reasons=[], cats=new Set();
-  // Hours: short of desired hours most of the last 4 full weeks.
-  const desired=+v.desiredHours||0, wk=(v.weeklyCareHours||v.weeklyHours||[]).slice(-4);
-  let hoursLine=null;
-  if(!v.prn&&desired>=RISK_RULES.hoursMinDesired&&wk.length===4){
-    const short=wk.filter(h=>(+h||0)<desired*RISK_RULES.hoursUnderPct).length;
-    hoursLine=wk.map(h=>Math.round(+h||0)).join(' / ')+' of '+Math.round(desired)+'h wanted';
-    if(short>=RISK_RULES.hoursShortWeeks){ cats.add('hours'); reasons.push({cat:'hours',t:'Under '+Math.round(RISK_RULES.hoursUnderPct*100)+'% of desired hours '+short+' of the last 4 weeks'}); }
+  const all=(v.weeklyHours||[]).map(x=>+x||0), care=(v.weeklyCareHours||v.weeklyHours||[]).map(x=>+x||0);
+  const desired=+v.desiredHours||0;
+  // stopped: no hours at all (worked, training or PTO) the last 2 weeks
+  if(all.length>=RISK_RULES.stoppedWeeks&&all.slice(-RISK_RULES.stoppedWeeks).every(h=>h===0)&&all.some(h=>h>0)){
+    cats.add('stopped'); reasons.push({cat:'stopped',t:'No hours the last '+RISK_RULES.stoppedWeeks+' weeks (no visits, no PTO)'});
   }
-  // Hours: asked for more (Viv "Desired Hours" service exception).
+  // hours: under 50% of desired each of the last 3 weeks (client visits)
+  if(!cats.has('stopped')&&!v.prn&&desired>=RISK_RULES.minDesired&&care.length>=RISK_RULES.underWeeks&&care.slice(-RISK_RULES.underWeeks).every(h=>h<desired*RISK_RULES.underPct)){
+    cats.add('hours'); reasons.push({cat:'hours',t:'Under half of desired hours ('+Math.round(desired)+'h) each of the last '+RISK_RULES.underWeeks+' weeks'});
+  }
+  // dropped: last 4 weeks at half or less of their own prior 8-week average
+  if(!cats.has('stopped')&&care.length>=RISK_RULES.dropRecent+RISK_RULES.dropPrior){
+    const rec=care.slice(-RISK_RULES.dropRecent), pri=care.slice(-(RISK_RULES.dropRecent+RISK_RULES.dropPrior),-RISK_RULES.dropRecent);
+    const ra=rec.reduce((a,b)=>a+b,0)/rec.length, pa=pri.reduce((a,b)=>a+b,0)/pri.length;
+    if(pa>=RISK_RULES.dropMinPrior&&ra<=pa*RISK_RULES.dropRatio){ cats.add('dropped'); reasons.push({cat:'dropped',t:'Down to '+Math.round(ra)+'h a week from '+Math.round(pa)+'h (last 4 weeks vs the 8 before)'}); }
+  }
+  // supporting evidence for any hours category: asked for more hours
   const asks=(v.exceptions||[]).filter(inc=>/desired hours/i.test(inc.type||'')&&_withinDays(inc.date,RISK_RULES.askDays));
-  if(asks.length){ cats.add('hours'); reasons.push({cat:'hours',t:'Asked for more hours ('+asks.length+'x, last '+formatDate(parseDate(asks.map(a=>a.date).sort().pop()))+')'}); }
-  // Performance: the Short List coaching triggers, plus an active PIP / written warning.
+  if(asks.length){ const c=cats.has('stopped')?'stopped':(cats.has('dropped')&&!cats.has('hours')?'dropped':'hours'); cats.add(c); reasons.push({cat:c,t:'Asked for more hours ('+asks.length+'x, last '+formatDate(parseDate(asks.map(a=>a.date).sort().pop()))+')'}); }
+  // performance: Short List triggers plus an active PIP / written warning
   let trig=[]; try{ trig=shortListTriggers(p)||[]; }catch(e){}
   trig.forEach(t=>{ cats.add('performance'); reasons.push({cat:'performance',t:t.t}); });
   const ca=activePipwwFor(p);
   if(ca.length&&!trig.some(t=>t.cat==='pipww')){ cats.add('performance'); reasons.push({cat:'performance',t:'Active '+(ca[0].isPip?'PIP':(ca[0].isWW?'written warning':'corrective action'))+(ca[0].endDate?' (ends '+formatDate(ca[0].endDate)+')':'')}); }
   if(!cats.size)return null;
+  const hoursLine=care.length>=4?care.slice(-4).map(h=>Math.round(h)).join(' / ')+(desired?' of '+Math.round(desired)+'h wanted':'h'):null;
   return {p,cats,reasons,hoursLine,tenure,isNew:tenure!=null&&tenure<RISK_RULES.newDays};
 }
 function renderRisk(){
@@ -3930,29 +3950,32 @@ function renderRisk(){
     sel.innerHTML='<option value="">All managers</option>'+mgrs.map(m=>'<option value="'+escHtml(m)+'">'+escHtml(m)+'</option>').join('');
     defaultToMyTeam(sel);
   }
-  const mce=sel?sel.value:'', cat=(document.getElementById('riskCat')||{}).value||'';
+  const cs=document.getElementById('riskCat');
+  if(cs&&cs.options.length!==RISK_ORDER.length+1) cs.innerHTML='<option value="">All reasons</option>'+RISK_ORDER.map(c=>'<option value="'+c+'">'+RISK_CATS[c].lbl+'</option>').join('');
+  const mce=sel?sel.value:'', cat=(cs||{}).value||'';
   let rows=spine.filter(p=>!mce||p.manager===mce).map(riskFor).filter(Boolean);
-  const all=rows.length, nH=rows.filter(r=>r.cats.has('hours')).length, nP=rows.filter(r=>r.cats.has('performance')).length, nB=rows.filter(r=>r.cats.size>1).length;
+  const counts=RISK_ORDER.map(c=>[c,rows.filter(r=>r.cats.has(c)).length]);
+  const total=rows.length;
   if(cat)rows=rows.filter(r=>r.cats.has(cat));
-  rows.sort((a,b)=>(b.cats.size-a.cats.size)||(b.reasons.length-a.reasons.length)||String(a.p.name).localeCompare(String(b.p.name)));
+  const rank=r=>Math.min(...[...r.cats].map(c=>RISK_ORDER.indexOf(c)));
+  rows.sort((a,b)=>(rank(a)-rank(b))||(b.cats.size-a.cats.size)||String(a.p.name).localeCompare(String(b.p.name)));
   const cnt=document.getElementById('riskCount'); if(cnt)cnt.textContent=rows.length+' caregiver'+(rows.length===1?'':'s');
-  const chipCls={hours:'bg-b',performance:'bg-a'}, catLbl={hours:'Hours',performance:'Performance'};
-  let h='<div class="card" style="padding:14px 16px;margin-bottom:12px;font-size:13px;line-height:1.5">'+
-    '<b>Caregivers showing early warning signs.</b> Grouped by why, each with a suggested next step. '+
-    all+' flagged: '+nH+' for hours, '+nP+' for performance'+(nB?', '+nB+' for both':'')+'. '+
-    '<span class="stat-foot">First version: hours = under '+Math.round(RISK_RULES.hoursUnderPct*100)+'% of desired hours in '+RISK_RULES.hoursShortWeeks+' of the last 4 weeks, or a Desired Hours service exception in the last '+RISK_RULES.askDays+' days; performance = the Short List triggers or an active PIP / written warning. Caregivers on leave, PRN, or hired in the last '+RISK_RULES.minTenureDays+' days are left out. These thresholds will be tuned against past terminations.</span></div>';
+  let h='<div class="card" style="padding:14px 16px;margin-bottom:12px;font-size:13px;line-height:1.55">'+
+    '<b>Caregivers showing the signs that came before past terminations.</b> '+total+' flagged: '+
+    counts.map(([c,n])=>'<span class="bdg '+RISK_CATS[c].cls+'">'+RISK_CATS[c].lbl+' '+n+'</span>').join(' ')+
+    '<div class="stat-foot" style="margin-top:6px">Tested on 499 past terminations: no hours for 2 weeks came before "stopped communicating" exits (5.8x as likely); under half of desired hours for 3 weeks was the earliest warning, about 6 weeks before the last visit (about 3x); hours halving against their own recent average came before involuntary exits (about 2.5x). New hires (under 90 days) are twice as likely to leave. A flag is a reason to check in, not a verdict: most flagged caregivers stay. Performance flags are the Short List triggers and have not been tested against past exits yet. Caregivers on leave, or hired in the last 3 weeks, are left out.</div></div>';
   if(!rows.length){ body.innerHTML=h+'<div class="empty-state"><div>No one on this list right now.</div></div>'; return; }
   h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Market</th><th>Why</th><th>Last 4 weeks</th><th>Suggested next step</th><th>Notes</th></tr></thead><tbody>';
   rows.forEach(r=>{
-    const p=r.p, key=String(p.key).replace(/'/g,"\\'");
-    const why=[...r.cats].map(c=>'<div style="margin-bottom:6px"><span class="bdg '+chipCls[c]+'">'+catLbl[c]+'</span><div style="font-size:12px;margin-top:3px;white-space:normal">'+r.reasons.filter(x=>x.cat===c).slice(0,3).map(x=>escHtml(x.t)).join('<br>')+'</div></div>').join('');
-    const next=[...r.cats].map(c=>'<div style="font-size:12px;white-space:normal;margin-bottom:6px"><b>'+catLbl[c]+':</b> '+escHtml(RISK_ACTIONS[c])+'</div>').join('');
+    const p=r.p, key=String(p.key).replace(/'/g,"\\'"), cl=RISK_ORDER.filter(c=>r.cats.has(c));
+    const why=cl.map(c=>'<div style="margin-bottom:6px"><span class="bdg '+RISK_CATS[c].cls+'">'+RISK_CATS[c].lbl+'</span><div style="font-size:12px;margin-top:3px;white-space:normal">'+r.reasons.filter(x=>x.cat===c).slice(0,3).map(x=>escHtml(x.t)).join('<br>')+'</div></div>').join('');
+    const next=cl.map(c=>'<div style="font-size:12px;white-space:normal;margin-bottom:6px"><b>'+RISK_CATS[c].lbl+':</b> '+escHtml(RISK_CATS[c].act)+'</div>').join('');
     h+='<tr><td style="white-space:normal;max-width:190px"><span class="cg-link clickable" onclick="openCaregiver(\''+key+'\')" style="cursor:pointer;color:var(--blue-text);font-weight:600">'+escHtml(p.name)+'</span>'+
-      (r.isNew?' <span class="bdg bg-p" style="font-size:9px" title="Hired in the last 90 days">New</span>':'')+
+      (r.isNew?' <span class="bdg bg-p" style="font-size:9px" title="Hired in the last 90 days: twice as likely to leave">New</span>':'')+
       '<div class="stat-foot">'+escHtml(p.manager||'')+(r.tenure!=null?' · '+(r.tenure<365?Math.round(r.tenure/30)+' mo':(r.tenure/365).toFixed(1)+' yr')+' at Tribute':'')+'</div>'+_fnChip('risk',p)+'</td>'+
       '<td>'+escHtml(p.market||'')+'</td>'+
       '<td style="min-width:220px;max-width:320px">'+why+'</td>'+
-      '<td style="font-size:12px;white-space:normal;max-width:130px">'+(r.hoursLine?escHtml(r.hoursLine):'<span class="stat-foot">no desired hours set</span>')+'</td>'+
+      '<td style="font-size:12px;white-space:normal;max-width:130px">'+(r.hoursLine?escHtml(r.hoursLine):'<span class="stat-foot">no hours data</span>')+'</td>'+
       '<td style="min-width:220px;max-width:320px">'+next+'</td>'+
       _fnCell('risk',p)+'</tr>';
   });
