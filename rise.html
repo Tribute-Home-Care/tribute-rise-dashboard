@@ -944,6 +944,7 @@ async function syncViv(manual){
     try{ ['rise','early'].forEach(k=>((viv.forms||{})[k]||[]).forEach(f=>{ const md=parseDate(f.meetingDate), sd=parseDate(f.submittedAt); if(md&&sd&&(sd-md)>120*86400000){ f.meetingDateRaw=f.meetingDate; f.meetingDate=sd.toLocaleDateString('en-CA'); f.dateCorrected=true; } })); }catch(e){}
     setSyncLine('<span class="dot"></span>Live · '+viv.counts.caregivers+' caregivers · '+viv.counts.riseForms+' Rise forms · data as of '+fmtTime(viv.generatedAt),'');
     buildSpine(); await ensureCurrentUser(); updateMyTeamBanner(); setupPreviewMce(); buildManagerFilter(); buildSearchIndex(); renderTracker(); renderLiveChips();
+    try{ if(!leaveData&&!leaveLoading)loadLeave(); }catch(e){}   // On leave chips on the tracker, without waiting for the 6s fallback
     if(selectedKey)renderCaregiver();
     restoreUploads();   // shared iSolved files (roster/certs) saved by whoever uploaded last
   }catch(e){
@@ -4937,6 +4938,7 @@ async function loadLeave(force){
     leaveLoading=false; return;
   }
   leaveLoading=false; renderLeave();
+  try{ if(spine&&spine.length&&_curTab==='tracker')renderTracker(); }catch(e){}   // show On leave chips as soon as the leave feed lands
 }
 function _leaveStatusOf(id){ if(leaveStatusStore&&leaveStatusStore[id])return leaveStatusStore[id].status==='open'?'open':'closed'; const r=leaveData&&leaveData.rows&&leaveData.rows.find(x=>String(x.id)===String(id)); return _leaveAutoClosed(r)?'closed':'open'; }
 function _leaveReturned(id){ return !!(leaveStatusStore&&leaveStatusStore[id]&&leaveStatusStore[id].returned); }
@@ -5714,7 +5716,7 @@ function formatDate(val){
 })();
 restoreLocalUploads();   // restore this browser's saved certs/roster before anything else
 restorePipww();          // restore uploaded PIP/WW report for the Program Summary
-setTimeout(()=>{ try{ if(!leaveData)loadLeave(); }catch(e){} },6000);   // leave feed feeds the To Do card's return alerts
+setTimeout(()=>{ try{ if(!leaveData)loadLeave(); }catch(e){} },6000);   // fallback; syncViv starts it as soon as the tracker has drawn
 renderLiveChips();
 // Seed the initial history entry so tab navigation (pushState) has a base to
 // return to, and Back retraces tabs instead of exiting on the first press.
