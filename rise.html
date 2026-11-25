@@ -2569,7 +2569,7 @@ function switchTab(tab,push){
   if(tab==='hours'){ loadHoursFrame(); try{ renderRamp(); }catch(e){ console.error('ramp',e); } }
   if(tab==='docs')renderDocs();
   if(tab==='f90d')loadF90D();
-  if(tab==='risk'){ loadFlagNotes(()=>renderRisk()); renderRisk(); }
+  if(tab==='risk'){ loadFlagNotes(()=>renderRisk()); loadRiskSignals(); renderRisk(); }
   if(tab==='teamuse')loadTeamUsage(false);
   // Push a history entry so the browser Back button steps between tabs instead
   // of leaving the app. popstate handler passes push=false to avoid re-pushing.
@@ -3942,6 +3942,46 @@ function riskFor(p){
   const hoursLine=care.length>=4?care.slice(-4).map(h=>Math.round(h)).join(' / ')+(desired?' of '+Math.round(desired)+'h wanted':'h'):null;
   return {p,cats,reasons,hoursLine,tenure,isNew:tenure!=null&&tenure<RISK_RULES.newDays};
 }
+// Call Intelligence context (Galip 11/25): calls, texts, asks for more hours and
+// offers from tribute-calls, via vivProxy?endpoint=caregiver_signals (60-min cache).
+// CONTEXT ONLY: shown under Why, never changes who is flagged, because these signals
+// have not been tested against past terminations yet. Fetched once when the tab
+// opens; a failed fetch is retried the next time the tab opens.
+const CI_BASE='https://tribute-call-intel-app.agreeablefield-f3120a94.centralus.azurecontainerapps.io';
+let riskSignals=null, riskSignalsState='idle';
+async function loadRiskSignals(){
+  if(riskSignalsState==='loading'||riskSignalsState==='ok')return;
+  riskSignalsState='loading';
+  try{
+    const r=await fetch(PROXY+'?endpoint=caregiver_signals&days=30',{headers:await authHeaders()});
+    const j=r.ok?await r.json():null;
+    const m=new Map(); ((j&&j.caregivers)||[]).forEach(c=>{ if(c&&c.viv_id)m.set(String(c.viv_id),c); });
+    riskSignals=m;
+    riskSignalsState=(j&&!j.error&&j.configured!==false)?'ok':'error';
+  }catch(e){ riskSignals=null; riskSignalsState='error'; }
+  renderRisk();
+}
+function _sigDay(s){ const d=s?new Date(String(s).slice(0,10)+'T12:00:00'):null; return d&&!isNaN(d)?d.toLocaleDateString('en-US',{month:'short',day:'numeric'}):''; }
+function _riskSignalsHtml(p){
+  if(riskSignalsState==='loading'||riskSignalsState==='idle')return '<div class="stat-foot" style="margin-top:4px">From calls and texts: loading...</div>';
+  if(riskSignalsState!=='ok')return '';
+  const c=(p.viv&&p.viv.id)?riskSignals.get(String(p.viv.id)):null;
+  const parts=[];
+  if(c){
+    if(c.hour_asks>0)parts.push('Asked for more hours '+c.hour_asks+'x');
+    if(c.offers_direct>0)parts.push('offered '+c.offers_direct+' visit'+(c.offers_direct===1?'':'s')+', took '+(c.offers_direct_accepted||0)+', declined '+(c.offers_direct_declined||0));
+    const un=c.unanswered_since_reach||0, tries=un+' unanswered tr'+(un===1?'y':'ies');
+    if(c.last_reached){ parts.push('last reached '+_sigDay(c.last_reached)); if(un>0)parts.push(tries+' since'); }
+    else if(un>0)parts.push(tries+', not reached in 90 days');
+    if(!parts.length&&(c.calls_in||c.calls_out))parts.push('Scheduling calls: '+(c.calls_in||0)+' in, '+(c.calls_out||0)+' out');
+    if(c.ce_calls>0)parts.push('last MCE call '+_sigDay(c.last_ce_call));
+  }
+  let txt=parts.length?parts.join(' · '):'No matched calls or texts';
+  txt=txt.charAt(0).toUpperCase()+txt.slice(1);
+  const link=c&&c.ci_id?' <a href="'+CI_BASE+'/caregivers/'+encodeURIComponent(c.ci_id)+'" target="_blank" rel="noopener" style="color:var(--blue-text)">Call Intelligence &#8599;</a>':'';
+  return '<div style="font-size:11.5px;margin-top:4px;padding-top:4px;border-top:.5px dashed var(--border2);white-space:normal" title="Context from Call Intelligence. Not yet tested against past exits, so it does not change who is flagged.">'+
+    '<span class="stat-foot">From calls and texts (last 30 days, context only):</span> '+escHtml(txt)+link+'</div>';
+}
 function renderRisk(){
   const body=document.getElementById('riskBody'); if(!body)return;
   if(!spine.length||!viv){ body.innerHTML='<div class="empty-state"><div>Loading caregivers...</div></div>'; return; }
@@ -3967,7 +4007,7 @@ function renderRisk(){
   let h='<div class="card" style="padding:14px 16px;margin-bottom:12px;font-size:13px;line-height:1.55">'+
     '<b>Caregivers showing the signs that came before past terminations.</b> '+(total-nPerfOnly)+' flagged on the tested hours signals'+(nPerfOnly?' (plus '+nPerfOnly+' with only a performance flag, behind the checkbox above)':'')+': '+
     counts.map(([c,n])=>'<span class="bdg '+RISK_CATS[c].cls+'">'+RISK_CATS[c].lbl+' '+n+'</span>').join(' ')+
-    '<div class="stat-foot" style="margin-top:6px">Tested on 499 past terminations: no hours for 2 weeks came before "stopped communicating" exits (5.8x as likely); under half of desired hours for 3 weeks was the earliest warning, about 6 weeks before the last visit (about 3x); hours halving against their own recent average came before involuntary exits (about 2.5x). New hires (under 90 days) are twice as likely to leave. A flag is a reason to check in, not a verdict: most flagged caregivers stay. Performance flags are the Short List triggers and have not been tested against past exits yet. Caregivers on leave, or hired in the last 3 weeks, are left out.</div></div>';
+    '<div class="stat-foot" style="margin-top:6px">Tested on 499 past terminations: no hours for 2 weeks came before "stopped communicating" exits (5.8x as likely); under half of desired hours for 3 weeks was the earliest warning, about 6 weeks before the last visit (about 3x); hours halving against their own recent average came before involuntary exits (about 2.5x). New hires (under 90 days) are twice as likely to leave. A flag is a reason to check in, not a verdict: most flagged caregivers stay. Performance flags are the Short List triggers and have not been tested against past exits yet. Caregivers on leave, or hired in the last 3 weeks, are left out. The "From calls and texts" line under Why is context from Call Intelligence for the last 30 days: it has not been tested against past exits yet and does not change who is flagged.'+(riskSignalsState==='error'?' Call Intelligence context is not available right now.':'')+'</div></div>';
   if(!rows.length){ body.innerHTML=h+'<div class="empty-state"><div>No one on this list right now.</div></div>'; return; }
   h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Market</th><th>Why</th><th>Last 4 weeks</th><th>Suggested next step</th><th>Notes</th></tr></thead><tbody>';
   rows.forEach(r=>{
@@ -3978,7 +4018,7 @@ function renderRisk(){
       (r.isNew?' <span class="bdg bg-p" style="font-size:9px" title="Hired in the last 90 days: twice as likely to leave">New</span>':'')+
       '<div class="stat-foot">'+escHtml(p.manager||'')+(r.tenure!=null?' · '+(r.tenure<365?Math.round(r.tenure/30)+' mo':(r.tenure/365).toFixed(1)+' yr')+' at Tribute':'')+'</div>'+_fnChip('risk',p)+'</td>'+
       '<td>'+escHtml(p.market||'')+'</td>'+
-      '<td style="min-width:220px;max-width:320px">'+why+'</td>'+
+      '<td style="min-width:220px;max-width:320px">'+why+_riskSignalsHtml(p)+'</td>'+
       '<td style="font-size:12px;white-space:normal;max-width:130px">'+(r.hoursLine?escHtml(r.hoursLine):'<span class="stat-foot">no hours data</span>')+'</td>'+
       '<td style="min-width:220px;max-width:320px">'+next+'</td>'+
       _fnCell('risk',p)+'</tr>';
