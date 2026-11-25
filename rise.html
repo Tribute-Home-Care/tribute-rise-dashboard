@@ -920,12 +920,48 @@ function showGate(msg){
   document.getElementById('gateErr').textContent=msg||'';
 }
 
+// ── Instant reopen (Andrew 11/24): keep the last Rise data in this browser (IndexedDB;
+// 9.7 MB is too big for localStorage), show it at once on the next visit, then refresh
+// in the background. Tied to the signed-in account, dropped after 24h, cleared on sign out.
+const _RC_DB='rise-cache', _RC_STORE='viv', _RC_MAX_AGE=24*60*60*1000;
+function _rcOpen(){ return new Promise((res,rej)=>{ try{ const q=indexedDB.open(_RC_DB,1); q.onupgradeneeded=()=>q.result.createObjectStore(_RC_STORE); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }catch(e){ rej(e); } }); }
+async function _rcKey(){ const u=await ensureCurrentUser(); return u&&u.email?('viv:'+u.email.toLowerCase()):null; }
+async function _rcGet(){
+  try{ const k=await _rcKey(); if(!k)return null; const db=await _rcOpen();
+    const v=await new Promise((res,rej)=>{ const t=db.transaction(_RC_STORE,'readonly').objectStore(_RC_STORE).get(k); t.onsuccess=()=>res(t.result||null); t.onerror=()=>rej(t.error); });
+    if(!v||!v.savedAt||Date.now()-v.savedAt>_RC_MAX_AGE||!v.text)return null; return v;
+  }catch(e){ return null; }
+}
+async function _rcPut(text){
+  try{ const k=await _rcKey(); if(!k)return; const db=await _rcOpen();
+    await new Promise((res,rej)=>{ const t=db.transaction(_RC_STORE,'readwrite'); t.objectStore(_RC_STORE).clear(); t.objectStore(_RC_STORE).put({text,savedAt:Date.now()},k); t.oncomplete=res; t.onerror=()=>rej(t.error); });
+  }catch(e){}
+}
+function _rcClear(){ try{ indexedDB.deleteDatabase(_RC_DB); }catch(e){} }
+// Everything the page does with a freshly loaded payload (from the server or the browser copy).
+async function _applyViv(){
+  // A Rise / 90-day form submitted 120+ days after its own Meeting Date carries a
+  // stale prefilled date (Shaina 10/22: Remy Muyanja's August meeting was filed
+  // with February's date). Treat the submission date as the meeting date.
+  try{ ['rise','early'].forEach(k=>((viv.forms||{})[k]||[]).forEach(f=>{ const md=parseDate(f.meetingDate), sd=parseDate(f.submittedAt); if(md&&sd&&(sd-md)>120*86400000){ f.meetingDateRaw=f.meetingDate; f.meetingDate=sd.toLocaleDateString('en-CA'); f.dateCorrected=true; } })); }catch(e){}
+  buildSpine(); await ensureCurrentUser(); updateMyTeamBanner(); setupPreviewMce(); buildManagerFilter(); buildSearchIndex(); renderTracker(); renderLiveChips();
+  if(selectedKey)renderCaregiver();
+}
 async function syncViv(manual){
   const headers=await authHeaders();
   if(!headers.Authorization&&!headers['X-Retention-Key']){ showGate(); return; }
   const btn=document.getElementById('syncBtn');
   btn.disabled=true; btn.textContent='Syncing…';
-  setSyncLine('<span class="dot"></span>Syncing from Viv… first build can take ~2 minutes','');
+  // Instant reopen: draw from this browser's copy first, then refresh below.
+  let shownCached=false;
+  if(!viv&&!manual){
+    const c=await _rcGet();
+    if(c){ try{ viv=JSON.parse(c.text); await _applyViv(); shownCached=true;
+      setSyncLine('<span class="dot"></span>Showing data from '+fmtTime(viv.generatedAt)+' · updating…','');
+      try{ if(!leaveData&&!leaveLoading)loadLeave(); }catch(e){}
+    }catch(e){ viv=null; } }
+  }
+  if(!shownCached) setSyncLine('<span class="dot"></span>Syncing from Viv… first build can take ~2 minutes','');
   try{
     let r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers});
     if(r.status===401){ localStorage.removeItem(KEY_LS); showGate('Your session has expired — please sign in again.'); throw new Error('unauthorized'); }
@@ -936,21 +972,18 @@ async function syncViv(manual){
       r=await fetch(PROXY+'?endpoint=rise_dashboard',{headers});
     }
     if(!r.ok) throw new Error('Viv proxy returned HTTP '+r.status);
-    viv=await r.json();
-    // A Rise / 90-day form submitted 120+ days after its own Meeting Date carries a
-    // stale prefilled date (Shaina 10/22: Remy Muyanja's August meeting was filed
-    // with February's date, so the tracker showed him 85 days overdue). Treat the
-    // submission date as the meeting date and keep the original for reference.
-    try{ ['rise','early'].forEach(k=>((viv.forms||{})[k]||[]).forEach(f=>{ const md=parseDate(f.meetingDate), sd=parseDate(f.submittedAt); if(md&&sd&&(sd-md)>120*86400000){ f.meetingDateRaw=f.meetingDate; f.meetingDate=sd.toLocaleDateString('en-CA'); f.dateCorrected=true; } })); }catch(e){}
+    const _txt=await r.text();
+    viv=JSON.parse(_txt);
     setSyncLine('<span class="dot"></span>Live · '+viv.counts.caregivers+' caregivers · '+viv.counts.riseForms+' Rise forms · data as of '+fmtTime(viv.generatedAt),'');
-    buildSpine(); await ensureCurrentUser(); updateMyTeamBanner(); setupPreviewMce(); buildManagerFilter(); buildSearchIndex(); renderTracker(); renderLiveChips();
+    await _applyViv();
     try{ if(!leaveData&&!leaveLoading)loadLeave(); }catch(e){}   // On leave chips on the tracker, without waiting for the 6s fallback
-    if(selectedKey)renderCaregiver();
+    _rcPut(_txt);   // next visit opens instantly from this copy
     restoreUploads();   // shared iSolved files (roster/certs) saved by whoever uploaded last
   }catch(e){
     if(e.message!=='unauthorized'){
-      showErr('Live sync failed: '+e.message+'. If this was a first load, the server may still be building its cache — try again in a minute.');
-      setSyncLine('<span class="dot r"></span>Sync failed','');
+      if(shownCached){ setSyncLine('<span class="dot r"></span>Showing saved data from '+fmtTime(viv&&viv.generatedAt)+' · could not refresh, try Sync Viv data',''); }
+      else { showErr('Live sync failed: '+e.message+'. If this was a first load, the server may still be building its cache — try again in a minute.');
+      setSyncLine('<span class="dot r"></span>Sync failed',''); }
     }
   }finally{
     btn.disabled=false; btn.textContent='Sync Viv data';
@@ -5723,6 +5756,8 @@ renderLiveChips();
 try{ history.replaceState({riseTab:'tracker'},''); }catch(e){}
 _navReady=true;
 ensureCurrentUser();   // start decoding the signed-in identity early
+// Signing out also forgets this browser's saved copy of the Rise data.
+try{ if(window.tributeKsfGate&&typeof window.tributeKsfGate.signOut==='function'){ const _so=window.tributeKsfGate.signOut.bind(window.tributeKsfGate); window.tributeKsfGate.signOut=function(){ _rcClear(); return _so.apply(null,arguments); }; } }catch(e){}
 // Microsoft sign-in is the gate (entra-auth.js walls the page on load and signs
 // the user in). Once a token is available we load immediately. A legacy team
 // password (getKey) is still honored purely as a no-lockout safety net; it is no
