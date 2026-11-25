@@ -622,6 +622,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
     <label class="ct" for="riskCat">Why</label>
     <select id="riskCat" onchange="renderRisk()" style="font-size:13px;padding:6px 8px;border-radius:8px;border:.5px solid var(--border2);background:var(--bg)">
     </select>
+    <label style="font-size:12.5px;display:flex;gap:5px;align-items:center;cursor:pointer" title="Caregivers whose only flag is a Short List performance trigger. Those triggers have not been tested against past terminations yet."><input type="checkbox" id="riskPerfOnly" onchange="renderRisk()"> Include performance-only flags</label>
     <span id="riskCount" class="stat-foot" style="margin-left:auto"></span>
   </div>
   <div id="riskBody"></div>
@@ -3956,12 +3957,15 @@ function renderRisk(){
   let rows=spine.filter(p=>!mce||p.manager===mce).map(riskFor).filter(Boolean);
   const counts=RISK_ORDER.map(c=>[c,rows.filter(r=>r.cats.has(c)).length]);
   const total=rows.length;
+  const perfOnly=r=>r.cats.size===1&&r.cats.has('performance');
+  const nPerfOnly=rows.filter(perfOnly).length;
+  if(!(document.getElementById('riskPerfOnly')||{}).checked&&cat!=='performance')rows=rows.filter(r=>!perfOnly(r));
   if(cat)rows=rows.filter(r=>r.cats.has(cat));
   const rank=r=>Math.min(...[...r.cats].map(c=>RISK_ORDER.indexOf(c)));
   rows.sort((a,b)=>(rank(a)-rank(b))||(b.cats.size-a.cats.size)||String(a.p.name).localeCompare(String(b.p.name)));
   const cnt=document.getElementById('riskCount'); if(cnt)cnt.textContent=rows.length+' caregiver'+(rows.length===1?'':'s');
   let h='<div class="card" style="padding:14px 16px;margin-bottom:12px;font-size:13px;line-height:1.55">'+
-    '<b>Caregivers showing the signs that came before past terminations.</b> '+total+' flagged: '+
+    '<b>Caregivers showing the signs that came before past terminations.</b> '+(total-nPerfOnly)+' flagged on the tested hours signals'+(nPerfOnly?' (plus '+nPerfOnly+' with only a performance flag, behind the checkbox above)':'')+': '+
     counts.map(([c,n])=>'<span class="bdg '+RISK_CATS[c].cls+'">'+RISK_CATS[c].lbl+' '+n+'</span>').join(' ')+
     '<div class="stat-foot" style="margin-top:6px">Tested on 499 past terminations: no hours for 2 weeks came before "stopped communicating" exits (5.8x as likely); under half of desired hours for 3 weeks was the earliest warning, about 6 weeks before the last visit (about 3x); hours halving against their own recent average came before involuntary exits (about 2.5x). New hires (under 90 days) are twice as likely to leave. A flag is a reason to check in, not a verdict: most flagged caregivers stay. Performance flags are the Short List triggers and have not been tested against past exits yet. Caregivers on leave, or hired in the last 3 weeks, are left out.</div></div>';
   if(!rows.length){ body.innerHTML=h+'<div class="empty-state"><div>No one on this list right now.</div></div>'; return; }
