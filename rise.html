@@ -92,6 +92,11 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
 .tbl{width:100%;border-collapse:collapse;font-size:12px}
 .tbl th{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text2);padding:8px 12px;border-bottom:.5px solid var(--border2);text-align:left;white-space:nowrap;background:var(--bg2);position:sticky;top:0;z-index:1}
 .tbl td{padding:9px 12px;border-bottom:.5px solid var(--border);vertical-align:top}
+/* Rise Meeting Tracker (Dova 11/2026): tighter columns so Notes fits on screen */
+#trackerWrap .tbl th{padding:8px 7px;white-space:normal;line-height:1.25;vertical-align:bottom}
+#trackerWrap .tbl td{padding:8px 7px}
+#trackerWrap .tbl td a[href^='mailto:']{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
+#trackerWrap .tbl .td-notes{min-width:200px;width:22%}
 .tbl tbody tr:last-child td{border-bottom:none}
 .tbl tbody tr:hover td{background:var(--bg2)}
 .tbl tr.clickable{cursor:pointer}
@@ -424,6 +429,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
         <th onclick="trackerSortBy('name')" style="cursor:pointer;user-select:none">Caregiver<span class="tsort" data-c="name"></span></th>
         <th>Contact</th>
         <th onclick="trackerSortBy('market')" style="cursor:pointer;user-select:none">Market<span class="tsort" data-c="market"></span></th>
+        <th onclick="trackerSortBy('avail')" style="cursor:pointer;user-select:none" title="From the caregiver's availability notes in Viv">Availability<span class="tsort" data-c="avail"></span></th>
         <th onclick="trackerSortBy('hire')" style="cursor:pointer;user-select:none">Hire Date<span class="tsort" data-c="hire"></span></th>
         <th onclick="trackerSortBy('due')" style="cursor:pointer;user-select:none">Due Date<span class="tsort" data-c="due"></span></th>
         <th onclick="trackerSortBy('days')" style="cursor:pointer;user-select:none">Days Until Due<span class="tsort" data-c="days"></span></th>
@@ -1370,6 +1376,16 @@ async function unskipMeeting(cgId){
       body:JSON.stringify({cgId,clear:true})});
   }catch(e){/* local state already updated; server catches up */}
 }
+// Availability preference (Tory 11/19): short hour, long hour, overnight, live-in, PRN,
+// read from the caregiver's availability notes in Viv, same rule as Desired Hours.
+const AVAIL_CLS={'Long Hour':'bg-b','Short Hour':'bg-g','Overnight':'bg-p','Live-In':'bg-a','PRN':'bg-n'};
+function _availLabel(p){ const t=p&&p.viv&&p.viv.availTypes; return (t&&t.length)?t.join(' + '):''; }
+function _availCell(p){
+  const t=p&&p.viv&&p.viv.availTypes;
+  if(!t)return '<span style="color:var(--text3)">&ndash;</span>';
+  if(!t.length)return '<span style="color:var(--text3);font-size:11px" title="The availability notes in Viv do not say short hour, long hour, overnight, live-in or PRN">Not set</span>';
+  return t.map(x=>'<span class="bdg '+(AVAIL_CLS[x]||'bg-n')+'" style="font-size:10px;white-space:nowrap">'+escHtml(x)+'</span>').join(' ');
+}
 function renderTracker(){
   if(!spine.length){
     document.getElementById('trackerEmpty').style.display='';
@@ -1471,7 +1487,8 @@ function renderTracker(){
       due:(a,b)=>((a.activeDueDate||0)-(b.activeDueDate||0)),
       days:daysCmp,
       next:(a,b)=>{const da=a._effNext?parseDate(a._effNext):null,db=b._effNext?parseDate(b._effNext):null;if(da&&db)return da-db;if(da)return -1;if(db)return 1;return 0;},
-      segment:(a,b)=>s(a.segment).localeCompare(s(b.segment))
+      segment:(a,b)=>s(a.segment).localeCompare(s(b.segment)),
+      avail:(a,b)=>s(_availLabel(a.p)).localeCompare(s(_availLabel(b.p)))
     }[trackerSort.col]||daysCmp;
     rows.sort((a,b)=>cmp(a,b)*trackerSort.dir);
   }
@@ -1480,7 +1497,7 @@ function renderTracker(){
   document.getElementById('trackerCount').textContent=rows.length+' caregiver'+(rows.length!==1?'s':'');
   const tbody=document.getElementById('trackerBody');
   if(!rows.length){
-    tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--text3);padding:22px;font-style:italic">No caregivers found</td></tr>';
+    tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--text3);padding:22px;font-style:italic">No caregivers found</td></tr>';
     return;
   }
   if(trackerNotes===null)loadTrackerNotes();   // durable Notes / Next-Meeting store
@@ -1578,6 +1595,7 @@ function renderTracker(){
       '<td class="td-name"><span class="cg-link clickable" onclick="openCaregiver(\''+row.p.key.replace(/'/g,"\\'")+'\')" style="cursor:pointer;color:var(--blue-text);font-weight:600">'+escHtml(row.p.name)+'</span>'+cycleBadge+formBadge+pipwwBadge+'</td>'+
       '<td style="text-align:left">'+contactCell+'</td>'+
       '<td class="td-date">'+escHtml(row.p.market||'—')+'</td>'+
+      '<td>'+_availCell(row.p)+'</td>'+
       '<td class="td-date">'+formatDate(row.hireDate)+'</td>'+
       '<td class="td-date" style="font-weight:600">'+dueCell+'</td>'+
       '<td>'+chip+'</td>'+
