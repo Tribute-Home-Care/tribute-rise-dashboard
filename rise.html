@@ -2563,7 +2563,7 @@ function _tuDate(d){ if(!d)return 'None on record'; const t=parseDate(d); return
 function _tuVs(p){
   if(p.pctVsPeers==null)return '<span style="color:var(--text3)">'+(p.peerCount?'Peers have no time yet':(p.isNew?'No other new team members to compare with':'No one to compare with'))+'</span>';
   const n=p.pctVsPeers, txt=n===0?'About the same':(Math.abs(n)+'% '+(n<0?'below':'above'));
-  return txt+'<div style="font-size:11px;color:var(--text2)">Peer average '+_tuMins(p.peerAvgMinutes)+' ('+escHtml(p.peerBasis||'')+', '+p.peerCount+' '+(p.peerCount===1?'person':'people')+')</div>';
+  return txt+'<div style="font-size:11px;color:var(--text2)">Typical peer '+_tuMins(p.peerAvgMinutes)+' ('+escHtml(p.peerBasis||'')+', '+p.peerCount+' '+(p.peerCount===1?'person':'people')+')</div>';
 }
 async function loadTeamUsage(force){
   const body=document.getElementById('tuBody'); if(!body)return;
@@ -2610,7 +2610,7 @@ function renderTeamUsage(){
     '<b>Sign-ins</b> come from the Microsoft sign-in record, pulled weekly on Mondays'+(sm?' (last pulled '+escHtml(_tuDate(sm.slice(0,10)))+')':'')+', so the last few days may not show yet. One sign-in can last several days, so this undercounts.<br>'+
     '<b>Peers:</b> people with the same job title when there are at least two, otherwise everyone else on the team. People hired in the last 90 days (marked New) are compared only with each other. '+
     'Team average '+(j.teamAvgMinutes==null?'n/a':_tuMins(j.teamAvgMinutes))+(j.newAvgMinutes!=null?'; new team members '+_tuMins(j.newAvgMinutes):'')+'.<br>'+
-    '<b>Check in</b> (amber) = 40% or more below peers, or nothing seen in 10 days or more (no sign-in and no active time).';
+    '<b>Check in</b> (amber) = 40% or more below the typical peer (the middle of the group, so one very heavy user does not skew it), or nothing seen in 10 days or more (no sign-in and no active time).';
 }
 
 window.addEventListener('popstate',function(e){
