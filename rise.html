@@ -2556,7 +2556,7 @@ function switchTab(tab,push){
   if(push===undefined)push=true;
   _curTab=tab;
   if(window.TributeUsage)TributeUsage.setView(_tabLabel(tab));   // active time by tab (tribute-usage.js)
-  ['tracker','scoreboard','dashboard','summary','leave','certs','referrals','hours','docs','f90d','teamuse'].forEach(t=>{
+  ['tracker','scoreboard','dashboard','summary','leave','certs','referrals','hours','docs','f90d','risk','teamuse'].forEach(t=>{
     document.getElementById('page-'+t).style.display=tab===t?'':'none';
     document.getElementById('tab-'+t).classList.toggle('on',tab===t);
   });
