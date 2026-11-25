@@ -97,6 +97,13 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;backgroun
 #trackerWrap .tbl td{padding:8px 7px}
 #trackerWrap .tbl td a[href^='mailto:']{display:inline-block;max-width:150px;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
 #trackerWrap .tbl .td-notes{min-width:200px;width:22%}
+/* Wrap the wide cells (badges, Skip button, leave chips) so the whole tracker, Notes included, fits a normal screen */
+#trackerWrap .tbl td:nth-child(1){max-width:210px;white-space:normal}
+#trackerWrap .tbl td:nth-child(1) .bdg{display:inline-block;margin:2px 2px 0 0}
+#trackerWrap .tbl td:nth-child(2) div{white-space:normal!important;max-width:165px}
+#trackerWrap .tbl td:nth-child(6),#trackerWrap .tbl td:nth-child(7){max-width:140px;white-space:normal}
+#trackerWrap .tbl td:nth-child(6) .bdg,#trackerWrap .tbl td:nth-child(7) .bdg{white-space:normal;display:inline-block;margin-top:2px}
+#trackerWrap .tbl td:nth-child(9){max-width:120px;white-space:normal}
 .tbl tbody tr:last-child td{border-bottom:none}
 .tbl tbody tr:hover td{background:var(--bg2)}
 .tbl tr.clickable{cursor:pointer}
@@ -1518,6 +1525,7 @@ function renderTracker(){
     const nk=(row.p.viv&&row.p.viv.id)?row.p.viv.id:row.p.key;
     const stored=(trackerNotes&&trackerNotes[nk])||null;
     let nmVal=stored?(stored.nextMeeting||''):'';
+    if(nmVal&&!/^20\d\d-/.test(nmVal))nmVal='';   // a cleared date can come back as 0001-01-01
     const nmTime=stored?(stored.nextMeetingTime||''):'';
     if(!nmVal&&row.nextMeeting){ const d=parseDate(row.nextMeeting); if(d)nmVal=d.toLocaleDateString('en-CA'); }
     // Auto-clear: the meeting for that date has been entered in Viv → forget it.
