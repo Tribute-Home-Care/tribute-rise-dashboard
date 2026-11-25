@@ -1196,17 +1196,52 @@ function findVivByName(displayName){
 // ════════════════════════════════════════════════════════════════════════════
 // FORM LOOKUPS (live Viv forms)
 // ════════════════════════════════════════════════════════════════════════════
-function formsFor(person,list){
-  if(!viv)return[];
-  return list.filter(f=>{
-    if(person.viv&&f.mid&&person.viv.id===f.mid)return true;
-    if(person.empNum&&f.mnum!=null&&String(f.mnum)===person.empNum)return true;
-    return f.name&&namesMatch(stripCaregiverSuffix(f.name),person.name);
+// Speed (11/24): the tracker asked every caregiver to scan every form with a fuzzy
+// name compare (~470 x 1,830 forms, about 2.5s per draw). Same answers, faster:
+// each form list gets an index by Viv id, employee number and name word, so a
+// caregiver is only compared with forms that could match. Two names can only match
+// if they share a word of 2+ letters (namesMatch requires every such word of the
+// shorter name to appear in the longer), so forms with no such word are always
+// checked. Results are memoized per list; a new Viv load brings new lists.
+const _formIdx=new WeakMap(), _formMemo=new WeakMap();
+function _nameWords(n){ const out=new Set(); [n,stripNickname(n)].forEach(x=>normName(formatDisplayName(x)).split(' ').forEach(t=>{ if(t.length>1)out.add(t); })); return out; }
+function _formIndex(list){
+  let ix=_formIdx.get(list); if(ix)return ix;
+  ix={byMid:new Map(),byMnum:new Map(),byWord:new Map(),wordless:[]};
+  list.forEach((f,i)=>{
+    if(f.mid){ if(!ix.byMid.has(f.mid))ix.byMid.set(f.mid,[]); ix.byMid.get(f.mid).push(i); }
+    if(f.mnum!=null){ const k=String(f.mnum); if(!ix.byMnum.has(k))ix.byMnum.set(k,[]); ix.byMnum.get(k).push(i); }
+    if(!f.name)return;
+    const ws=_nameWords(stripCaregiverSuffix(f.name));
+    if(!ws.size){ ix.wordless.push(i); return; }
+    ws.forEach(w=>{ if(!ix.byWord.has(w))ix.byWord.set(w,[]); ix.byWord.get(w).push(i); });
   });
+  _formIdx.set(list,ix); return ix;
+}
+function formsFor(person,list){
+  if(!viv||!list)return[];
+  let memo=_formMemo.get(list); if(!memo){ memo=new Map(); _formMemo.set(list,memo); }
+  const mk=(person.key||'')+'|'+((person.viv&&person.viv.id)||'')+'|'+(person.empNum||'')+'|'+(person.name||'');
+  if(memo.has(mk))return memo.get(mk);
+  const ix=_formIndex(list), hit=new Set();
+  if(person.viv&&person.viv.id)(ix.byMid.get(person.viv.id)||[]).forEach(i=>hit.add(i));
+  if(person.empNum)(ix.byMnum.get(person.empNum)||[]).forEach(i=>hit.add(i));
+  const pw=_nameWords(person.name||''), cand=new Set(ix.wordless);
+  if(!pw.size){ list.forEach((f,i)=>{ if(f.name)cand.add(i); }); }   // a name with no 2+ letter word can match anything, as before
+  else pw.forEach(w=>(ix.byWord.get(w)||[]).forEach(i=>cand.add(i)));
+  cand.forEach(i=>{ if(!hit.has(i)){ const f=list[i]; if(f.name&&namesMatch(stripCaregiverSuffix(f.name),person.name))hit.add(i); } });
+  const out=[...hit].sort((x,y)=>x-y).map(i=>list[i]);
+  memo.set(mk,out); return out;
+}
+const _earlySplit=new WeakMap();
+function _earlyOf(kind){
+  const e=viv.forms.early; let sp=_earlySplit.get(e);
+  if(!sp){ sp={ninety:e.filter(f=>NINETY_DAY_FORMS.has(f.formNum)),fortyFive:e.filter(f=>FORTY_FIVE_DAY_FORMS.has(f.formNum))}; _earlySplit.set(e,sp); }
+  return sp[kind];
 }
 function riseFormsFor(person){ return viv?formsFor(person,viv.forms.rise):[]; }
-function ninetyFormsFor(person){ return viv?formsFor(person,viv.forms.early.filter(f=>NINETY_DAY_FORMS.has(f.formNum))):[]; }
-function fortyFiveFormsFor(person){ return viv?formsFor(person,viv.forms.early.filter(f=>FORTY_FIVE_DAY_FORMS.has(f.formNum))):[]; }
+function ninetyFormsFor(person){ return viv?formsFor(person,_earlyOf('ninety')):[]; }
+function fortyFiveFormsFor(person){ return viv?formsFor(person,_earlyOf('fortyFive')):[]; }
 // Active WW/PIP for a caregiver (Charlotte): match by empNum first, then name.
 // "Active" = open-ended (no end date) or an end date that hasn't passed yet.
 function activePipwwFor(p){
