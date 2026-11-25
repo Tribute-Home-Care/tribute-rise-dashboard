@@ -412,6 +412,7 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div class="ntab" id="tab-referrals" onclick="switchTab('referrals')">Referrals</div>
   <div class="ntab" id="tab-hours" onclick="switchTab('hours')">Desired Hours</div>
   <div class="ntab" id="tab-f90d" onclick="switchTab('f90d')">First 90 Days</div>
+  <div class="ntab" id="tab-risk" onclick="switchTab('risk')">At Risk</div>
   <div class="ntab" id="tab-docs" onclick="switchTab('docs')">DocuSign Assist</div>
   <div class="ntab" id="tab-teamuse" style="display:none" onclick="switchTab('teamuse')">Team usage</div>
   <div class="ntab" id="tab-insights" title="Opens Caregiver Insights in Call Intelligence in a new browser tab" onclick="window.open('https://tribute-call-intel-app.agreeablefield-f3120a94.centralus.azurecontainerapps.io/ce/insights','_blank','noopener')">Caregiver Insights &#8599;</div>
@@ -611,6 +612,20 @@ table.sched-tbl tr:last-child td{border-bottom:none}
   <div id="rampPanel" style="margin:0 14px 12px"></div>
   <div style="font-size:11px;color:var(--text2);margin:0 14px 8px">Desired Hours &amp; Happiness, embedded from the standalone app. If it prompts for sign-in, use your Microsoft account.</div>
   <iframe id="hoursFrame" title="Caregiver Hours &amp; Happiness" style="width:100%;height:calc(100vh - 190px);border:none;background:var(--bg)"></iframe>
+</div>
+
+<!-- PAGE: AT RISK (Galip 11/24: early warning signs before a caregiver leaves) -->
+<div id="page-risk" style="display:none">
+  <div class="filter-bar" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+    <label class="ct" for="riskMce">Manager</label>
+    <select id="riskMce" onchange="renderRisk()" style="font-size:13px;padding:6px 8px;border-radius:8px;border:.5px solid var(--border2);background:var(--bg)"></select>
+    <label class="ct" for="riskCat">Why</label>
+    <select id="riskCat" onchange="renderRisk()" style="font-size:13px;padding:6px 8px;border-radius:8px;border:.5px solid var(--border2);background:var(--bg)">
+      <option value="">All reasons</option><option value="hours">Hours</option><option value="performance">Performance</option>
+    </select>
+    <span id="riskCount" class="stat-foot" style="margin-left:auto"></span>
+  </div>
+  <div id="riskBody"></div>
 </div>
 
 <div id="page-f90d" style="display:none">
@@ -2554,6 +2569,7 @@ function switchTab(tab,push){
   if(tab==='hours'){ loadHoursFrame(); try{ renderRamp(); }catch(e){ console.error('ramp',e); } }
   if(tab==='docs')renderDocs();
   if(tab==='f90d')loadF90D();
+  if(tab==='risk'){ loadFlagNotes(()=>renderRisk()); renderRisk(); }
   if(tab==='teamuse')loadTeamUsage(false);
   // Push a history entry so the browser Back button steps between tabs instead
   // of leaving the app. popstate handler passes push=false to avoid re-pushing.
@@ -3861,6 +3877,86 @@ function sbPickTeam(mceEnc){
   document.querySelectorAll('#perfSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v==='scoreboard'));
   renderPerf();
   window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ── AT RISK (Galip 11/24) ──────────────────────────────────────────────────
+// Early warning signs that come before a caregiver leaves, grouped by WHY, each
+// with a suggested next step. First version: the thresholds below are provisional
+// and get replaced by the ones the retention analysis validates on past
+// terminations. Kept in one object so that swap is a one-line change.
+const RISK_RULES = {
+  hoursUnderPct: 0.25,     // a week counts as "short" below 25% of desired hours (client visits only)
+  hoursShortWeeks: 3,      // ...in at least 3 of the last 4 full weeks
+  hoursMinDesired: 8,      // only caregivers who want 8+ hours a week
+  askDays: 30,             // "asked for more hours": a Desired Hours service exception in the last 30 days
+  minTenureDays: 21,       // brand-new hires are still being placed; the First 90 Days tab covers them
+  newDays: 90
+};
+const RISK_ACTIONS = {
+  hours: 'Ask Scheduling to put them first for open visits that fit their availability, and check their availability in Viv is current.',
+  performance: 'Coaching conversation on the standard flagged; consider a CareAcademy course on it. Document it here.'
+};
+function riskFor(p){
+  const v=p&&p.viv; if(!v||String(v.status||'').toLowerCase()!=='active')return null;
+  if(_leaveNowFor(p))return null;                       // on the CAs on Leave list
+  const hd=parseDate(v.hireDate); const tenure=hd?Math.round((TODAY-hd)/86400000):null;
+  if(tenure!=null&&tenure<RISK_RULES.minTenureDays)return null;
+  const reasons=[], cats=new Set();
+  // Hours: short of desired hours most of the last 4 full weeks.
+  const desired=+v.desiredHours||0, wk=(v.weeklyCareHours||v.weeklyHours||[]).slice(-4);
+  let hoursLine=null;
+  if(!v.prn&&desired>=RISK_RULES.hoursMinDesired&&wk.length===4){
+    const short=wk.filter(h=>(+h||0)<desired*RISK_RULES.hoursUnderPct).length;
+    hoursLine=wk.map(h=>Math.round(+h||0)).join(' / ')+' of '+Math.round(desired)+'h wanted';
+    if(short>=RISK_RULES.hoursShortWeeks){ cats.add('hours'); reasons.push({cat:'hours',t:'Under '+Math.round(RISK_RULES.hoursUnderPct*100)+'% of desired hours '+short+' of the last 4 weeks'}); }
+  }
+  // Hours: asked for more (Viv "Desired Hours" service exception).
+  const asks=(v.exceptions||[]).filter(inc=>/desired hours/i.test(inc.type||'')&&_withinDays(inc.date,RISK_RULES.askDays));
+  if(asks.length){ cats.add('hours'); reasons.push({cat:'hours',t:'Asked for more hours ('+asks.length+'x, last '+formatDate(parseDate(asks.map(a=>a.date).sort().pop()))+')'}); }
+  // Performance: the Short List coaching triggers, plus an active PIP / written warning.
+  let trig=[]; try{ trig=shortListTriggers(p)||[]; }catch(e){}
+  trig.forEach(t=>{ cats.add('performance'); reasons.push({cat:'performance',t:t.t}); });
+  const ca=activePipwwFor(p);
+  if(ca.length&&!trig.some(t=>t.cat==='pipww')){ cats.add('performance'); reasons.push({cat:'performance',t:'Active '+(ca[0].isPip?'PIP':(ca[0].isWW?'written warning':'corrective action'))+(ca[0].endDate?' (ends '+formatDate(ca[0].endDate)+')':'')}); }
+  if(!cats.size)return null;
+  return {p,cats,reasons,hoursLine,tenure,isNew:tenure!=null&&tenure<RISK_RULES.newDays};
+}
+function renderRisk(){
+  const body=document.getElementById('riskBody'); if(!body)return;
+  if(!spine.length||!viv){ body.innerHTML='<div class="empty-state"><div>Loading caregivers...</div></div>'; return; }
+  const sel=document.getElementById('riskMce');
+  if(sel&&!sel.options.length){
+    const mgrs=[...new Set(spine.map(p=>p.manager).filter(Boolean))].sort();
+    sel.innerHTML='<option value="">All managers</option>'+mgrs.map(m=>'<option value="'+escHtml(m)+'">'+escHtml(m)+'</option>').join('');
+    defaultToMyTeam(sel);
+  }
+  const mce=sel?sel.value:'', cat=(document.getElementById('riskCat')||{}).value||'';
+  let rows=spine.filter(p=>!mce||p.manager===mce).map(riskFor).filter(Boolean);
+  const all=rows.length, nH=rows.filter(r=>r.cats.has('hours')).length, nP=rows.filter(r=>r.cats.has('performance')).length, nB=rows.filter(r=>r.cats.size>1).length;
+  if(cat)rows=rows.filter(r=>r.cats.has(cat));
+  rows.sort((a,b)=>(b.cats.size-a.cats.size)||(b.reasons.length-a.reasons.length)||String(a.p.name).localeCompare(String(b.p.name)));
+  const cnt=document.getElementById('riskCount'); if(cnt)cnt.textContent=rows.length+' caregiver'+(rows.length===1?'':'s');
+  const chipCls={hours:'bg-b',performance:'bg-a'}, catLbl={hours:'Hours',performance:'Performance'};
+  let h='<div class="card" style="padding:14px 16px;margin-bottom:12px;font-size:13px;line-height:1.5">'+
+    '<b>Caregivers showing early warning signs.</b> Grouped by why, each with a suggested next step. '+
+    all+' flagged: '+nH+' for hours, '+nP+' for performance'+(nB?', '+nB+' for both':'')+'. '+
+    '<span class="stat-foot">First version: hours = under '+Math.round(RISK_RULES.hoursUnderPct*100)+'% of desired hours in '+RISK_RULES.hoursShortWeeks+' of the last 4 weeks, or a Desired Hours service exception in the last '+RISK_RULES.askDays+' days; performance = the Short List triggers or an active PIP / written warning. Caregivers on leave, PRN, or hired in the last '+RISK_RULES.minTenureDays+' days are left out. These thresholds will be tuned against past terminations.</span></div>';
+  if(!rows.length){ body.innerHTML=h+'<div class="empty-state"><div>No one on this list right now.</div></div>'; return; }
+  h+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Caregiver</th><th>Market</th><th>Why</th><th>Last 4 weeks</th><th>Suggested next step</th><th>Notes</th></tr></thead><tbody>';
+  rows.forEach(r=>{
+    const p=r.p, key=String(p.key).replace(/'/g,"\\'");
+    const why=[...r.cats].map(c=>'<div style="margin-bottom:6px"><span class="bdg '+chipCls[c]+'">'+catLbl[c]+'</span><div style="font-size:12px;margin-top:3px;white-space:normal">'+r.reasons.filter(x=>x.cat===c).slice(0,3).map(x=>escHtml(x.t)).join('<br>')+'</div></div>').join('');
+    const next=[...r.cats].map(c=>'<div style="font-size:12px;white-space:normal;margin-bottom:6px"><b>'+catLbl[c]+':</b> '+escHtml(RISK_ACTIONS[c])+'</div>').join('');
+    h+='<tr><td style="white-space:normal;max-width:190px"><span class="cg-link clickable" onclick="openCaregiver(\''+key+'\')" style="cursor:pointer;color:var(--blue-text);font-weight:600">'+escHtml(p.name)+'</span>'+
+      (r.isNew?' <span class="bdg bg-p" style="font-size:9px" title="Hired in the last 90 days">New</span>':'')+
+      '<div class="stat-foot">'+escHtml(p.manager||'')+(r.tenure!=null?' · '+(r.tenure<365?Math.round(r.tenure/30)+' mo':(r.tenure/365).toFixed(1)+' yr')+' at Tribute':'')+'</div>'+_fnChip('risk',p)+'</td>'+
+      '<td>'+escHtml(p.market||'')+'</td>'+
+      '<td style="min-width:220px;max-width:320px">'+why+'</td>'+
+      '<td style="font-size:12px;white-space:normal;max-width:130px">'+(r.hoursLine?escHtml(r.hoursLine):'<span class="stat-foot">no desired hours set</span>')+'</td>'+
+      '<td style="min-width:220px;max-width:320px">'+next+'</td>'+
+      _fnCell('risk',p)+'</tr>';
+  });
+  body.innerHTML=h+'</tbody></table></div>';
 }
 
 // ── SHORT LIST — Charlotte's exact coaching criteria (Viv "Short List" tab) ──
